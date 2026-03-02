@@ -11,6 +11,10 @@
 (require 'ox-rst)
 (require 'ox-publish)
 
+;; Enable org-babel evaluation for dot (graphviz) blocks
+(require 'ob-dot)
+(setq org-confirm-babel-evaluate nil)
+
 ;; Define the Publishing Project
 (setq org-publish-project-alist
       '(("sphinx-rst"
@@ -19,7 +23,14 @@
          :publishing-directory "./source/"
          :publishing-function org-rst-publish-to-rst
          :recursive t
-         :headline-levels 4)))
+         :headline-levels 4)
+        ("sphinx-images"
+         :base-directory "./orgmode/"
+         :base-extension "svg\\|png\\|jpg"
+         :publishing-directory "./source/"
+         :publishing-function org-publish-attachment
+         :recursive t)
+        ("sphinx" :components ("sphinx-rst" "sphinx-images"))))
 
 ;; Run the publish
-(org-publish "sphinx-rst" t)
+(org-publish "sphinx" t)

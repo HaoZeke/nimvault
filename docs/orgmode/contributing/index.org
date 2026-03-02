@@ -1,10 +1,9 @@
 #+TITLE: Contributing
 #+OPTIONS: toc:t num:nil
 
-Development setup
------------------
+* Development setup
 
-#+BEGIN_SRC bash
+#+begin_src bash
 git clone https://github.com/HaoZeke/nimvault.git
 cd nimvault
 
@@ -13,19 +12,18 @@ nimble build -y
 
 # Run tests (requires GPG)
 nimble test -y
-#+END_SRC
+#+end_src
 
 Using pixi (manages Nim version):
 
-#+BEGIN_SRC bash
+#+begin_src bash
 pixi run build
 pixi run test
-#+END_SRC
+#+end_src
 
-Building docs
--------------
+* Building docs
 
-#+BEGIN_SRC bash
+#+begin_src bash
 # Install docs dependencies
 pixi install -e docs
 
@@ -33,12 +31,15 @@ pixi install -e docs
 pixi run -e docs docbld
 
 # Output: docs/build/
-#+END_SRC
+#+end_src
 
-Project structure
------------------
+The doc pipeline converts orgmode files to RST via ~ox-rst~ (Emacs batch mode),
+then builds with Sphinx. Nim API docs are generated separately via ~nim doc
+--project~.
 
-#+BEGIN_SRC text
+* Project structure
+
+#+begin_src text
 src/nimvault/
   gpg.nim        -- GPG operations, recipient resolution
   manifest.nim   -- VaultEntry type, manifest load/save
@@ -49,24 +50,38 @@ tests/
   tmanifest.nim  -- manifest unit tests
   tgpg.nim       -- GPG unit tests (throwaway key)
   tcommands.nim  -- integration tests (temp git repo)
-#+END_SRC
+#+end_src
 
-Tests require a working GPG installation. Test suites create throwaway
-GPG keys in temporary directories and clean up after themselves.
+Tests require a working GPG installation. Test suites create throwaway GPG keys
+in temporary directories and clean up after themselves.
 
-Changelog
----------
+* Testing
+
+The test suite uses throwaway GPG keys created in temp directories with
+restricted permissions (700) to avoid GPG warnings about unsafe home directories.
+
+#+begin_src bash
+# Run all tests
+nimble test -y
+
+# Run a specific test
+nim c -r -p:src tests/tmanifest.nim
+#+end_src
+
+The integration test (~tcommands.nim~) creates a temporary git repository and
+exercises the full workflow: add, seal, status, unseal, move, remove.
+
+* Changelog
 
 Use towncrier fragments in ~docs/newsfragments/~:
 
-#+BEGIN_SRC bash
+#+begin_src bash
 # Create a fragment (types: added, changed, fixed, removed, security, dev, misc)
 echo "Added seal command parallelism" > docs/newsfragments/42.added
-#+END_SRC
+#+end_src
 
-Linting
--------
+* Linting
 
-#+BEGIN_SRC bash
+#+begin_src bash
 uvx prek run -a -vvv
-#+END_SRC
+#+end_src

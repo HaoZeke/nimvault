@@ -12,7 +12,14 @@ nimble.paths
 
 # Sphinx build
 docs/build/
+docs/source/**/*.rst
 docs/source/*.rst
+docs/source/**/*.svg
+docs/source/*.svg
+
+# Generated DOT diagrams
+docs/orgmode/*.svg
+docs/orgmode/images/
 
 # Emacs
 *~

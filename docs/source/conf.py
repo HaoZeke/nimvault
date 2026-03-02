@@ -2,10 +2,10 @@
 project = "nimvault"
 copyright = "2025-2026, Rohit Goswami"
 author = "Rohit Goswami"
+html_logo = "../../branding/logo/nimvault.svg"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
-    "sphinx.ext.intersphinx",
     "sphinx_sitemap",
 ]
 
@@ -32,7 +32,8 @@ html_theme_options = {
     "nav_links": [
         {
             "title": "Nim API Docs",
-            "url": "apidoc/nimvault.html",
+            "url": "apidoc/nimvault",
+            "external": True,
         },
     ],
 }

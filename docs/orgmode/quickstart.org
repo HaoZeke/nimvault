@@ -1,98 +1,136 @@
-#+TITLE: Quick Start
+#+TITLE: Tutorial
 #+OPTIONS: toc:nil num:nil
 
-This tutorial walks through adding a secret file to a vault, sealing it,
-and restoring it on a fresh checkout. By the end you will see:
+In this tutorial you will encrypt a secret file into a git-safe vault and
+restore it on a fresh clone. Here is the end result:
 
-#+BEGIN_SRC text
+#+begin_src text
 $ nimvault status
 ------------------------------------------------------------------------
   Vault status
 ------------------------------------------------------------------------
-  [in-sync]   ~/.secret/api_key.txt
-#+END_SRC
+  [in-sync]   ~/.config/myapp/secrets.env
+#+end_src
 
-Prerequisites
--------------
+Your secrets are now committed as opaque GPG blobs. Clone on another machine,
+run ~nimvault unseal~, and the plaintext files reappear.
 
-- Nim >= 2.0 (~nim --version~)
-- GPG with at least one key (~gpg --list-keys~)
-- A git repository
+* Install nimvault
 
-Install
--------
-
-#+BEGIN_SRC bash
-# From nimble (recommended)
+#+begin_src bash
+# Requires Nim >= 2.0
 nimble install nimvault
+#+end_src
 
-# Or build from source
-git clone https://github.com/HaoZeke/nimvault.git
-cd nimvault
-nimble build -y
-# Binary: bin/nimvault
-#+END_SRC
+Verify:
 
-Configure
----------
+#+begin_src bash
+nimvault --version
+# nimvault 0.1.0
+#+end_src
 
-#+BEGIN_SRC bash
-# Inside your git repo
+* Set up a test repo
+
+#+begin_src bash
+# Create a throwaway repo to practice with
+mkdir /tmp/vault-demo && cd /tmp/vault-demo
+git init
+#+end_src
+
+* Create a secret file
+
+#+begin_src bash
+# This file will be encrypted into the vault
+mkdir -p ~/.config/myapp
+echo "DB_PASSWORD=hunter2" > ~/.config/myapp/secrets.env
+#+end_src
+
+* Configure the vault recipient
+
+#+begin_src bash
+# Find your GPG key ID
+gpg --list-keys --keyid-format long
+# pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
+#                ^^^^^^^^^^^^^^^^ copy this
+
+# Tell nimvault which key to encrypt to
 mkdir -p .vault
+echo "recipient = 9CCCE36402CB49A6" > .vault/config
+# ^ replace with YOUR key ID
+#+end_src
 
-# Write your GPG key ID to the config file
-# (use `gpg --list-keys --keyid-format long` to find it)
-echo "recipient = YOUR_KEY_ID" > .vault/config
-#+END_SRC
+* Add the file to the vault
 
-Add a file
-----------
+#+begin_src bash
+nimvault add ~/.config/myapp/secrets.env
+# Added:
+#   id:   7f3a2b1c9e4d8f06
+#   path: ~/.config/myapp/secrets.env
+#   blob: .vault/7f3a2b1c9e4d8f06.gpg
+#+end_src
 
-#+BEGIN_SRC bash
-# Add a secret file to the vault
-nimvault add ~/.secret/api_key.txt
-#   id:   a1b2c3d4e5f67890
-#   path: ~/.secret/api_key.txt
-#   blob: .vault/a1b2c3d4e5f67890.gpg
-#+END_SRC
+The file path is stored with =~/= so it works on any machine. The ID is a
+random 16-char hex string.
 
-Seal
-----
+* Seal the vault
 
-#+BEGIN_SRC bash
-# Encrypt all vault entries from their plaintext locations
+#+begin_src bash
 nimvault seal
-#   ~/.secret/api_key.txt
+# Encrypting ~/.config/myapp/secrets.env
 # Sealed 1 file(s).
+#+end_src
 
-# Commit the encrypted blobs
+* Commit
+
+#+begin_src bash
 git add .vault/
-git commit -m "vault: add api_key"
-#+END_SRC
+git commit -m "vault: add myapp secrets"
+#+end_src
 
-Check status
-------------
+Only encrypted blobs and the encrypted manifest are committed. The original
+filename (~secrets.env~) never appears in git history.
 
-#+BEGIN_SRC bash
+* Check status
+
+#+begin_src bash
 nimvault status
-# [in-sync]   ~/.secret/api_key.txt
-#+END_SRC
+# [in-sync]   ~/.config/myapp/secrets.env
+#+end_src
 
-Unseal (restore)
------------------
+* Simulate a fresh checkout
 
-#+BEGIN_SRC bash
-# On a fresh checkout or after removing the plaintext
+#+begin_src bash
+# Delete the plaintext to simulate a new machine
+rm ~/.config/myapp/secrets.env
+
+nimvault status
+# [missing]   ~/.config/myapp/secrets.env
+
+# Restore from the vault
 nimvault unseal
-#   ~/.secret/api_key.txt
+# Unsealing ~/.config/myapp/secrets.env
 # Unsealed 1 file(s).
 
-# Files are restored with 600 permissions (owner read/write only)
-#+END_SRC
+# Verify the file is back (permissions: 600)
+cat ~/.config/myapp/secrets.env
+# DB_PASSWORD=hunter2
 
-Next steps
-----------
+ls -la ~/.config/myapp/secrets.env
+# -rw------- 1 user user ... secrets.env
+#+end_src
 
-- [[file:reference/cli.org][CLI Reference]] for all commands and flags
-- [[file:reference/config.org][Configuration]] for recipient resolution details
-- [[file:howto/chezmoi.org][chezmoi integration]] to use nimvault in your dotfiles
+* Clean up
+
+#+begin_src bash
+# Remove the demo repo and test file
+rm -rf /tmp/vault-demo
+rm ~/.config/myapp/secrets.env
+rmdir ~/.config/myapp 2>/dev/null
+#+end_src
+
+* Next steps
+
+- [[file:howto/chezmoi.org][chezmoi integration]] -- use nimvault to encrypt dotfiles secrets
+- [[file:reference/cli.org][CLI reference]] -- all commands and flags
+- [[file:reference/config.org][Configuration]] -- recipient resolution chain
+- [[file:reference/manifest.org][Manifest format]] -- how the encrypted index works

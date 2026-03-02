@@ -1,24 +1,130 @@
-#+TITLE: nimvault
-#+OPTIONS: toc:nil num:nil
+#+TITLE: ~nimvault~
+#+AUTHOR: [[https://rgoswami.me][Rohit Goswami]]
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil ^:nil
 
-GPG-encrypted opaque-blob vault with hidden filenames.
+#+begin_export rst
+:cover: https://github.com/HaoZeke/nimvault/blob/main/branding/logo/nimvault.svg
 
-nimvault stores sensitive files with opaque filenames and encrypted contents using
-GPG. Both filenames and contents are hidden from git history --- only random hex
-blob names and a GPG-encrypted manifest are committed.
+============
+``nimvault``
+============
 
-Features
---------
+:Author: `Rohit Goswami <https://rgoswami.me>`_
+#+end_export
 
-- Opaque filenames (16-char random hex IDs)
-- GPG-encrypted contents and manifest
-- Parallel encryption/decryption via process spawning
-- Portable paths (~/... stored in manifest)
-- 3-tier recipient resolution (CLI flag, env var, config file)
-- Single static binary, zero runtime dependencies beyond GPG
+file:../../branding/logo/nimvault.svg
 
-Quick checklist
----------------
+* Architecture
+  ~nimvault~ is a single static binary that encrypts files into opaque GPG blobs
+  with randomized filenames. Only the encrypted blobs and an encrypted manifest
+  are committed to git; the original filenames and contents never appear in
+  version history.
+
+#+begin_src dot :file architecture.svg :exports results
+digraph G {
+    rankdir=LR;
+    node [shape=box, style=filled, fontname="Jost", fontsize=12];
+    edge [fontname="Jost", fontsize=11];
+    graph [fontname="Jost"];
+
+    // Plaintext layer
+    subgraph cluster_plain {
+        label="Plaintext (local only)";
+        style=dashed;
+        color="#004D40";
+        fontcolor="#004D40";
+        fontname="Jost";
+        fontsize=10;
+        secret1 [label="~/.secret/api_key.txt", fillcolor="white"];
+        secret2 [label="~/.config/app/creds.json", fillcolor="white"];
+    }
+
+    // CLI
+    nimvault [label="nimvault CLI\n(cligen dispatch)", fillcolor="#F1DB4B"];
+
+    // Vault layer
+    subgraph cluster_vault {
+        label=".vault/ (committed to git)";
+        style=filled;
+        fillcolor="#E8F5E9";
+        color="#004D40";
+        fontcolor="#004D40";
+        fontname="Jost";
+        fontsize=10;
+        manifest [label="manifest.gpg", fillcolor="white"];
+        blob1 [label="a1b2c3d4.gpg", fillcolor="white"];
+        blob2 [label="fedcba98.gpg", fillcolor="white"];
+        config [label="config\n(recipient)", fillcolor="white"];
+    }
+
+    // GPG
+    gpg [label="GPG\n(encrypt/decrypt)", fillcolor="#FF655D", fontcolor="white"];
+
+    // Edges
+    secret1 -> nimvault [label="add / seal", color="#004D40"];
+    secret2 -> nimvault [label="add / seal", color="#004D40"];
+    nimvault -> gpg [label="parallel\nprocesses", color="#004D40"];
+    gpg -> blob1 [color="#004D40"];
+    gpg -> blob2 [color="#004D40"];
+    gpg -> manifest [label="encrypt\nmanifest", color="#004D40"];
+    config -> nimvault [label="recipient\nresolution", style=dashed, color="#004D40"];
+    nimvault -> secret1 [label="unseal", style=dashed, color="#004D40"];
+    nimvault -> secret2 [label="unseal", style=dashed, color="#004D40"];
+}
+#+end_src
+
+* Overview
+  ~nimvault~ stores sensitive files with opaque filenames and encrypted contents
+  using GPG. Both the original filenames and file contents are hidden from git
+  history: only random hex blob names and a GPG-encrypted manifest are committed.
+
+  The tool is designed for dotfile managers like [[https://www.chezmoi.io/][chezmoi]] where secrets need to
+  travel across machines via git without exposing their contents or even their
+  names.
+
+** Key properties
+
+- Opaque filenames :: Each file is assigned a 16-character random hex ID
+  generated from 8 bytes of cryptographic randomness (~std/sysrand~).
+- Parallel GPG :: Encryption and decryption spawn GPG processes in parallel via
+  ~startProcess~ for fast batch operations.
+- Portable paths :: Paths under ~$HOME~ are stored with =~/= prefix so the
+  manifest works across machines.
+- 3-tier recipient resolution :: The GPG recipient is resolved from (1) CLI
+  ~--recipient~ flag, (2) ~NIMVAULT_GPG_RECIPIENT~ environment variable, or (3)
+  ~.vault/config~ file. First non-empty value wins.
+- Zero runtime dependencies :: Single static binary; only requires GPG on the
+  system.
+
+* Module structure
+  The library is split into four focused modules, each with a single
+  responsibility.
+
+#+begin_src dot :file modules.svg :exports results
+digraph G {
+    rankdir=TB;
+    node [shape=component, style=filled, fillcolor="white", fontname="Jost", fontsize=12];
+    edge [fontname="Jost", fontsize=11, color="#004D40"];
+    graph [fontname="Jost"];
+
+    nimvault [label="nimvault.nim\n(library root)", fillcolor="#F1DB4B"];
+    cli [label="cli.nim\n(cligen dispatch)", fillcolor="#FF655D", fontcolor="white"];
+    commands [label="commands.nim\n(seal/unseal/add/rm/mv/list/status)"];
+    manifest [label="manifest.nim\n(VaultEntry, load/save)"];
+    gpg_mod [label="gpg.nim\n(encrypt/decrypt, recipient config)"];
+
+    nimvault -> commands [label="re-exports"];
+    nimvault -> manifest [label="re-exports"];
+    nimvault -> gpg_mod [label="re-exports"];
+    nimvault -> cli [label="when isMainModule", style=dashed];
+    cli -> commands [label="dispatches"];
+    cli -> gpg_mod [label="initGpgConfig"];
+    commands -> manifest;
+    commands -> gpg_mod;
+}
+#+end_src
+
+* Quick checklist
 
 1. Install Nim >= 2.0 and GPG
 2. ~nimble install nimvault~
@@ -30,12 +136,41 @@ Quick checklist
 8. On another machine: ~git pull && nimvault unseal~
 9. ~nimvault status~ to verify sync state
 
-.. toctree::
-   :maxdepth: 2
+* Getting Started
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 1
+     :caption: Getting Started
 
-   quickstart
-   howto/chezmoi
-   reference/cli
-   reference/config
-   reference/manifest
-   contributing/index
+     quickstart
+#+end_export
+
+* Guides
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 1
+     :caption: How-To Guides
+
+     howto/chezmoi
+#+end_export
+
+* Reference
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
+
+     reference/cli
+     reference/config
+     reference/manifest
+#+end_export
+
+* Development
+#+begin_export rst
+  .. toctree::
+     :maxdepth: 2
+     :caption: Development
+
+     contributing/index
+     changelog
+#+end_export

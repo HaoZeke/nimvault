@@ -1,56 +1,66 @@
 #+TITLE: Manifest Format
 #+OPTIONS: toc:t num:t
 
-Overview
-========
+* Overview
 
-The manifest maps opaque blob IDs to target file paths. It is stored
-encrypted at ~.vault/manifest.gpg~ and decrypted on every operation.
+The manifest maps opaque blob IDs to target file paths. It is stored encrypted
+at ~.vault/manifest.gpg~ and decrypted on every operation.
 
-Format
-======
+#+begin_src dot :file ../images/manifest_flow.svg :exports results
+digraph G {
+    rankdir=LR;
+    node [shape=box, style=filled, fillcolor="white", fontname="Jost", fontsize=12];
+    edge [fontname="Jost", fontsize=11, color="#004D40"];
+    graph [fontname="Jost"];
+
+    manifest_gpg [label="manifest.gpg\n(encrypted on disk)"];
+    gpg [label="GPG decrypt", fillcolor="#FF655D", fontcolor="white"];
+    tsv [label="Plaintext TSV\n(in memory)"];
+    entries [label="seq[VaultEntry]\nid + path tuples"];
+
+    manifest_gpg -> gpg -> tsv -> entries;
+    entries -> tsv [label="saveManifest", style=dashed];
+    tsv -> gpg [label="re-encrypt", style=dashed];
+}
+#+end_src
+
+* Format
 
 The plaintext manifest is a TSV (tab-separated values) file:
 
-#+BEGIN_SRC text
+#+begin_src text
 # vault-manifest-v1
 a1b2c3d4e5f67890	~/.secret/api_key.txt
 fedcba9876543210	~/.config/app/credentials.json
-#+END_SRC
+#+end_src
 
 - First line: version header (~# vault-manifest-v1~)
 - Subsequent lines: ~<id>\t<path>~
 - Blank lines and lines starting with ~#~ are ignored
 
-Fields
-------
+** Fields
 
-~id~
-  16-character lowercase hex string, generated from 8 bytes of
+- ~id~ :: 16-character lowercase hex string, generated from 8 bytes of
   cryptographic randomness (~std/sysrand~).
+- ~path~ :: Target file path. Paths under ~$HOME~ are stored with =~/= prefix
+  for portability across machines. Absolute paths outside ~$HOME~ are stored
+  as-is.
 
-~path~
-  Target file path. Paths under ~$HOME~ are stored with ~~/~ prefix
-  for portability across machines. Absolute paths outside ~$HOME~ are
-  stored as-is.
+* Blob files
 
-Blob files
-==========
+Each manifest entry has a corresponding ~.vault/<id>.gpg~ file containing the
+GPG-encrypted file contents. The ~--set-filename ""~ flag is used during
+encryption to avoid leaking the original filename in GPG metadata.
 
-Each manifest entry has a corresponding ~.vault/<id>.gpg~ file containing
-the GPG-encrypted file contents. The ~--set-filename ""~ flag is used
-during encryption to avoid leaking the original filename in GPG metadata.
+* Directory layout
 
-Directory layout
-================
-
-#+BEGIN_SRC text
+#+begin_src text
 .vault/
   config            # recipient configuration (plaintext)
   manifest.gpg      # encrypted manifest
   a1b2c3d4e5f67890.gpg  # encrypted blob
   fedcba9876543210.gpg  # encrypted blob
-#+END_SRC
+#+end_src
 
-Only ~.vault/~ is committed to git. The plaintext files live at their
-target paths outside the repository.
+Only ~.vault/~ is committed to git. The plaintext files live at their target
+paths outside the repository.

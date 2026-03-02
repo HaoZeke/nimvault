@@ -1,33 +1,56 @@
 #+TITLE: Configuration
 #+OPTIONS: toc:t num:t
 
-Recipient resolution
-====================
+* Recipient resolution
 
-nimvault resolves the GPG recipient through a 3-tier chain. The first
-non-empty value wins:
+nimvault resolves the GPG recipient through a 3-tier chain. The first non-empty
+value wins:
 
-1. **CLI flag**: ~--recipient KEY~ (or ~-r KEY~)
-2. **Environment variable**: ~NIMVAULT_GPG_RECIPIENT~
-3. **Config file**: ~.vault/config~ in the git repository root
+1. *CLI flag*: ~--recipient KEY~ (or ~-r KEY~)
+2. *Environment variable*: ~NIMVAULT_GPG_RECIPIENT~
+3. *Config file*: ~.vault/config~ in the git repository root
 
 If none are set, nimvault exits with an error.
 
-Config file format
-==================
+#+begin_src dot :file ../images/recipient_resolution.svg :exports results
+digraph G {
+    rankdir=TB;
+    node [shape=box, style=filled, fillcolor="white", fontname="Jost", fontsize=12];
+    edge [fontname="Jost", fontsize=11, color="#004D40"];
+    graph [fontname="Jost"];
+
+    start [label="resolveRecipient()", shape=ellipse];
+    cli [label="--recipient KEY\nprovided?", shape=diamond, fillcolor="#F1DB4B"];
+    env [label="NIMVAULT_GPG_RECIPIENT\nset?", shape=diamond, fillcolor="#F1DB4B"];
+    conf [label=".vault/config\nhas recipient?", shape=diamond, fillcolor="#F1DB4B"];
+    use_cli [label="Use CLI value"];
+    use_env [label="Use env value"];
+    use_conf [label="Use config value"];
+    fail [label="Exit with error", fillcolor="#FF655D", fontcolor="white"];
+
+    start -> cli;
+    cli -> use_cli [label="yes", color="#004D40"];
+    cli -> env [label="no", color="#004D40"];
+    env -> use_env [label="yes", color="#004D40"];
+    env -> conf [label="no", color="#004D40"];
+    conf -> use_conf [label="yes", color="#004D40"];
+    conf -> fail [label="no", color="#004D40"];
+}
+#+end_src
+
+* Config file format
 
 ~.vault/config~ uses a simple key-value format:
 
-#+BEGIN_SRC ini
+#+begin_src ini
 # Lines starting with # are comments
 recipient = 9CCCE36402CB49A6
-#+END_SRC
+#+end_src
 
-Only the ~recipient~ key is currently recognized. Whitespace around the
-~=~ is ignored.
+Only the ~recipient~ key is currently recognized. Whitespace around the ~=~ is
+ignored.
 
-GPG key ID
-==========
+* GPG key ID
 
 The recipient value is any string GPG accepts as a recipient identifier:
 
@@ -37,11 +60,10 @@ The recipient value is any string GPG accepts as a recipient identifier:
 
 Long key IDs are recommended for unambiguous matching.
 
-Finding your key ID
--------------------
+** Finding your key ID
 
-#+BEGIN_SRC bash
+#+begin_src bash
 gpg --list-keys --keyid-format long
 # pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
 #                ^^^^^^^^^^^^^^^^ this is the key ID
-#+END_SRC
+#+end_src
