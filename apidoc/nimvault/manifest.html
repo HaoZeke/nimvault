@@ -79,8 +79,16 @@
   <li><a class="reference" href="#loadManifest%2Cstring" title="loadManifest(repo: string): seq[VaultEntry]">loadManifest(repo: string): seq[VaultEntry]</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">resolvePath
+  <li><a class="reference" href="#resolvePath%2CGpgConfig%2Cstring" title="resolvePath(cfg: GpgConfig; path: string): string">resolvePath(cfg: GpgConfig; path: string): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">saveManifest
   <li><a class="reference" href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig" title="saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)">saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">storePath
+  <li><a class="reference" href="#storePath%2CGpgConfig%2Cstring%2Cstring" title="storePath(cfg: GpgConfig; absPath: string; repo: string): string">storePath(cfg: GpgConfig; absPath: string; repo: string): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">vaultDir
@@ -160,6 +168,18 @@
 </div>
 
 </div>
+<div id="resolvePath-procs-all">
+  <div id="resolvePath,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#resolvePath%2CGpgConfig%2Cstring"><span class="Identifier">resolvePath</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Resolve a manifest path to an absolute filesystem path. When cfg.root is set, paths are relative to root. Otherwise, ~/... paths are expanded via expandHome.
+    
+  </dd>
+</div>
+
+</div>
 <div id="saveManifest-procs-all">
   <div id="saveManifest,string,seq[VaultEntry],GpgConfig">
   <dt><pre><span class="Keyword">proc</span> <a href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig"><span class="Identifier">saveManifest</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span> {.
@@ -169,6 +189,19 @@
   <dd>
     
     Serialize entries and encrypt as the vault manifest.
+    
+  </dd>
+</div>
+
+</div>
+<div id="storePath-procs-all">
+  <div id="storePath,GpgConfig,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#storePath%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">storePath</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">absPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Convert an absolute path to the stored manifest format. When cfg.root is set, stores relative to root. Otherwise, stores with ~/ prefix if under HOME.
     
   </dd>
 </div>
@@ -195,7 +228,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-02 07:52:54 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-02 08:33:38 UTC</small>
       </div>
     </div>
   </div>

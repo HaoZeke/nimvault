@@ -56,7 +56,8 @@
     <summary><a class="reference reference-toplevel" href="#7" id="57">Types</a></summary>
     <ul class="simple simple-toc-section">
       <li><a class="reference" href="#GpgConfig" title="GpgConfig = object
-  recipient*: string">GpgConfig</a></li>
+  recipient*: string
+  root*: string              ## When non-empty, paths are relative to this dir (not ~/...)">GpgConfig</a></li>
 
     </ul>
   </details>
@@ -82,7 +83,7 @@
 
 </ul>
 <ul class="simple nested-toc-section">resolveRecipient
-  <li><a class="reference" href="#resolveRecipient%2Cstring%2Cstring%2Cstring" title="resolveRecipient(cli, env, configFile: string): string">resolveRecipient(cli, env, configFile: string): string</a></li>
+  <li><a class="reference" href="#resolveRecipient%2Cstring%2Cstring%2Cstring" title="resolveRecipient(cli, env, configRecipient: string): string">resolveRecipient(cli, env, configRecipient: string): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">sha256sum
@@ -107,7 +108,8 @@
   <dl class="item">
     <div id="GpgConfig">
   <dt><pre><a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
-  <span class="Identifier">recipient</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span></pre></dt>
+  <span class="Identifier">recipient</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
+  <span class="Identifier">root</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>              <span class="Comment">## When non-empty, paths are relative to this dir (not ~/...)</span></pre></dt>
   <dd>
     
     
@@ -161,11 +163,11 @@
   <div id="initGpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#initGpgConfig%2Cstring%2Cstring"><span class="Identifier">initGpgConfig</span></a><span class="Other">(</span><span class="Identifier">cliRecipient</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Build a GpgConfig by resolving the recipient through the 3-tier chain.
+    Build a GpgConfig by resolving recipient and root from the 3-tier chain.
     
   </dd>
 </div>
@@ -173,14 +175,13 @@
 </div>
 <div id="resolveRecipient-procs-all">
   <div id="resolveRecipient,string,string,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#resolveRecipient%2Cstring%2Cstring%2Cstring"><span class="Identifier">resolveRecipient</span></a><span class="Other">(</span><span class="Identifier">cli</span><span class="Other">,</span> <span class="Identifier">env</span><span class="Other">,</span> <span class="Identifier">configFile</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#resolveRecipient%2Cstring%2Cstring%2Cstring"><span class="Identifier">resolveRecipient</span></a><span class="Other">(</span><span class="Identifier">cli</span><span class="Other">,</span> <span class="Identifier">env</span><span class="Other">,</span> <span class="Identifier">configRecipient</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     3-tier recipient lookup:<ol class="simple"><li>CLI --recipient flag</li>
 <li>NIMVAULT_GPG_RECIPIENT env var</li>
-<li>.vault/config file (key = value format, key: recipient)</li>
+<li>value from .vault/config</li>
 </ol>
 
     
@@ -210,7 +211,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-02 07:52:54 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-02 08:33:38 UTC</small>
       </div>
     </div>
   </div>
