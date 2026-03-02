@@ -1,0 +1,8 @@
+nimTitle	gpg	nimvault/gpg.html	module src/nimvault/gpg		0
+nim	GpgConfig	nimvault/gpg.html#GpgConfig	object GpgConfig		6
+nim	resolveRecipient	nimvault/gpg.html#resolveRecipient,string,string,string	proc resolveRecipient(cli, env, configFile: string): string		9
+nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		33
+nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		50
+nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,string,string	proc gpgDecrypt(inPath, outPath: string)		55
+nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,string	proc gpgDecryptToString(inPath: string): string		59
+nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		63

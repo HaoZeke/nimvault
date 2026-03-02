@@ -1,0 +1,7 @@
+nimTitle	manifest	nimvault/manifest.html	module src/nimvault/manifest		0
+nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		7
+nim	genId	nimvault/manifest.html#genId	proc genId(): string		9
+nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		16
+nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		23
+nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string): seq[VaultEntry]		27
+nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)		42

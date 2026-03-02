@@ -1,0 +1,64 @@
+===============
+Manifest Format
+===============
+
+
+.. contents::
+
+Overview
+``======``
+
+The manifest maps opaque blob IDs to target file paths. It is stored
+encrypted at ``.vault/manifest.gpg`` and decrypted on every operation.
+
+Format
+``====``
+
+The plaintext manifest is a TSV (tab-separated values) file:
+
+.. code:: text
+
+    # vault-manifest-v1
+    a1b2c3d4e5f67890	~/.secret/api_key.txt
+    fedcba9876543210	~/.config/app/credentials.json
+
+- First line: version header (``# vault-manifest-v1``)
+
+- Subsequent lines: ``<id>\t<path>``
+
+- Blank lines and lines starting with ``#`` are ignored
+
+Fields
+
+
+------------
+
+``id``
+  16-character lowercase hex string, generated from 8 bytes of
+  cryptographic randomness (``std/sysrand``).
+
+``path``
+  Target file path. Paths under ``$HOME`` are stored with ``~/`` prefix
+  for portability across machines. Absolute paths outside ``$HOME`` are
+  stored as-is.
+
+Blob files
+``========``
+
+Each manifest entry has a corresponding ``.vault/<id>.gpg`` file containing
+the GPG-encrypted file contents. The ``--set-filename ""`` flag is used
+during encryption to avoid leaking the original filename in GPG metadata.
+
+Directory layout
+``==============``
+
+.. code:: text
+
+    .vault/
+      config            # recipient configuration (plaintext)
+      manifest.gpg      # encrypted manifest
+      a1b2c3d4e5f67890.gpg  # encrypted blob
+      fedcba9876543210.gpg  # encrypted blob
+
+Only ``.vault/`` is committed to git. The plaintext files live at their
+target paths outside the repository.

@@ -1,0 +1,134 @@
+=============
+CLI Reference
+=============
+
+
+.. contents::
+
+Top-level usage
+``=============``
+
+.. code:: text
+
+    nimvault {SUBCMD} [sub-command options & parameters]
+
+Global behavior: nimvault auto-detects the git repository root via
+``git rev-parse --show-toplevel`` and uses ``.vault/`` within it.
+
+Commands
+``======``
+
+seal
+----
+
+.. code:: text
+
+    nimvault seal [--recipient KEY]
+
+Encrypt all vault entries from their plaintext locations. Reads each
+file at the path stored in the manifest, encrypts it in parallel, and
+writes ``.vault/<id>.gpg`` blobs. Re-encrypts the manifest after sealing.
+
+Exits non-zero if any plaintext file is missing.
+
+unseal
+
+
+------------
+
+.. code:: text
+
+    nimvault unseal [--recipient KEY]
+
+Decrypt all vault blobs to their target paths in parallel. Creates
+parent directories as needed. Sets file permissions to 600 (owner
+read/write only).
+
+Exits non-zero if any blob file is missing.
+
+add
+---
+
+.. code:: text
+
+    nimvault add <path> [--recipient KEY]
+
+Add a file to the vault. The path is stored with ``~/`` for portability.
+Generates a random 16-char hex ID, encrypts the file, and appends to
+the manifest.
+
+Exits non-zero if:
+
+- The file does not exist
+
+- The file is already in the vault
+
+rm
+--
+
+.. code:: text
+
+    nimvault rm <path> [--recipient KEY]
+
+Remove a file from the vault. Deletes the encrypted blob and removes
+the manifest entry. Does NOT delete the local plaintext file.
+
+mv
+--
+
+.. code:: text
+
+    nimvault mv <old-path> <new-path> [--recipient KEY]
+
+Move/rename a vault entry's target path. If the file exists at the old
+path, it is physically moved. The encrypted blob is unchanged; only the
+manifest entry is updated.
+
+list
+----
+
+.. code:: text
+
+    nimvault list [--recipient KEY]
+
+List all vault entries showing their ID and target path.
+
+status
+
+
+------------
+
+.. code:: text
+
+    nimvault status [--recipient KEY]
+
+Show sync status of all vault entries by comparing SHA-256 hashes of
+local files against decrypted blobs:
+
+- ``[in-sync]`` -- local matches vault
+
+- ``[modified]`` -- local differs from vault (needs ``seal``)
+
+- ``[missing]`` -- local file not found (needs ``unseal``)
+
+- ``[no-blob]`` -- encrypted blob missing (needs ``seal`` or ``add``)
+
+Global options
+``============``
+
+``--recipient KEY``
+  GPG recipient key ID. Overrides env var and config file. See
+  `Configuration <config.rst>`_ for the full resolution chain.
+
+``--help``
+  Show help for the current command.
+
+``--version``
+  Show nimvault version.
+
+Exit codes
+``========``
+
+- 0: success
+
+- 1: error (missing file, GPG failure, not in git repo, etc.)

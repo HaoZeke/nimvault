@@ -1,0 +1,2 @@
+nimTitle	cli	nimvault/cli.html	module src/nimvault/cli		0
+nim	main	nimvault/cli.html#main	proc main()		64
