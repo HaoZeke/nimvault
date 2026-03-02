@@ -38,11 +38,11 @@ jobs:
       - name: Install cligen
         run: nimble install cligen -y
 
-      - name: Generate Docs
-        run: pixi run -e docs docbld
+      - name: Build Sphinx docs
+        run: pixi run -e docs sphinxbld
 
       - name: Build Nim API docs
-        run: pixi run nimdoc
+        run: nim doc --project --index:on --outdir:docs/build/apidoc src/nimvault.nim
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
