@@ -33,7 +33,7 @@ jobs:
 
       - uses: iffy/install-nim@v5
         with:
-          version: "2.2.x"
+          version: "2.2.2"
 
       - name: Install cligen
         run: nimble install cligen -y
