@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="vaultGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#004D40;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00796B;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="lockGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD54F;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F9A825;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#vaultGrad)" />
+
+  <!-- Vault door outline -->
+  <rect x="58" y="68" width="140" height="130" rx="8" ry="8"
+        fill="none" stroke="#E0F2F1" stroke-width="4" />
+
+  <!-- Vault door inner border -->
+  <rect x="68" y="78" width="120" height="110" rx="4" ry="4"
+        fill="#00695C" stroke="#80CBC4" stroke-width="2" />
+
+  <!-- Lock body -->
+  <rect x="100" y="118" width="56" height="44" rx="6" ry="6"
+        fill="url(#lockGrad)" stroke="#F57F17" stroke-width="2" />
+
+  <!-- Lock shackle -->
+  <path d="M110,118 V102 a18,18 0 0,1 36,0 V118"
+        fill="none" stroke="#FFD54F" stroke-width="6"
+        stroke-linecap="round" />
+
+  <!-- Keyhole -->
+  <circle cx="128" cy="137" r="7" fill="#004D40" />
+  <rect x="125" y="137" width="6" height="14" rx="2" ry="2" fill="#004D40" />
+
+  <!-- Nim crown (stylized) -->
+  <path d="M96,58 L108,42 L120,54 L128,36 L136,54 L148,42 L160,58"
+        fill="none" stroke="#FFD54F" stroke-width="3.5"
+        stroke-linecap="round" stroke-linejoin="round" />
+</svg>

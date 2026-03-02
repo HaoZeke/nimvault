@@ -5,10 +5,9 @@ Contributing
 
 .. contents::
 
+
 Development setup
-
-
-------------
+-----------------
 
 .. code:: bash
 
@@ -29,9 +28,7 @@ Using pixi (manages Nim version):
     pixi run test
 
 Building docs
-
-
-------------
+-------------
 
 .. code:: bash
 
@@ -43,10 +40,11 @@ Building docs
 
     # Output: docs/build/
 
+The doc pipeline converts orgmode files to RST via ``ox-rst`` (Emacs batch mode),
+then builds with Sphinx. Nim API docs are generated separately via ``nim doc --project``.
+
 Project structure
-
-
-------------
+-----------------
 
 .. code:: text
 
@@ -61,13 +59,28 @@ Project structure
       tgpg.nim       -- GPG unit tests (throwaway key)
       tcommands.nim  -- integration tests (temp git repo)
 
-Tests require a working GPG installation. Test suites create throwaway
-GPG keys in temporary directories and clean up after themselves.
+Tests require a working GPG installation. Test suites create throwaway GPG keys
+in temporary directories and clean up after themselves.
+
+Testing
+-------
+
+The test suite uses throwaway GPG keys created in temp directories with
+restricted permissions (700) to avoid GPG warnings about unsafe home directories.
+
+.. code:: bash
+
+    # Run all tests
+    nimble test -y
+
+    # Run a specific test
+    nim c -r -p:src tests/tmanifest.nim
+
+The integration test (``tcommands.nim``) creates a temporary git repository and
+exercises the full workflow: add, seal, status, unseal, move, remove.
 
 Changelog
-
-
-------------
+---------
 
 Use towncrier fragments in ``docs/newsfragments/``:
 
@@ -77,9 +90,7 @@ Use towncrier fragments in ``docs/newsfragments/``:
     echo "Added seal command parallelism" > docs/newsfragments/42.added
 
 Linting
-
-
-------------
+-------
 
 .. code:: bash
 

@@ -1,35 +1,69 @@
-========
-nimvault
-========
 
+:cover: https://github.com/HaoZeke/nimvault/blob/main/branding/logo/nimvault.svg
 
-GPG-encrypted opaque-blob vault with hidden filenames.
+============
+``nimvault``
+============
 
-nimvault stores sensitive files with opaque filenames and encrypted contents using
-GPG. Both filenames and contents are hidden from git history --- only random hex
-blob names and a GPG-encrypted manifest are committed.
+:Author: `Rohit Goswami <https://rgoswami.me>`_
 
-Features
+.. image:: ../../branding/logo/nimvault.svg
 
-
+Architecture
 ------------
 
-- Opaque filenames (16-char random hex IDs)
+``nimvault`` is a single static binary that encrypts files into opaque GPG blobs
+with randomized filenames. Only the encrypted blobs and an encrypted manifest
+are committed to git; the original filenames and contents never appear in
+version history.
 
-- GPG-encrypted contents and manifest
+.. image:: architecture.svg
 
-- Parallel encryption/decryption via process spawning
+Overview
+--------
 
-- Portable paths (~/... stored in manifest)
+``nimvault`` stores sensitive files with opaque filenames and encrypted contents
+using GPG. Both the original filenames and file contents are hidden from git
+history: only random hex blob names and a GPG-encrypted manifest are committed.
 
-- 3-tier recipient resolution (CLI flag, env var, config file)
+The tool is designed for dotfile managers like `chezmoi <https://www.chezmoi.io/>`_ where secrets need to
+travel across machines via git without exposing their contents or even their
+names.
 
-- Single static binary, zero runtime dependencies beyond GPG
+Key properties
+~~~~~~~~~~~~~~
+
+Opaque filenames
+    Each file is assigned a 16-character random hex ID
+    generated from 8 bytes of cryptographic randomness (``std/sysrand``).
+
+Parallel GPG
+    Encryption and decryption spawn GPG processes in parallel via
+    ``startProcess`` for fast batch operations.
+
+Portable paths
+    Paths under ``$HOME`` are stored with ``~/`` prefix so the
+    manifest works across machines.
+
+3-tier recipient resolution
+    The GPG recipient is resolved from (1) CLI
+    ``--recipient`` flag, (2) ``NIMVAULT_GPG_RECIPIENT`` environment variable, or (3)
+    ``.vault/config`` file. First non-empty value wins.
+
+Zero runtime dependencies
+    Single static binary; only requires GPG on the
+    system.
+
+Module structure
+----------------
+
+The library is split into four focused modules, each with a single
+responsibility.
+
+.. image:: modules.svg
 
 Quick checklist
-
-
-------------
+---------------
 
 1. Install Nim >= 2.0 and GPG
 
@@ -49,12 +83,41 @@ Quick checklist
 
 9. ``nimvault status`` to verify sync state
 
-\.. toctree\:\:
-   :maxdepth: 2
+Getting Started
+---------------
 
-quickstart
-howto/chezmoi
-reference/cli
-reference/config
-reference/manifest
-contributing/index
+  .. toctree::
+     :maxdepth: 1
+     :caption: Getting Started
+
+     quickstart
+
+Guides
+------
+
+  .. toctree::
+     :maxdepth: 1
+     :caption: How-To Guides
+
+     howto/chezmoi
+
+Reference
+---------
+
+  .. toctree::
+     :maxdepth: 2
+     :caption: Reference
+
+     reference/cli
+     reference/config
+     reference/manifest
+
+Development
+-----------
+
+  .. toctree::
+     :maxdepth: 2
+     :caption: Development
+
+     contributing/index
+     changelog

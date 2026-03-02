@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>CLI Reference - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>CLI Reference - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Configuration" href="config.html" /><link rel="prev" title="chezmoi Integration" href="../howto/chezmoi.html" />
       <link rel="canonical" href="nimvault.rgoswami.me/reference/cli.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -48,12 +48,12 @@
   <div class="sy-head-blur"></div>
   <div class="sy-head-inner sy-container mx-auto">
     <a class="sy-head-brand" href="../index.html">
-      
-      
+      <img class="light-logo" src="../_static/nimvault.svg" alt="nimvault" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/nimvault.svg" alt="nimvault" height="28" loading="lazy" />
       <strong>nimvault</strong>
     </a>
     <div class="sy-head-nav" id="head-nav">
-      <nav class="sy-head-links"><ul><li class="link"><a href="../apidoc/nimvault.html.html">Nim API Docs</a></li></ul></nav>
+      <nav class="sy-head-links"><ul><li class="link"><a href="../apidoc/nimvault.html">Nim API Docs</a></li></ul></nav>
       <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
   <input type="text" name="q" placeholder="Search" />
   <kbd>/</kbd>
@@ -81,7 +81,26 @@ data-aria-dark="Switch to auto color mode">
   <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
     <div class="sy-lside-inner md:sticky">
       <div class="sy-scrollbar p-6">
-        <div class="globaltoc" data-expand-depth="1">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../quickstart.html">Tutorial</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/chezmoi.html">chezmoi Integration</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="config.html">Configuration</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="manifest.html">Manifest Format</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing/index.html">Contributing</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html#id1">Changelog</a></li>
+</ul>
         </div>
       </div>
     </div>
@@ -92,11 +111,19 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#seal">seal</a></li>
-<li><a class="reference internal" href="#add">add</a></li>
-<li><a class="reference internal" href="#rm">rm</a></li>
-<li><a class="reference internal" href="#mv">mv</a></li>
-<li><a class="reference internal" href="#list">list</a></li>
+<li><a class="reference internal" href="#top-level-usage">1 Top-level usage</a></li>
+<li><a class="reference internal" href="#commands">2 Commands</a><ul>
+<li><a class="reference internal" href="#seal">2.1 seal</a></li>
+<li><a class="reference internal" href="#unseal">2.2 unseal</a></li>
+<li><a class="reference internal" href="#add">2.3 add</a></li>
+<li><a class="reference internal" href="#rm">2.4 rm</a></li>
+<li><a class="reference internal" href="#mv">2.5 mv</a></li>
+<li><a class="reference internal" href="#list">2.6 list</a></li>
+<li><a class="reference internal" href="#status">2.7 status</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#global-options">3 Global options</a></li>
+<li><a class="reference internal" href="#exit-codes">4 Exit codes</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -192,51 +219,63 @@ data-aria-dark="Switch to auto color mode">
 <ul class="simple">
 <li><p><a class="reference internal" href="#cli-reference" id="id1">CLI Reference</a></p>
 <ul>
-<li><p><a class="reference internal" href="#seal" id="id2">seal</a></p></li>
-<li><p><a class="reference internal" href="#add" id="id3">add</a></p></li>
-<li><p><a class="reference internal" href="#rm" id="id4">rm</a></p></li>
-<li><p><a class="reference internal" href="#mv" id="id5">mv</a></p></li>
-<li><p><a class="reference internal" href="#list" id="id6">list</a></p></li>
+<li><p><a class="reference internal" href="#top-level-usage" id="id2">1 Top-level usage</a></p></li>
+<li><p><a class="reference internal" href="#commands" id="id3">2 Commands</a></p>
+<ul>
+<li><p><a class="reference internal" href="#seal" id="id4">2.1 seal</a></p></li>
+<li><p><a class="reference internal" href="#unseal" id="id5">2.2 unseal</a></p></li>
+<li><p><a class="reference internal" href="#add" id="id6">2.3 add</a></p></li>
+<li><p><a class="reference internal" href="#rm" id="id7">2.4 rm</a></p></li>
+<li><p><a class="reference internal" href="#mv" id="id8">2.5 mv</a></p></li>
+<li><p><a class="reference internal" href="#list" id="id9">2.6 list</a></p></li>
+<li><p><a class="reference internal" href="#status" id="id10">2.7 status</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#global-options" id="id11">3 Global options</a></p></li>
+<li><p><a class="reference internal" href="#exit-codes" id="id12">4 Exit codes</a></p></li>
 </ul>
 </li>
 </ul>
 </nav>
-<p>Top-level usage
-<code class="docutils literal notranslate"><span class="pre">=============</span></code></p>
+<section id="top-level-usage">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">1 Top-level usage</a><a class="headerlink" href="#top-level-usage" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault {SUBCMD} [sub-command options &amp; parameters]
 </span></pre></div>
 </div>
-<p>Global behavior: nimvault auto-detects the git repository root via
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code> and uses <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> within it.</p>
-<p>Commands
-<code class="docutils literal notranslate"><span class="pre">======</span></code></p>
+<p>nimvault auto-detects the git repository root via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code>
+and uses <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> within it. All commands accept the optional <code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code>
+flag.</p>
+<p>The CLI is built on <a class="reference external" href="https://github.com/c-blake/cligen">cligen</a> with <code class="docutils literal notranslate"><span class="pre">dispatchMulti</span></code> for subcommand routing. Each
+subcommand is a thin wrapper around the corresponding <code class="docutils literal notranslate"><span class="pre">commands</span></code> module proc.</p>
+</section>
+<section id="commands">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">2 Commands</a><a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
 <section id="seal">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">seal</a><a class="headerlink" href="#seal" title="Link to this heading">¶</a></h2>
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 seal</a><a class="headerlink" href="#seal" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault seal [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Encrypt all vault entries from their plaintext locations. Reads each
-file at the path stored in the manifest, encrypts it in parallel, and
+<p>Encrypt all vault entries from their plaintext locations. Reads each file at the
+path stored in the manifest, encrypts it in parallel via <code class="docutils literal notranslate"><span class="pre">startProcess</span></code>, and
 writes <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> blobs. Re-encrypts the manifest after sealing.</p>
 <p>Exits non-zero if any plaintext file is missing.</p>
-<p>unseal</p>
-<hr class="docutils" />
+</section>
+<section id="unseal">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 unseal</a><a class="headerlink" href="#unseal" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Decrypt all vault blobs to their target paths in parallel. Creates
-parent directories as needed. Sets file permissions to 600 (owner
-read/write only).</p>
+<p>Decrypt all vault blobs to their target paths in parallel. Creates parent
+directories as needed. Sets file permissions to 600 (owner read/write only).</p>
 <p>Exits non-zero if any blob file is missing.</p>
 </section>
 <section id="add">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h2>
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">2.3 add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault add &lt;path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Add a file to the vault. The path is stored with <code class="docutils literal notranslate"><span class="pre">~/</span></code> for portability.
-Generates a random 16-char hex ID, encrypts the file, and appends to
-the manifest.</p>
+<p>Add a file to the vault. The path is stored with <code class="docutils literal notranslate"><span class="pre">~/</span></code> for portability. Generates
+a random 16-char hex ID, encrypts the file, and appends to the manifest.</p>
 <p>Exits non-zero if:</p>
 <ul class="simple">
 <li><p>The file does not exist</p></li>
@@ -244,58 +283,79 @@ the manifest.</p>
 </ul>
 </section>
 <section id="rm">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h2>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">2.4 rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault rm &lt;path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Remove a file from the vault. Deletes the encrypted blob and removes
-the manifest entry. Does NOT delete the local plaintext file.</p>
+<p>Remove a file from the vault. Deletes the encrypted blob and removes the
+manifest entry. Does NOT delete the local plaintext file.</p>
 </section>
 <section id="mv">
-<h2><a class="toc-backref" href="#id5" role="doc-backlink">mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h2>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">2.5 mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault mv &lt;old-path&gt; &lt;new-path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Move/rename a vault entry’s target path. If the file exists at the old
-path, it is physically moved. The encrypted blob is unchanged; only the
-manifest entry is updated.</p>
+<p>Move/rename a vault entry’s target path. If the file exists at the old path, it
+is physically moved. The encrypted blob is unchanged; only the manifest entry is
+updated.</p>
 </section>
 <section id="list">
-<h2><a class="toc-backref" href="#id6" role="doc-backlink">list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h2>
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">2.6 list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault list [--recipient KEY]
 </span></pre></div>
 </div>
 <p>List all vault entries showing their ID and target path.</p>
-<p>status</p>
-<hr class="docutils" />
+</section>
+<section id="status">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">2.7 status</a><a class="headerlink" href="#status" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault status [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Show sync status of all vault entries by comparing SHA-256 hashes of
-local files against decrypted blobs:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">[in-sync]</span></code> – local matches vault</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">[modified]</span></code> – local differs from vault (needs <code class="docutils literal notranslate"><span class="pre">seal</span></code>)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">[missing]</span></code> – local file not found (needs <code class="docutils literal notranslate"><span class="pre">unseal</span></code>)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">[no-blob]</span></code> – encrypted blob missing (needs <code class="docutils literal notranslate"><span class="pre">seal</span></code> or <code class="docutils literal notranslate"><span class="pre">add</span></code>)</p></li>
-</ul>
-<p>Global options
-<code class="docutils literal notranslate"><span class="pre">============</span></code></p>
+<p>Show sync status of all vault entries by comparing SHA-256 hashes of local files
+against decrypted blobs:</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code></dt><dd><p>GPG recipient key ID. Overrides env var and config file. See
-<a class="reference external" href="config.rst">Configuration</a> for the full resolution chain.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">[in-sync]</span></code></dt><dd><p>local matches vault</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">[modified]</span></code></dt><dd><p>local differs from vault (needs <code class="docutils literal notranslate"><span class="pre">seal</span></code>)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">[missing]</span></code></dt><dd><p>local file not found (needs <code class="docutils literal notranslate"><span class="pre">unseal</span></code>)</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">[no-blob]</span></code></dt><dd><p>encrypted blob missing (needs <code class="docutils literal notranslate"><span class="pre">seal</span></code> or <code class="docutils literal notranslate"><span class="pre">add</span></code>)</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="global-options">
+<h2><a class="toc-backref" href="#id11" role="doc-backlink">3 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code></dt><dd><p>GPG recipient key ID. Overrides env var and config file.
+See <a class="reference external" href="config.rst">configuration</a> for the full resolution chain.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--help</span></code></dt><dd><p>Show help for the current command.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--version</span></code></dt><dd><p>Show nimvault version.</p>
 </dd>
 </dl>
-<p>Exit codes
-<code class="docutils literal notranslate"><span class="pre">========</span></code></p>
-<ul class="simple">
-<li><p>0: success</p></li>
-<li><p>1: error (missing file, GPG failure, not in git repo, etc.)</p></li>
-</ul>
+</section>
+<section id="exit-codes">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">4 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>Success</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>Error (missing file, GPG failure, not in git repo)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
 </section>
 </section>
 
@@ -304,7 +364,21 @@ local files against decrypted blobs:</p>
     <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
   </svg>
   <span>Back to top</span>
-</button><div class="navigation flex print:hidden"></div></div>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="../howto/chezmoi.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">chezmoi Integration</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="config.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Configuration</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
     </div>
   </main>
 </div>

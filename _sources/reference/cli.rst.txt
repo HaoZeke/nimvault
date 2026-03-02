@@ -5,57 +5,58 @@ CLI Reference
 
 .. contents::
 
-Top-level usage
-``=============``
+
+1 Top-level usage
+-----------------
 
 .. code:: text
 
     nimvault {SUBCMD} [sub-command options & parameters]
 
-Global behavior: nimvault auto-detects the git repository root via
-``git rev-parse --show-toplevel`` and uses ``.vault/`` within it.
+nimvault auto-detects the git repository root via ``git rev-parse --show-toplevel``
+and uses ``.vault/`` within it. All commands accept the optional ``--recipient KEY``
+flag.
 
-Commands
-``======``
+The CLI is built on `cligen <https://github.com/c-blake/cligen>`_ with ``dispatchMulti`` for subcommand routing. Each
+subcommand is a thin wrapper around the corresponding ``commands`` module proc.
 
-seal
-----
+2 Commands
+----------
+
+2.1 seal
+~~~~~~~~
 
 .. code:: text
 
     nimvault seal [--recipient KEY]
 
-Encrypt all vault entries from their plaintext locations. Reads each
-file at the path stored in the manifest, encrypts it in parallel, and
+Encrypt all vault entries from their plaintext locations. Reads each file at the
+path stored in the manifest, encrypts it in parallel via ``startProcess``, and
 writes ``.vault/<id>.gpg`` blobs. Re-encrypts the manifest after sealing.
 
 Exits non-zero if any plaintext file is missing.
 
-unseal
-
-
-------------
+2.2 unseal
+~~~~~~~~~~
 
 .. code:: text
 
     nimvault unseal [--recipient KEY]
 
-Decrypt all vault blobs to their target paths in parallel. Creates
-parent directories as needed. Sets file permissions to 600 (owner
-read/write only).
+Decrypt all vault blobs to their target paths in parallel. Creates parent
+directories as needed. Sets file permissions to 600 (owner read/write only).
 
 Exits non-zero if any blob file is missing.
 
-add
----
+2.3 add
+~~~~~~~
 
 .. code:: text
 
     nimvault add <path> [--recipient KEY]
 
-Add a file to the vault. The path is stored with ``~/`` for portability.
-Generates a random 16-char hex ID, encrypts the file, and appends to
-the manifest.
+Add a file to the vault. The path is stored with ``~/`` for portability. Generates
+a random 16-char hex ID, encrypts the file, and appends to the manifest.
 
 Exits non-zero if:
 
@@ -63,29 +64,29 @@ Exits non-zero if:
 
 - The file is already in the vault
 
-rm
---
+2.4 rm
+~~~~~~
 
 .. code:: text
 
     nimvault rm <path> [--recipient KEY]
 
-Remove a file from the vault. Deletes the encrypted blob and removes
-the manifest entry. Does NOT delete the local plaintext file.
+Remove a file from the vault. Deletes the encrypted blob and removes the
+manifest entry. Does NOT delete the local plaintext file.
 
-mv
---
+2.5 mv
+~~~~~~
 
 .. code:: text
 
     nimvault mv <old-path> <new-path> [--recipient KEY]
 
-Move/rename a vault entry's target path. If the file exists at the old
-path, it is physically moved. The encrypted blob is unchanged; only the
-manifest entry is updated.
+Move/rename a vault entry's target path. If the file exists at the old path, it
+is physically moved. The encrypted blob is unchanged; only the manifest entry is
+updated.
 
-list
-----
+2.6 list
+~~~~~~~~
 
 .. code:: text
 
@@ -93,42 +94,50 @@ list
 
 List all vault entries showing their ID and target path.
 
-status
-
-
-------------
+2.7 status
+~~~~~~~~~~
 
 .. code:: text
 
     nimvault status [--recipient KEY]
 
-Show sync status of all vault entries by comparing SHA-256 hashes of
-local files against decrypted blobs:
+Show sync status of all vault entries by comparing SHA-256 hashes of local files
+against decrypted blobs:
 
-- ``[in-sync]`` -- local matches vault
+``[in-sync]``
+    local matches vault
 
-- ``[modified]`` -- local differs from vault (needs ``seal``)
+``[modified]``
+    local differs from vault (needs ``seal``)
 
-- ``[missing]`` -- local file not found (needs ``unseal``)
+``[missing]``
+    local file not found (needs ``unseal``)
 
-- ``[no-blob]`` -- encrypted blob missing (needs ``seal`` or ``add``)
+``[no-blob]``
+    encrypted blob missing (needs ``seal`` or ``add``)
 
-Global options
-``============``
+3 Global options
+----------------
 
 ``--recipient KEY``
-  GPG recipient key ID. Overrides env var and config file. See
-  `Configuration <config.rst>`_ for the full resolution chain.
+    GPG recipient key ID. Overrides env var and config file.
+    See `configuration <config.rst>`_ for the full resolution chain.
 
 ``--help``
-  Show help for the current command.
+    Show help for the current command.
 
 ``--version``
-  Show nimvault version.
+    Show nimvault version.
 
-Exit codes
-``========``
+4 Exit codes
+------------
 
-- 0: success
+.. table::
 
-- 1: error (missing file, GPG failure, not in git repo, etc.)
+    +------+----------------------------------------------------+
+    | Code | Meaning                                            |
+    +======+====================================================+
+    |    0 | Success                                            |
+    +------+----------------------------------------------------+
+    |    1 | Error (missing file, GPG failure, not in git repo) |
+    +------+----------------------------------------------------+

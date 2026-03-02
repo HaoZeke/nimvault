@@ -5,78 +5,134 @@ chezmoi Integration
 
 .. contents::
 
-This guide integrates nimvault with chezmoi for automatic vault unsealing
-during ``chezmoi apply``.
+Encrypt secrets in your chezmoi dotfiles repo so they travel safely across
+machines. ``chezmoi apply`` will automatically decrypt them.
 
-Setup
+.. image:: ../images/chezmoi_flow.svg
 
+Initial setup
+-------------
 
-------------
+This example encrypts a Claude Code settings file using chezmoi and nimvault.
 
-1. Install nimvault and ensure it is on ``$PATH``:
+.. code:: bash
 
-   .. code:: bash
+    # Navigate to the chezmoi source directory
+    cd ~/.local/share/chezmoi
 
-       nimble install nimvault
-       which nimvault
+    # Create a vault config with your GPG key ID
+    mkdir -p .vault
+    echo "recipient = 9CCCE36402CB49A6" > .vault/config
+    # ^ replace with your key ID (gpg --list-keys --keyid-format long)
 
-2. Add a ``.vault/config`` to your chezmoi source directory:
-
-   .. code:: bash
-
-       cd ~/.local/share/chezmoi
-       mkdir -p .vault
-       echo "recipient = YOUR_KEY_ID" > .vault/config
-
-3. Create a chezmoi run-before script at
-   ``.chezmoiscripts/run_before_unseal_vault.sh.tmpl``:
-
-   .. code:: bash
-
-       #!/bin/bash --norc
-       {{ if and (eq .setup_vault "yes") (eq .encrypted "yes") -}}
-       cd "{{ .chezmoi.sourceDir }}"
-       if command -v nimvault &>/dev/null && command -v gpg &>/dev/null; then
-           nimvault unseal 2>/dev/null || true
-       fi
-       {{ end -}}
-
-4. Add chezmoi template data (``.chezmoidata.toml`` or ``.chezmoi.toml.tmpl``):
-
-   .. code:: toml
-
-       [data]
-       setup_vault = "yes"
-       encrypted   = "yes"
-
-Adding files
-
-
+Add a secret
 ------------
 
 .. code:: bash
 
     cd ~/.local/share/chezmoi
 
-    # Add a sensitive file
+    # Add a sensitive file to the vault
     nimvault add ~/.claude/settings.json
+    # Added:
+    #   id:   e4a1f7c9b2d30856
+    #   path: ~/.claude/settings.json
+    #   blob: .vault/e4a1f7c9b2d30856.gpg
 
-    # Seal and commit
+    # Seal all entries (encrypts to .vault/*.gpg)
+    nimvault seal
+
+    # Commit the encrypted blobs
+    git add .vault/
+    git commit -m "vault: add claude settings"
+    git push
+
+Automatic unseal on apply
+-------------------------
+
+Create a chezmoi run-before script that unseals the vault before applying
+dotfiles. This runs every time you call ``chezmoi apply``.
+
+.. code:: bash
+
+    cat > ~/.local/share/chezmoi/.chezmoiscripts/run_before_unseal_vault.sh.tmpl << 'TMPL'
+    #!/bin/bash --norc
+    {{ if and (eq .setup_vault "yes") (eq .encrypted "yes") -}}
+    cd "{{ .chezmoi.sourceDir }}"
+    if command -v nimvault &>/dev/null && command -v gpg &>/dev/null; then
+        nimvault unseal 2>/dev/null || true
+    fi
+    {{ end -}}
+    TMPL
+
+Add the template data to your chezmoi config. For ``.chezmoidata.toml``:
+
+.. code:: toml
+
+    [data]
+    setup_vault = "yes"
+    encrypted   = "yes"
+
+Or for ``.chezmoi.toml.tmpl`` (if using prompted config):
+
+.. code:: text
+
+    [data]
+    setup_vault = {{ promptString "Enable vault? (yes/no)" | quote }}
+    encrypted   = {{ promptString "Encrypted? (yes/no)" | quote }}
+
+Workflow on a new machine
+-------------------------
+
+.. code:: bash
+
+    # 1. Install nimvault
+    nimble install nimvault
+
+    # 2. Initialize chezmoi (pulls your dotfiles repo)
+    chezmoi init https://github.com/YOU/dotfiles.git
+
+    # 3. Apply -- the run-before script calls nimvault unseal automatically
+    chezmoi apply
+    # nimvault decrypts all vault entries to their target paths
+
+Updating a secret
+-----------------
+
+.. code:: bash
+
+    cd ~/.local/share/chezmoi
+
+    # Check what changed
+    nimvault status
+    # [modified]   ~/.claude/settings.json
+
+    # Re-encrypt with updated content
     nimvault seal
     git add .vault/
-    git commit -m "vault: add settings.json"
+    git commit -m "vault: update claude settings"
+    git push
 
-The file is now tracked as an opaque blob. ``chezmoi apply`` on any machine
-will automatically unseal it.
+Removing a secret
+-----------------
+
+.. code:: bash
+
+    cd ~/.local/share/chezmoi
+
+    nimvault rm ~/.claude/settings.json
+    # Removed e4a1f7c9b2d30856 (~/.claude/settings.json)
+    # The local plaintext file is NOT deleted
+
+    git add .vault/
+    git commit -m "vault: remove claude settings"
 
 Migration from embedded vault.nim
+---------------------------------
 
+If you previously used an inline ``scripts/vault.nim`` in your chezmoi repo:
 
-------------
-
-If you previously used the inline ``scripts/vault.nim`` in your chezmoi repo:
-
-1. Install nimvault globally
+1. Install nimvault globally (``nimble install nimvault``)
 
 2. Add ``.vault/config`` with your recipient key
 
@@ -85,4 +141,4 @@ If you previously used the inline ``scripts/vault.nim`` in your chezmoi repo:
 
 4. Remove ``scripts/vault.nim`` from the chezmoi repo
 
-5. The ``.vault/`` directory and blobs are unchanged --- no re-encryption needed
+5. The ``.vault/`` directory and blobs are unchanged: no re-encryption needed

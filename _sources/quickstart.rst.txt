@@ -1,10 +1,10 @@
-===========
-Quick Start
-===========
+========
+Tutorial
+========
 
 
-This tutorial walks through adding a secret file to a vault, sealing it,
-and restoring it on a fresh checkout. By the end you will see:
+In this tutorial you will encrypt a secret file into a git-safe vault and
+restore it on a fresh clone. Here is the end result:
 
 .. code:: text
 
@@ -12,107 +12,141 @@ and restoring it on a fresh checkout. By the end you will see:
     ------------------------------------------------------------------------
       Vault status
     ------------------------------------------------------------------------
-      [in-sync]   ~/.secret/api_key.txt
+      [in-sync]   ~/.config/myapp/secrets.env
 
-Prerequisites
+Your secrets are now committed as opaque GPG blobs. Clone on another machine,
+run ``nimvault unseal``, and the plaintext files reappear.
 
-
-------------
-
-- Nim >= 2.0 (``nim --version``)
-
-- GPG with at least one key (``gpg --list-keys``)
-
-- A git repository
-
-Install
-
-
-------------
+Install nimvault
+----------------
 
 .. code:: bash
 
-    # From nimble (recommended)
+    # Requires Nim >= 2.0
     nimble install nimvault
 
-    # Or build from source
-    git clone https://github.com/HaoZeke/nimvault.git
-    cd nimvault
-    nimble build -y
-    # Binary: bin/nimvault
-
-Configure
-
-
-------------
+Verify:
 
 .. code:: bash
 
-    # Inside your git repo
+    nimvault --version
+    # nimvault 0.1.0
+
+Set up a test repo
+------------------
+
+.. code:: bash
+
+    # Create a throwaway repo to practice with
+    mkdir /tmp/vault-demo && cd /tmp/vault-demo
+    git init
+
+Create a secret file
+--------------------
+
+.. code:: bash
+
+    # This file will be encrypted into the vault
+    mkdir -p ~/.config/myapp
+    echo "DB_PASSWORD=hunter2" > ~/.config/myapp/secrets.env
+
+Configure the vault recipient
+-----------------------------
+
+.. code:: bash
+
+    # Find your GPG key ID
+    gpg --list-keys --keyid-format long
+    # pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
+    #                ^^^^^^^^^^^^^^^^ copy this
+
+    # Tell nimvault which key to encrypt to
     mkdir -p .vault
+    echo "recipient = 9CCCE36402CB49A6" > .vault/config
+    # ^ replace with YOUR key ID
 
-    # Write your GPG key ID to the config file
-    # (use `gpg --list-keys --keyid-format long` to find it)
-    echo "recipient = YOUR_KEY_ID" > .vault/config
-
-Add a file
-
-
-------------
+Add the file to the vault
+-------------------------
 
 .. code:: bash
 
-    # Add a secret file to the vault
-    nimvault add ~/.secret/api_key.txt
-    #   id:   a1b2c3d4e5f67890
-    #   path: ~/.secret/api_key.txt
-    #   blob: .vault/a1b2c3d4e5f67890.gpg
+    nimvault add ~/.config/myapp/secrets.env
+    # Added:
+    #   id:   7f3a2b1c9e4d8f06
+    #   path: ~/.config/myapp/secrets.env
+    #   blob: .vault/7f3a2b1c9e4d8f06.gpg
 
-Seal
-----
+The file path is stored with ``~/`` so it works on any machine. The ID is a
+random 16-char hex string.
+
+Seal the vault
+--------------
 
 .. code:: bash
 
-    # Encrypt all vault entries from their plaintext locations
     nimvault seal
-    #   ~/.secret/api_key.txt
+    # Encrypting ~/.config/myapp/secrets.env
     # Sealed 1 file(s).
 
-    # Commit the encrypted blobs
+Commit
+------
+
+.. code:: bash
+
     git add .vault/
-    git commit -m "vault: add api_key"
+    git commit -m "vault: add myapp secrets"
+
+Only encrypted blobs and the encrypted manifest are committed. The original
+filename (``secrets.env``) never appears in git history.
 
 Check status
-
-
 ------------
 
 .. code:: bash
 
     nimvault status
-    # [in-sync]   ~/.secret/api_key.txt
+    # [in-sync]   ~/.config/myapp/secrets.env
 
-Unseal (restore)
-
-
-------------
+Simulate a fresh checkout
+-------------------------
 
 .. code:: bash
 
-    # On a fresh checkout or after removing the plaintext
+    # Delete the plaintext to simulate a new machine
+    rm ~/.config/myapp/secrets.env
+
+    nimvault status
+    # [missing]   ~/.config/myapp/secrets.env
+
+    # Restore from the vault
     nimvault unseal
-    #   ~/.secret/api_key.txt
+    # Unsealing ~/.config/myapp/secrets.env
     # Unsealed 1 file(s).
 
-    # Files are restored with 600 permissions (owner read/write only)
+    # Verify the file is back (permissions: 600)
+    cat ~/.config/myapp/secrets.env
+    # DB_PASSWORD=hunter2
+
+    ls -la ~/.config/myapp/secrets.env
+    # -rw------- 1 user user ... secrets.env
+
+Clean up
+--------
+
+.. code:: bash
+
+    # Remove the demo repo and test file
+    rm -rf /tmp/vault-demo
+    rm ~/.config/myapp/secrets.env
+    rmdir ~/.config/myapp 2>/dev/null
 
 Next steps
+----------
 
+- `chezmoi integration <howto/chezmoi.rst>`_ -- use nimvault to encrypt dotfiles secrets
 
-------------
+- `CLI reference <reference/cli.rst>`_ -- all commands and flags
 
-- `CLI Reference <reference/cli.rst>`_ for all commands and flags
+- `Configuration <reference/config.rst>`_ -- recipient resolution chain
 
-- `Configuration <reference/config.rst>`_ for recipient resolution details
-
-- `chezmoi integration <howto/chezmoi.rst>`_ to use nimvault in your dotfiles
+- `Manifest format <reference/manifest.rst>`_ -- how the encrypted index works
