@@ -19,7 +19,7 @@ docs/source/*.svg
 
 # Generated DOT diagrams
 docs/orgmode/*.svg
-docs/orgmode/images/
+docs/orgmode/images/*.svg
 
 # Emacs
 *~
