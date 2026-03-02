@@ -1,0 +1,36 @@
+# Nim build artifacts
+nimcache/
+bin/
+*.exe
+
+# Nimble
+nimble.develop
+nimble.paths
+
+# Pixi
+.pixi/
+
+# Sphinx build
+docs/build/
+docs/source/*.rst
+
+# Emacs
+*~
+\#*\#
+.\#*
+*.elc
+auto-save-list
+
+# Org artifacts
+*_archive
+.org-id-locations
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+tests/tmp/
+
+# Generated
+README.md
