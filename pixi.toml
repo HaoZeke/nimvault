@@ -12,6 +12,7 @@ build = "nimble build -y"
 test  = "nimble test -y"
 
 [feature.docs.dependencies]
+python = ">=3.12,<4"
 emacs  = ">=30.2,<31"
 pandoc = ">=3.9,<4"
 

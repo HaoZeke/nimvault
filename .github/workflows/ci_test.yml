@@ -14,9 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jiro4989/setup-nim-action@v2
+      - uses: iffy/install-nim@v5
         with:
-          nim-version: ${{ matrix.nim-version }}
+          version: ${{ matrix.nim-version }}
 
       - name: Install cligen
         run: nimble install cligen -y
@@ -26,7 +26,8 @@ jobs:
 
       - name: Setup throwaway GPG key
         run: |
-          export GNUPGHOME=$(mktemp -d)
+          GNUPGHOME=$(mktemp -d)
+          chmod 700 "$GNUPGHOME"
           echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
           cat > "$GNUPGHOME/keygen.txt" <<'KEYEOF'
           %no-protection

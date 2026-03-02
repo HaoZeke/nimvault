@@ -2,8 +2,7 @@ exclude = """(?x)(
     ^\\.pixi/|
     ^docs/build/|
     ^docs/source/_static/favicons/site\\.webmanifest$|
-    ^.*.svg$|
-    ^README\\.md$
+    ^.*.svg$
 )"""
 
 [[repos]]
@@ -30,12 +29,6 @@ repo  = "https://github.com/ComPWA/taplo-pre-commit"
 rev   = "v0.9.3"
 
 [[repos]]
-hooks = [{ id = "codespell", args = ["--skip=*.lock"] }]
+hooks = [{ id = "codespell", args = ["--skip=*.lock,*.nim"] }]
 repo  = "https://github.com/codespell-project/codespell"
 rev   = "v2.4.1"
-
-[[repos]]
-hooks = [
-  { id = "gen-readme", name = "Generate README.md from readme_src.org", entry = "bash scripts/gen_readme.sh", language = "system", files = "readme_src\\.org$", pass_filenames = false },
-]
-repo = "local"

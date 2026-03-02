@@ -28,21 +28,18 @@ jobs:
         with:
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
-          activate-environment: true
           environments: >-
             docs
 
-      - uses: jiro4989/setup-nim-action@v2
+      - uses: iffy/install-nim@v5
         with:
-          nim-version: "2.2.x"
+          version: "2.2.x"
 
       - name: Install cligen
         run: nimble install cligen -y
 
       - name: Generate Docs
-        shell: pixi run bash -e {0}
-        run: |
-          pixi r docbld
+        run: pixi run -e docs docbld
 
       - name: Build Nim API docs
         run: pixi run nimdoc
