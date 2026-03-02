@@ -113,7 +113,14 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#">Changelog</a></li>
-<li><a class="reference internal" href="#id1">Changelog</a></li>
+<li><a class="reference internal" href="#id1">Changelog</a><ul>
+<li><a class="reference internal" href="#nimvault-0-1-0-2026-03-02">nimvault 0.1.0 (2026-03-02)</a><ul>
+<li><a class="reference internal" href="#added">Added</a></li>
+<li><a class="reference internal" href="#developer">Developer</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -207,6 +214,35 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="id1">
 <h1>Changelog<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h1>
+<section id="nimvault-0-1-0-2026-03-02">
+<h2>nimvault 0.1.0 (2026-03-02)<a class="headerlink" href="#nimvault-0-1-0-2026-03-02" title="Link to this heading">¶</a></h2>
+<section id="added">
+<h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>GPG-encrypted opaque-blob vault with randomized filenames and encrypted manifest.</p></li>
+<li><p>3-tier recipient resolution: CLI flag, environment variable, <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> file.</p></li>
+<li><p>Parallel GPG encryption and decryption via <code class="docutils literal notranslate"><span class="pre">startProcess</span></code>.</p></li>
+<li><p>7 subcommands: <code class="docutils literal notranslate"><span class="pre">seal</span></code>, <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, <code class="docutils literal notranslate"><span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">rm</span></code>, <code class="docutils literal notranslate"><span class="pre">mv</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">status</span></code>.</p></li>
+<li><p>Root-relative path mode (<code class="docutils literal notranslate"><span class="pre">root</span> <span class="pre">=</span> <span class="pre">repo</span></code> in config) for repo-scoped vaults.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">resolvePath</span></code> and <code class="docutils literal notranslate"><span class="pre">storePath</span></code> for transparent path mode abstraction.</p></li>
+<li><p>Positional argument support via cligen (<code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span> <span class="pre">&lt;path&gt;</span></code>).</p></li>
+<li><p>SHA-256 sync status checking (<code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">status</span></code>).</p></li>
+<li><p>Sphinx + Shibuya documentation with Graphviz DOT diagrams.</p></li>
+<li><p>Nim API docs via <code class="docutils literal notranslate"><span class="pre">nim</span> <span class="pre">doc</span> <span class="pre">--project</span></code>.</p></li>
+<li><p>GitHub Actions CI: test matrix (Nim 2.0 + 2.2), docs build, linting, tag-triggered releases.</p></li>
+<li><p>Keybase GPG key management howto.</p></li>
+<li><p>chezmoi integration howto with run_before auto-unseal.</p></li>
+</ul>
+</section>
+<section id="developer">
+<h3>Developer<a class="headerlink" href="#developer" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>cligen <code class="docutils literal notranslate"><span class="pre">dispatchMulti</span></code> with <code class="docutils literal notranslate"><span class="pre">do</span></code>-prefixed wrappers to avoid symbol collisions.</p></li>
+<li><p>Test suite: manifest unit tests, GPG encrypt/decrypt cycle, full integration workflow, root-relative mode tests.</p></li>
+<li><p>Throwaway GPG key generation in tests with restricted GNUPGHOME permissions.</p></li>
+</ul>
+</section>
+</section>
 </section>
 
         </article><button class="back-to-top" type="button">
