@@ -30,11 +30,14 @@ jobs:
       - name: Build release binary
         run: nimble build -y -d:release
 
+      - name: Rename binary with platform suffix
+        run: mv bin/nimvault bin/${{ matrix.artifact }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: bin/nimvault*
+          path: bin/${{ matrix.artifact }}
 
   release:
     needs: build
