@@ -114,12 +114,19 @@ proc add*(repo, path: string, cfg: GpgConfig) =
       stderr.writeLine &"Already in vault: {storedPath}"
       quit 1
 
-  # Warn if not gitignored
+  # Append to .gitignore if not already ignored
   let checkPath = if cfg.root.len > 0: storedPath else: absPath
   let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
     workingDir = repo)
   if gitCheckCode != 0:
-    stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- add it to .gitignore"
+    let gitignorePath = repo / ".gitignore"
+    var f: File
+    if open(f, gitignorePath, fmAppend):
+      f.writeLine(storedPath)
+      f.close()
+      stderr.writeLine &"Added {storedPath} to .gitignore"
+    else:
+      stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
 
   let id = genId()
   let outPath = vaultDir(repo) / &"{id}.gpg"
