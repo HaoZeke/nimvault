@@ -151,6 +151,7 @@ digraph G {
      :maxdepth: 1
      :caption: How-To Guides
 
+     howto/keybase
      howto/chezmoi
 #+end_export
 
