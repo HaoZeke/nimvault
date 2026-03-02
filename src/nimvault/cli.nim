@@ -34,13 +34,13 @@ proc doUnseal(recipient = "") =
   let (repo, cfg) = resolve(recipient)
   commands.unseal(repo, cfg)
 
-proc doAdd(path: seq[string], recipient = "") =
+proc doAdd(path: seq[string], recipient = "", noGitignore = false) =
   ## Add a file to the vault by its target path.
   if path.len != 1:
     stderr.writeLine "usage: nimvault add <path>"
     quit 1
   let (repo, cfg) = resolve(recipient)
-  commands.add(repo, path[0], cfg)
+  commands.add(repo, path[0], cfg, noGitignore)
 
 proc doRm(path: seq[string], recipient = "") =
   ## Remove a file from the vault.
@@ -78,7 +78,8 @@ proc main*() =
     [doSeal, cmdName = "seal", help = {"recipient": rh}],
     [doUnseal, cmdName = "unseal", help = {"recipient": rh}],
     [doAdd, cmdName = "add", positional = "path",
-     help = {"path": "file path to add", "recipient": rh}],
+     help = {"path": "file path to add", "recipient": rh,
+             "noGitignore": "skip auto-append to .gitignore"}],
     [doRm, cmdName = "rm", positional = "path",
      help = {"path": "file path to remove", "recipient": rh}],
     [doMv, cmdName = "mv", positional = "paths",

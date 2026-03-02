@@ -90,7 +90,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
   saveManifest(repo, entries, cfg)
   echo &"\nSealed {entries.len} file(s)."
 
-proc add*(repo, path: string, cfg: GpgConfig) =
+proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a file by its target path.
   let absPath = if path.isAbsolute:
     path
@@ -114,19 +114,22 @@ proc add*(repo, path: string, cfg: GpgConfig) =
       stderr.writeLine &"Already in vault: {storedPath}"
       quit 1
 
-  # Append to .gitignore if not already ignored
+  # Append to .gitignore if not already ignored (unless --no-gitignore)
   let checkPath = if cfg.root.len > 0: storedPath else: absPath
   let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
     workingDir = repo)
   if gitCheckCode != 0:
-    let gitignorePath = repo / ".gitignore"
-    var f: File
-    if open(f, gitignorePath, fmAppend):
-      f.writeLine(storedPath)
-      f.close()
-      stderr.writeLine &"Added {storedPath} to .gitignore"
+    if noGitignore:
+      stderr.writeLine &"WARNING: {storedPath} is NOT gitignored"
     else:
-      stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
+      let gitignorePath = repo / ".gitignore"
+      var f: File
+      if open(f, gitignorePath, fmAppend):
+        f.writeLine(storedPath)
+        f.close()
+        stderr.writeLine &"Added {storedPath} to .gitignore"
+      else:
+        stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
 
   let id = genId()
   let outPath = vaultDir(repo) / &"{id}.gpg"
