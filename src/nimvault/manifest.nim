@@ -20,6 +20,26 @@ proc expandHome*(p: string): string =
   else:
     result = p
 
+proc resolvePath*(cfg: GpgConfig, path: string): string =
+  ## Resolve a manifest path to an absolute filesystem path.
+  ## When cfg.root is set, paths are relative to root.
+  ## Otherwise, ~/... paths are expanded via expandHome.
+  if cfg.root.len > 0:
+    cfg.root / path
+  else:
+    expandHome(path)
+
+proc storePath*(cfg: GpgConfig, absPath: string, repo: string): string =
+  ## Convert an absolute path to the stored manifest format.
+  ## When cfg.root is set, stores relative to root.
+  ## Otherwise, stores with ~/ prefix if under HOME.
+  if cfg.root.len > 0:
+    relativePath(absPath, cfg.root)
+  elif absPath.startsWith(getHomeDir()):
+    "~/" & relativePath(absPath, getHomeDir())
+  else:
+    absPath
+
 proc vaultDir*(repo: string): string =
   ## Path to the .vault directory within a repo.
   repo / ".vault"

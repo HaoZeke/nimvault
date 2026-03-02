@@ -26,7 +26,7 @@ proc unseal*(repo: string, cfg: GpgConfig) =
   var procs: seq[(VaultEntry, Process)] = @[]
   for e in entries:
     let inPath = vaultDir(repo) / &"{e.id}.gpg"
-    let outPath = expandHome(e.path)
+    let outPath = resolvePath(cfg, e.path)
     if not fileExists(inPath):
       stderr.writeLine &"FATAL: vault blob missing: {inPath}"
       quit 1
@@ -44,7 +44,7 @@ proc unseal*(repo: string, cfg: GpgConfig) =
     if code != 0:
       stderr.writeLine &"FATAL: failed to unseal {e.path}\n{output}"
       quit 1
-    setFilePermissions(expandHome(e.path), {fpUserRead, fpUserWrite})
+    setFilePermissions(resolvePath(cfg, e.path), {fpUserRead, fpUserWrite})
     echo &"  {e.path}"
 
   echo &"\nUnsealed {entries.len} file(s)."
@@ -59,7 +59,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
 
   # Verify all plaintext files exist first
   for e in entries:
-    let src = expandHome(e.path)
+    let src = resolvePath(cfg, e.path)
     if not fileExists(src):
       stderr.writeLine &"FATAL: plaintext missing: {src}"
       stderr.writeLine "  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry."
@@ -68,7 +68,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
   # Launch all GPG encrypts in parallel
   var procs: seq[(VaultEntry, Process)] = @[]
   for e in entries:
-    let inPath = expandHome(e.path)
+    let inPath = resolvePath(cfg, e.path)
     let outPath = vaultDir(repo) / &"{e.id}.gpg"
     let p = startProcess("/bin/bash",
       args = ["-c", &"gpg --batch --yes --quiet --trust-model always " &
@@ -91,46 +91,63 @@ proc seal*(repo: string, cfg: GpgConfig) =
   echo &"\nSealed {entries.len} file(s)."
 
 proc add*(repo, path: string, cfg: GpgConfig) =
-  ## Add a file by its absolute target path (where it lives on disk).
-  let absPath = expandHome(path)
+  ## Add a file by its target path.
+  let absPath = if path.isAbsolute:
+    path
+  elif path.startsWith("~/"):
+    expandHome(path)
+  elif cfg.root.len > 0:
+    cfg.root / path
+  else:
+    expandHome(path)
 
   if not fileExists(absPath):
     stderr.writeLine &"FATAL: file not found: {absPath}"
     quit 1
 
-  # Store the path with ~ for portability across machines
-  let homePath = if absPath.startsWith(getHomeDir()):
-    "~/" & relativePath(absPath, getHomeDir())
-  else:
-    absPath
+  let storedPath = storePath(cfg, absPath, repo)
 
   # Check for duplicates
   var entries = loadManifest(repo)
   for e in entries:
-    if expandHome(e.path) == absPath:
-      stderr.writeLine &"Already in vault: {homePath}"
+    if resolvePath(cfg, e.path) == absPath:
+      stderr.writeLine &"Already in vault: {storedPath}"
       quit 1
+
+  # Warn if not gitignored
+  let checkPath = if cfg.root.len > 0: storedPath else: absPath
+  let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
+    workingDir = repo)
+  if gitCheckCode != 0:
+    stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- add it to .gitignore"
 
   let id = genId()
   let outPath = vaultDir(repo) / &"{id}.gpg"
 
-  banner(&"Adding {homePath} to vault ...")
+  banner(&"Adding {storedPath} to vault ...")
   createDir(vaultDir(repo))
   gpgEncrypt(cfg, absPath, outPath)
-  entries.add((id, homePath))
+  entries.add((id, storedPath))
   saveManifest(repo, entries, cfg)
   echo &"  id:   {id}"
-  echo &"  path: {homePath}"
+  echo &"  path: {storedPath}"
   echo &"  blob: .vault/{id}.gpg"
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
-  let absPath = expandHome(path)
+  let absPath = if path.isAbsolute:
+    path
+  elif path.startsWith("~/"):
+    expandHome(path)
+  elif cfg.root.len > 0:
+    cfg.root / path
+  else:
+    expandHome(path)
 
   var entries = loadManifest(repo)
   var found = false
   var newEntries: seq[VaultEntry] = @[]
   for e in entries:
-    if expandHome(e.path) == absPath:
+    if resolvePath(cfg, e.path) == absPath:
       found = true
       let blobPath = vaultDir(repo) / &"{e.id}.gpg"
       if fileExists(blobPath):
@@ -148,29 +165,41 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   echo "  (local plaintext file NOT deleted)"
 
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
-  let oldAbs = expandHome(oldPath)
-  let newAbs = expandHome(newPath)
-
-  let newHome = if newAbs.startsWith(getHomeDir()):
-    "~/" & relativePath(newAbs, getHomeDir())
+  let oldAbs = if oldPath.isAbsolute:
+    oldPath
+  elif oldPath.startsWith("~/"):
+    expandHome(oldPath)
+  elif cfg.root.len > 0:
+    cfg.root / oldPath
   else:
-    newAbs
+    expandHome(oldPath)
+
+  let newAbs = if newPath.isAbsolute:
+    newPath
+  elif newPath.startsWith("~/"):
+    expandHome(newPath)
+  elif cfg.root.len > 0:
+    cfg.root / newPath
+  else:
+    expandHome(newPath)
+
+  let newStored = storePath(cfg, newAbs, repo)
 
   var entries = loadManifest(repo)
   var found = false
   for e in entries.mitems:
-    if expandHome(e.path) == oldAbs:
+    if resolvePath(cfg, e.path) == oldAbs:
       found = true
       if fileExists(oldAbs):
         createDir(newAbs.parentDir)
         moveFile(oldAbs, newAbs)
-        echo &"  Moved {e.path} -> {newHome}"
+        echo &"  Moved {e.path} -> {newStored}"
       elif fileExists(newAbs):
-        echo &"  File already at {newHome}"
+        echo &"  File already at {newStored}"
       else:
         stderr.writeLine &"FATAL: file not found at {oldAbs} or {newAbs}"
         quit 1
-      e.path = newHome
+      e.path = newStored
       break
 
   if not found:
@@ -196,7 +225,7 @@ proc status*(repo: string, cfg: GpgConfig) =
 
   banner("Vault status")
   for e in entries:
-    let localPath = expandHome(e.path)
+    let localPath = resolvePath(cfg, e.path)
     let blobPath = vaultDir(repo) / &"{e.id}.gpg"
 
     if not fileExists(localPath):

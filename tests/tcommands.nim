@@ -59,7 +59,7 @@ block addFile:
   add(repo, secretPath, cfg)
   let entries = loadManifest(repo)
   doAssert entries.len == 1, "Should have 1 entry after add"
-  doAssert expandHome(entries[0].path) == secretPath
+  doAssert resolvePath(cfg, entries[0].path) == secretPath
   let blobPath = vaultDir(repo) / &"{entries[0].id}.gpg"
   doAssert fileExists(blobPath), "Blob file should exist"
   echo "PASS: add"
@@ -90,7 +90,7 @@ block moveEntry:
   move(repo, secretPath, newPath, cfg)
   let entries = loadManifest(repo)
   doAssert entries.len == 1
-  doAssert expandHome(entries[0].path) == newPath
+  doAssert resolvePath(cfg, entries[0].path) == newPath
   doAssert fileExists(newPath)
   doAssert not fileExists(secretPath)
   # Move back for rm test
@@ -102,6 +102,50 @@ block removeEntry:
   let entries = loadManifest(repo)
   doAssert entries.len == 0, "Should have 0 entries after rm"
   echo "PASS: rm"
+
+# --- Root-relative mode tests (pixi_envs parity) ---
+block rootRelativeWorkflow:
+  ## With root set to repo, paths are stored relative to root and resolved back.
+  let rootRepo = setupTestRepo()
+  let rootCfg = GpgConfig(recipient: keyId, root: rootRepo)
+  let rootSecretDir = rootRepo / "conda"
+  createDir(rootSecretDir)
+  let rootSecretPath = rootSecretDir / "CLAUDE.md"
+  writeFile(rootSecretPath, "# project claude config")
+
+  # Add using root-relative path
+  add(rootRepo, rootSecretPath, rootCfg)
+  var entries = loadManifest(rootRepo)
+  doAssert entries.len == 1
+  doAssert entries[0].path == "conda/CLAUDE.md", &"Expected relative path, got: {entries[0].path}"
+  doAssert resolvePath(rootCfg, entries[0].path) == rootSecretPath
+  echo "PASS: root-relative add"
+
+  # Seal and unseal round-trip
+  seal(rootRepo, rootCfg)
+  removeFile(rootSecretPath)
+  doAssert not fileExists(rootSecretPath)
+  unseal(rootRepo, rootCfg)
+  doAssert fileExists(rootSecretPath)
+  doAssert readFile(rootSecretPath) == "# project claude config"
+  echo "PASS: root-relative seal/unseal"
+
+  # Move within root
+  let rootNewPath = rootSecretDir / "CLAUDE_moved.md"
+  move(rootRepo, rootSecretPath, rootNewPath, rootCfg)
+  entries = loadManifest(rootRepo)
+  doAssert entries[0].path == "conda/CLAUDE_moved.md"
+  move(rootRepo, rootNewPath, rootSecretPath, rootCfg)
+  echo "PASS: root-relative move"
+
+  # Remove
+  remove(rootRepo, rootSecretPath, rootCfg)
+  entries = loadManifest(rootRepo)
+  doAssert entries.len == 0
+  echo "PASS: root-relative rm"
+
+  removeDir(rootRepo)
+  echo "PASS: root-relative workflow (pixi_envs parity)"
 
 # Cleanup
 removeDir(repo)

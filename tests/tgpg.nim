@@ -45,29 +45,38 @@ let gpgHome = setupTestGpgHome()
 let keyId = getTestKeyId(gpgHome)
 
 block resolveRecipientCli:
-  ## CLI value takes priority.
-  let r = resolveRecipient("AABBCCDD", "NIMVAULT_GPG_RECIPIENT", "/nonexistent/config")
+  ## CLI value takes priority over env and config.
+  let r = resolveRecipient("AABBCCDD", "NIMVAULT_GPG_RECIPIENT", "CONFIGKEY456")
   doAssert r == "AABBCCDD"
   echo "PASS: resolveRecipient CLI priority"
 
 block resolveRecipientEnv:
   ## Env var used when CLI is empty.
   putEnv("NIMVAULT_GPG_RECIPIENT", "ENVKEY123")
-  let r = resolveRecipient("", "NIMVAULT_GPG_RECIPIENT", "/nonexistent/config")
+  let r = resolveRecipient("", "NIMVAULT_GPG_RECIPIENT", "CONFIGKEY456")
   doAssert r == "ENVKEY123"
   delEnv("NIMVAULT_GPG_RECIPIENT")
   echo "PASS: resolveRecipient env fallback"
 
 block resolveRecipientConfig:
-  ## Config file used when CLI and env are empty.
-  let tmpDir = createTempDir("nimvault_cfg_", "_test")
-  let cfgFile = tmpDir / "config"
-  writeFile(cfgFile, "# vault config\nrecipient = CONFIGKEY456\n")
+  ## Config recipient used when CLI and env are empty.
   delEnv("NIMVAULT_GPG_RECIPIENT")
-  let r = resolveRecipient("", "NIMVAULT_GPG_RECIPIENT", cfgFile)
+  let r = resolveRecipient("", "NIMVAULT_GPG_RECIPIENT", "CONFIGKEY456")
   doAssert r == "CONFIGKEY456"
+  echo "PASS: resolveRecipient config fallback"
+
+block initGpgConfigFromFile:
+  ## initGpgConfig parses .vault/config and resolves recipient + root.
+  let tmpDir = createTempDir("nimvault_cfg_", "_test")
+  let vaultDir = tmpDir / ".vault"
+  createDir(vaultDir)
+  writeFile(vaultDir / "config", "# vault config\nrecipient = CONFIGKEY456\nroot = repo\n")
+  delEnv("NIMVAULT_GPG_RECIPIENT")
+  let cfg = initGpgConfig("", tmpDir)
+  doAssert cfg.recipient == "CONFIGKEY456"
+  doAssert cfg.root == tmpDir  # "repo" expands to the repo path
   removeDir(tmpDir)
-  echo "PASS: resolveRecipient config file fallback"
+  echo "PASS: initGpgConfig from config file"
 
 block encryptDecryptCycle:
   ## Encrypt then decrypt, verify round-trip.

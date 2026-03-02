@@ -34,20 +34,29 @@ proc doUnseal(recipient = "") =
   let (repo, cfg) = resolve(recipient)
   commands.unseal(repo, cfg)
 
-proc doAdd(path: string, recipient = "") =
+proc doAdd(path: seq[string], recipient = "") =
   ## Add a file to the vault by its target path.
+  if path.len != 1:
+    stderr.writeLine "usage: nimvault add <path>"
+    quit 1
   let (repo, cfg) = resolve(recipient)
-  commands.add(repo, path, cfg)
+  commands.add(repo, path[0], cfg)
 
-proc doRm(path: string, recipient = "") =
+proc doRm(path: seq[string], recipient = "") =
   ## Remove a file from the vault.
+  if path.len != 1:
+    stderr.writeLine "usage: nimvault rm <path>"
+    quit 1
   let (repo, cfg) = resolve(recipient)
-  commands.remove(repo, path, cfg)
+  commands.remove(repo, path[0], cfg)
 
-proc doMv(oldPath, newPath: string, recipient = "") =
-  ## Move/rename a vault entry's target path.
+proc doMv(paths: seq[string], recipient = "") =
+  ## Move/rename a vault entry's target path. Takes <old-path> <new-path>.
+  if paths.len != 2:
+    stderr.writeLine "usage: nimvault mv <old-path> <new-path>"
+    quit 1
   let (repo, cfg) = resolve(recipient)
-  commands.move(repo, oldPath, newPath, cfg)
+  commands.move(repo, paths[0], paths[1], cfg)
 
 proc doList(recipient = "") =
   ## List all vault entries (id + path).
@@ -68,9 +77,12 @@ proc main*() =
      cmdName = "nimvault"],
     [doSeal, cmdName = "seal", help = {"recipient": rh}],
     [doUnseal, cmdName = "unseal", help = {"recipient": rh}],
-    [doAdd, cmdName = "add", help = {"path": "file path to add", "recipient": rh}],
-    [doRm, cmdName = "rm", help = {"path": "file path to remove", "recipient": rh}],
-    [doMv, cmdName = "mv", help = {"oldPath": "current path", "newPath": "new path", "recipient": rh}],
+    [doAdd, cmdName = "add", positional = "path",
+     help = {"path": "file path to add", "recipient": rh}],
+    [doRm, cmdName = "rm", positional = "path",
+     help = {"path": "file path to remove", "recipient": rh}],
+    [doMv, cmdName = "mv", positional = "paths",
+     help = {"paths": "<old-path> <new-path>", "recipient": rh}],
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
   )
