@@ -1,0 +1,41 @@
+#+TITLE: nimvault
+#+OPTIONS: toc:nil num:nil
+
+GPG-encrypted opaque-blob vault with hidden filenames.
+
+nimvault stores sensitive files with opaque filenames and encrypted contents using
+GPG. Both filenames and contents are hidden from git history --- only random hex
+blob names and a GPG-encrypted manifest are committed.
+
+Features
+--------
+
+- Opaque filenames (16-char random hex IDs)
+- GPG-encrypted contents and manifest
+- Parallel encryption/decryption via process spawning
+- Portable paths (~/... stored in manifest)
+- 3-tier recipient resolution (CLI flag, env var, config file)
+- Single static binary, zero runtime dependencies beyond GPG
+
+Quick checklist
+---------------
+
+1. Install Nim >= 2.0 and GPG
+2. ~nimble install nimvault~
+3. ~cd~ into a git repo
+4. Create ~.vault/config~ with ~recipient = YOUR_KEY_ID~
+5. ~nimvault add ~/.secret/file.txt~
+6. ~nimvault seal~
+7. ~git add .vault/ && git commit~
+8. On another machine: ~git pull && nimvault unseal~
+9. ~nimvault status~ to verify sync state
+
+.. toctree::
+   :maxdepth: 2
+
+   quickstart
+   howto/chezmoi
+   reference/cli
+   reference/config
+   reference/manifest
+   contributing/index

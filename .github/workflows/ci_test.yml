@@ -1,0 +1,45 @@
+name: Test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        nim-version: ["2.0.x", "2.2.x"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: ${{ matrix.nim-version }}
+
+      - name: Install cligen
+        run: nimble install cligen -y
+
+      - name: Build
+        run: nimble build -y
+
+      - name: Setup throwaway GPG key
+        run: |
+          export GNUPGHOME=$(mktemp -d)
+          echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
+          cat > "$GNUPGHOME/keygen.txt" <<'KEYEOF'
+          %no-protection
+          Key-Type: RSA
+          Key-Length: 2048
+          Subkey-Type: RSA
+          Subkey-Length: 2048
+          Name-Real: CI Test
+          Name-Email: ci@nimvault.test
+          Expire-Date: 0
+          %commit
+          KEYEOF
+          gpg --batch --gen-key "$GNUPGHOME/keygen.txt"
+
+      - name: Test
+        run: nimble test -y

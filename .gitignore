@@ -31,6 +31,9 @@ Thumbs.db
 
 # Test artifacts
 tests/tmp/
+tests/tmanifest
+tests/tgpg
+tests/tcommands
 
 # Generated
 README.md

@@ -3,7 +3,7 @@
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess is preserved from the original implementation.
 
-import std/[os, osproc, strutils, strformat, terminal]
+import std/[os, osproc, strutils, strformat, streams, terminal]
 import ./gpg, ./manifest
 
 proc banner(msg: string) =

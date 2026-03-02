@@ -1,9 +1,14 @@
-## CLI dispatch for nimvault.
+## CLI dispatch for nimvault using cligen.
 ##
-## Usage: nimvault [--recipient KEY] <command> [args]
+## Each subcommand is a thin wrapper proc prefixed with `do` to avoid
+## name collisions (cligen macros operate on typed AST). The `cmdName`
+## parameter maps them to the desired subcommand names.
 
-import std/[os, osproc, strutils, strformat, parseopt]
-import ./gpg, ./commands
+import std/[osproc, strutils]
+import cligen
+
+from ./gpg import GpgConfig, initGpgConfig
+from ./commands import nil
 
 const Version = "0.1.0"
 
@@ -14,82 +19,58 @@ proc repoRoot(): string =
     quit 1
   result = output.strip()
 
-proc usage() =
-  echo """nimvault -- GPG-encrypted opaque-blob vault with hidden filenames
+proc resolve(recipient: string): (string, GpgConfig) =
+  let repo = repoRoot()
+  let cfg = initGpgConfig(recipient, repo)
+  (repo, cfg)
 
-Usage: nimvault [--recipient KEY] <command> [args]
+proc doSeal(recipient = "") =
+  ## Encrypt all vault entries from their plaintext locations.
+  let (repo, cfg) = resolve(recipient)
+  commands.seal(repo, cfg)
 
-Commands:
-  seal          Encrypt all vault entries from their plaintext locations
-  unseal        Decrypt all vault entries to their target locations
-  add <path>    Add a file to the vault
-  rm <path>     Remove a file from the vault
-  mv <old> <new>  Move/rename a vault entry
-  list          List all vault entries
-  status        Show sync status of all entries
+proc doUnseal(recipient = "") =
+  ## Decrypt all vault entries to their target locations.
+  let (repo, cfg) = resolve(recipient)
+  commands.unseal(repo, cfg)
 
-Options:
-  --recipient KEY   GPG recipient key (overrides env/config)
-  --help            Show this help
-  --version         Show version"""
+proc doAdd(path: string, recipient = "") =
+  ## Add a file to the vault by its target path.
+  let (repo, cfg) = resolve(recipient)
+  commands.add(repo, path, cfg)
+
+proc doRm(path: string, recipient = "") =
+  ## Remove a file from the vault.
+  let (repo, cfg) = resolve(recipient)
+  commands.remove(repo, path, cfg)
+
+proc doMv(oldPath, newPath: string, recipient = "") =
+  ## Move/rename a vault entry's target path.
+  let (repo, cfg) = resolve(recipient)
+  commands.move(repo, oldPath, newPath, cfg)
+
+proc doList(recipient = "") =
+  ## List all vault entries (id + path).
+  let (repo, cfg) = resolve(recipient)
+  commands.list(repo, cfg)
+
+proc doStatus(recipient = "") =
+  ## Show sync status of all vault entries.
+  let (repo, cfg) = resolve(recipient)
+  commands.status(repo, cfg)
+
+const rh = "GPG recipient key (overrides env/config)"
 
 proc main*() =
-  var
-    cliRecipient = ""
-    positional: seq[string] = @[]
-
-  var p = initOptParser(commandLineParams())
-  while true:
-    p.next()
-    case p.kind
-    of cmdEnd: break
-    of cmdLongOption, cmdShortOption:
-      case p.key
-      of "recipient": cliRecipient = p.val
-      of "help", "h":
-        usage()
-        quit 0
-      of "version", "v":
-        echo &"nimvault {Version}"
-        quit 0
-      else:
-        stderr.writeLine &"unknown option: --{p.key}"
-        quit 1
-    of cmdArgument:
-      positional.add(p.key)
-
-  if positional.len == 0:
-    usage()
-    quit 1
-
-  let repo = repoRoot()
-  let cfg = initGpgConfig(cliRecipient, repo)
-  let cmd = positional[0]
-
-  case cmd
-  of "seal":
-    seal(repo, cfg)
-  of "unseal":
-    unseal(repo, cfg)
-  of "add":
-    if positional.len < 2:
-      stderr.writeLine "usage: nimvault add <path>"
-      quit 1
-    add(repo, positional[1], cfg)
-  of "rm":
-    if positional.len < 2:
-      stderr.writeLine "usage: nimvault rm <path>"
-      quit 1
-    remove(repo, positional[1], cfg)
-  of "mv":
-    if positional.len < 3:
-      stderr.writeLine "usage: nimvault mv <old-path> <new-path>"
-      quit 1
-    move(repo, positional[1], positional[2], cfg)
-  of "list":
-    list(repo, cfg)
-  of "status":
-    status(repo, cfg)
-  else:
-    stderr.writeLine &"unknown command: {cmd}"
-    quit 1
+  clCfg.version = Version
+  dispatchMulti(
+    ["multi", doc = "GPG-encrypted opaque-blob vault with hidden filenames",
+     cmdName = "nimvault"],
+    [doSeal, cmdName = "seal", help = {"recipient": rh}],
+    [doUnseal, cmdName = "unseal", help = {"recipient": rh}],
+    [doAdd, cmdName = "add", help = {"path": "file path to add", "recipient": rh}],
+    [doRm, cmdName = "rm", help = {"path": "file path to remove", "recipient": rh}],
+    [doMv, cmdName = "mv", help = {"oldPath": "current path", "newPath": "new path", "recipient": rh}],
+    [doList, cmdName = "list", help = {"recipient": rh}],
+    [doStatus, cmdName = "status", help = {"recipient": rh}],
+  )

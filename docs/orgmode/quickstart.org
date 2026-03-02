@@ -1,0 +1,98 @@
+#+TITLE: Quick Start
+#+OPTIONS: toc:nil num:nil
+
+This tutorial walks through adding a secret file to a vault, sealing it,
+and restoring it on a fresh checkout. By the end you will see:
+
+#+BEGIN_SRC text
+$ nimvault status
+------------------------------------------------------------------------
+  Vault status
+------------------------------------------------------------------------
+  [in-sync]   ~/.secret/api_key.txt
+#+END_SRC
+
+Prerequisites
+-------------
+
+- Nim >= 2.0 (~nim --version~)
+- GPG with at least one key (~gpg --list-keys~)
+- A git repository
+
+Install
+-------
+
+#+BEGIN_SRC bash
+# From nimble (recommended)
+nimble install nimvault
+
+# Or build from source
+git clone https://github.com/HaoZeke/nimvault.git
+cd nimvault
+nimble build -y
+# Binary: bin/nimvault
+#+END_SRC
+
+Configure
+---------
+
+#+BEGIN_SRC bash
+# Inside your git repo
+mkdir -p .vault
+
+# Write your GPG key ID to the config file
+# (use `gpg --list-keys --keyid-format long` to find it)
+echo "recipient = YOUR_KEY_ID" > .vault/config
+#+END_SRC
+
+Add a file
+----------
+
+#+BEGIN_SRC bash
+# Add a secret file to the vault
+nimvault add ~/.secret/api_key.txt
+#   id:   a1b2c3d4e5f67890
+#   path: ~/.secret/api_key.txt
+#   blob: .vault/a1b2c3d4e5f67890.gpg
+#+END_SRC
+
+Seal
+----
+
+#+BEGIN_SRC bash
+# Encrypt all vault entries from their plaintext locations
+nimvault seal
+#   ~/.secret/api_key.txt
+# Sealed 1 file(s).
+
+# Commit the encrypted blobs
+git add .vault/
+git commit -m "vault: add api_key"
+#+END_SRC
+
+Check status
+------------
+
+#+BEGIN_SRC bash
+nimvault status
+# [in-sync]   ~/.secret/api_key.txt
+#+END_SRC
+
+Unseal (restore)
+-----------------
+
+#+BEGIN_SRC bash
+# On a fresh checkout or after removing the plaintext
+nimvault unseal
+#   ~/.secret/api_key.txt
+# Unsealed 1 file(s).
+
+# Files are restored with 600 permissions (owner read/write only)
+#+END_SRC
+
+Next steps
+----------
+
+- [[file:reference/cli.org][CLI Reference]] for all commands and flags
+- [[file:reference/config.org][Configuration]] for recipient resolution details
+- [[file:howto/chezmoi.org][chezmoi integration]] to use nimvault in your dotfiles

@@ -1,0 +1,110 @@
+## Integration tests for nimvault commands.
+##
+## Creates a temp git repo with a throwaway GPG key, runs full workflow:
+## add -> list -> seal -> status -> unseal -> rm
+
+import std/[os, osproc, strutils, strformat, tempfiles]
+import nimvault/[gpg, manifest, commands]
+
+proc setupTestGpgHome(): string =
+  result = createTempDir("nimvault_int_", "_gpg")
+  setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+  putEnv("GNUPGHOME", result)
+  let keyScript = result / "keygen.txt"
+  writeFile(keyScript, """
+%no-protection
+Key-Type: RSA
+Key-Length: 2048
+Subkey-Type: RSA
+Subkey-Length: 2048
+Name-Real: NimVault IntTest
+Name-Email: inttest@nimvault.local
+Expire-Date: 0
+%commit
+""")
+  let (output, code) = execCmdEx(&"gpg --batch --gen-key {keyScript.quoteShell}")
+  doAssert code == 0, &"GPG keygen failed:\n{output}"
+
+proc getTestKeyId(): string =
+  let (output, code) = execCmdEx("gpg --list-keys --keyid-format long --with-colons inttest@nimvault.local")
+  doAssert code == 0, &"GPG list-keys failed:\n{output}"
+  for line in output.splitLines:
+    if line.startsWith("pub:"):
+      let parts = line.split(':')
+      if parts.len > 4:
+        return parts[4]
+  doAssert false, "Could not find test key ID"
+
+proc setupTestRepo(): string =
+  result = createTempDir("nimvault_repo_", "_test")
+  let (_, code) = execCmdEx("git init", workingDir = result)
+  doAssert code == 0
+  # Create initial commit so git rev-parse works
+  writeFile(result / ".gitkeep", "")
+  discard execCmdEx("git add . && git commit -m init", workingDir = result)
+
+# Setup
+let gpgHome = setupTestGpgHome()
+let keyId = getTestKeyId()
+let repo = setupTestRepo()
+let cfg = GpgConfig(recipient: keyId)
+
+# Create a test secret file inside the repo (simulating an absolute path target)
+let secretDir = repo / "secrets"
+createDir(secretDir)
+let secretPath = secretDir / "api_key.txt"
+writeFile(secretPath, "sk-test-12345-secret-key")
+
+block addFile:
+  add(repo, secretPath, cfg)
+  let entries = loadManifest(repo)
+  doAssert entries.len == 1, "Should have 1 entry after add"
+  doAssert expandHome(entries[0].path) == secretPath
+  let blobPath = vaultDir(repo) / &"{entries[0].id}.gpg"
+  doAssert fileExists(blobPath), "Blob file should exist"
+  echo "PASS: add"
+
+block listEntries:
+  list(repo, cfg)
+  echo "PASS: list (visual check above)"
+
+block sealEntries:
+  seal(repo, cfg)
+  echo "PASS: seal"
+
+block statusCheck:
+  status(repo, cfg)
+  echo "PASS: status (visual check above)"
+
+block unsealEntries:
+  # Remove the plaintext, then unseal
+  removeFile(secretPath)
+  doAssert not fileExists(secretPath)
+  unseal(repo, cfg)
+  doAssert fileExists(secretPath), "Secret should be restored after unseal"
+  doAssert readFile(secretPath) == "sk-test-12345-secret-key"
+  echo "PASS: unseal round-trip"
+
+block moveEntry:
+  let newPath = secretDir / "api_key_moved.txt"
+  move(repo, secretPath, newPath, cfg)
+  let entries = loadManifest(repo)
+  doAssert entries.len == 1
+  doAssert expandHome(entries[0].path) == newPath
+  doAssert fileExists(newPath)
+  doAssert not fileExists(secretPath)
+  # Move back for rm test
+  move(repo, newPath, secretPath, cfg)
+  echo "PASS: move"
+
+block removeEntry:
+  remove(repo, secretPath, cfg)
+  let entries = loadManifest(repo)
+  doAssert entries.len == 0, "Should have 0 entries after rm"
+  echo "PASS: rm"
+
+# Cleanup
+removeDir(repo)
+removeDir(gpgHome)
+delEnv("GNUPGHOME")
+echo "All integration tests passed."

@@ -1,0 +1,74 @@
+#+TITLE: chezmoi Integration
+#+OPTIONS: toc:t num:nil
+
+This guide integrates nimvault with chezmoi for automatic vault unsealing
+during ~chezmoi apply~.
+
+Setup
+-----
+
+1. Install nimvault and ensure it is on ~$PATH~:
+
+   #+BEGIN_SRC bash
+   nimble install nimvault
+   which nimvault
+   #+END_SRC
+
+2. Add a ~.vault/config~ to your chezmoi source directory:
+
+   #+BEGIN_SRC bash
+   cd ~/.local/share/chezmoi
+   mkdir -p .vault
+   echo "recipient = YOUR_KEY_ID" > .vault/config
+   #+END_SRC
+
+3. Create a chezmoi run-before script at
+   ~.chezmoiscripts/run_before_unseal_vault.sh.tmpl~:
+
+   #+BEGIN_SRC bash
+   #!/bin/bash --norc
+   {{ if and (eq .setup_vault "yes") (eq .encrypted "yes") -}}
+   cd "{{ .chezmoi.sourceDir }}"
+   if command -v nimvault &>/dev/null && command -v gpg &>/dev/null; then
+       nimvault unseal 2>/dev/null || true
+   fi
+   {{ end -}}
+   #+END_SRC
+
+4. Add chezmoi template data (~.chezmoidata.toml~ or ~.chezmoi.toml.tmpl~):
+
+   #+BEGIN_SRC toml
+   [data]
+   setup_vault = "yes"
+   encrypted   = "yes"
+   #+END_SRC
+
+Adding files
+------------
+
+#+BEGIN_SRC bash
+cd ~/.local/share/chezmoi
+
+# Add a sensitive file
+nimvault add ~/.claude/settings.json
+
+# Seal and commit
+nimvault seal
+git add .vault/
+git commit -m "vault: add settings.json"
+#+END_SRC
+
+The file is now tracked as an opaque blob. ~chezmoi apply~ on any machine
+will automatically unseal it.
+
+Migration from embedded vault.nim
+----------------------------------
+
+If you previously used the inline ~scripts/vault.nim~ in your chezmoi repo:
+
+1. Install nimvault globally
+2. Add ~.vault/config~ with your recipient key
+3. Update the run-before script to call ~nimvault unseal~ instead of
+   ~nim r scripts/vault.nim unseal~
+4. Remove ~scripts/vault.nim~ from the chezmoi repo
+5. The ~.vault/~ directory and blobs are unchanged --- no re-encryption needed

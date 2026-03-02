@@ -1,0 +1,72 @@
+#+TITLE: Contributing
+#+OPTIONS: toc:t num:nil
+
+Development setup
+-----------------
+
+#+BEGIN_SRC bash
+git clone https://github.com/HaoZeke/nimvault.git
+cd nimvault
+
+# Build
+nimble build -y
+
+# Run tests (requires GPG)
+nimble test -y
+#+END_SRC
+
+Using pixi (manages Nim version):
+
+#+BEGIN_SRC bash
+pixi run build
+pixi run test
+#+END_SRC
+
+Building docs
+-------------
+
+#+BEGIN_SRC bash
+# Install docs dependencies
+pixi install -e docs
+
+# Build Sphinx site + Nim API docs
+pixi run -e docs docbld
+
+# Output: docs/build/
+#+END_SRC
+
+Project structure
+-----------------
+
+#+BEGIN_SRC text
+src/nimvault/
+  gpg.nim        -- GPG operations, recipient resolution
+  manifest.nim   -- VaultEntry type, manifest load/save
+  commands.nim   -- seal, unseal, add, rm, mv, list, status
+  cli.nim        -- cligen-based dispatch
+src/nimvault.nim -- library root (re-exports + isMainModule)
+tests/
+  tmanifest.nim  -- manifest unit tests
+  tgpg.nim       -- GPG unit tests (throwaway key)
+  tcommands.nim  -- integration tests (temp git repo)
+#+END_SRC
+
+Tests require a working GPG installation. Test suites create throwaway
+GPG keys in temporary directories and clean up after themselves.
+
+Changelog
+---------
+
+Use towncrier fragments in ~docs/newsfragments/~:
+
+#+BEGIN_SRC bash
+# Create a fragment (types: added, changed, fixed, removed, security, dev, misc)
+echo "Added seal command parallelism" > docs/newsfragments/42.added
+#+END_SRC
+
+Linting
+-------
+
+#+BEGIN_SRC bash
+uvx prek run -a -vvv
+#+END_SRC

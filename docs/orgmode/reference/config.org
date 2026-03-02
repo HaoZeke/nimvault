@@ -1,0 +1,47 @@
+#+TITLE: Configuration
+#+OPTIONS: toc:t num:t
+
+Recipient resolution
+====================
+
+nimvault resolves the GPG recipient through a 3-tier chain. The first
+non-empty value wins:
+
+1. **CLI flag**: ~--recipient KEY~ (or ~-r KEY~)
+2. **Environment variable**: ~NIMVAULT_GPG_RECIPIENT~
+3. **Config file**: ~.vault/config~ in the git repository root
+
+If none are set, nimvault exits with an error.
+
+Config file format
+==================
+
+~.vault/config~ uses a simple key-value format:
+
+#+BEGIN_SRC ini
+# Lines starting with # are comments
+recipient = 9CCCE36402CB49A6
+#+END_SRC
+
+Only the ~recipient~ key is currently recognized. Whitespace around the
+~=~ is ignored.
+
+GPG key ID
+==========
+
+The recipient value is any string GPG accepts as a recipient identifier:
+
+- Long key ID: ~9CCCE36402CB49A6~
+- Fingerprint: ~ABCD1234...~
+- Email: ~user@example.com~
+
+Long key IDs are recommended for unambiguous matching.
+
+Finding your key ID
+-------------------
+
+#+BEGIN_SRC bash
+gpg --list-keys --keyid-format long
+# pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
+#                ^^^^^^^^^^^^^^^^ this is the key ID
+#+END_SRC
