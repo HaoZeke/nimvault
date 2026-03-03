@@ -151,3 +151,24 @@ blob hashes are verified before any plaintext is written to disk:
 
 This design prevents forgery, ciphertext swapping, path traversal, and release
 of unverified plaintext.
+
+** Known limitations
+
+These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.
+
+*** Metadata leakage
+
+Because the tool encrypts files individually, an observer analyzing the Git
+history can track update frequency, ciphertext size variations, and file count
+over time. GPG ciphertext sizes correlate with plaintext sizes, so relative file
+sizes are visible. Wrapping the entire payload in an archive before encryption
+would conceal this metadata but sacrifice Git delta efficiency. For most personal
+vault use cases this trade-off is acceptable.
+
+*** No forward secrecy
+
+The vault relies on a single static GPG keypair. If an adversary archives your
+public Git history today and your private key is compromised in the future, they
+can retroactively decrypt every historical version of the vault. Mitigation
+options include periodic key rotation (re-seal the vault with a new key, then
+force-push to remove old history) or storing the repository in a private remote.
