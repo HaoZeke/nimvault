@@ -1,7 +1,7 @@
 ## Vault commands: seal, unseal, add, rm, mv, list, status.
 ##
 ## All commands take a repo path and GpgConfig.
-## Parallel GPG via startProcess is preserved from the original implementation.
+## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal]
 import ./gpg, ./manifest
@@ -15,35 +15,63 @@ proc banner(msg: string) =
   echo line
 
 proc unseal*(repo: string, cfg: GpgConfig) =
-  let entries = loadManifest(repo)
+  let entries = loadManifest(repo, verifySig = true)
   if entries.len == 0:
     echo "vault is empty"
     return
 
   banner("Unsealing vault ...")
 
-  # Launch all GPG decrypts in parallel
+  # Verify blob integrity and path safety before any decryption
+  for e in entries:
+    let inPath = vaultDir(repo) / &"{e.id}.gpg"
+    if not fileExists(inPath):
+      stderr.writeLine &"FATAL: vault blob missing: {inPath}"
+      quit 1
+    # Path traversal check
+    if not isPathSafe(cfg, e.path):
+      stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
+      stderr.writeLine &"  Resolved: {normalizedPath(resolvePath(cfg, e.path))}"
+      stderr.writeLine "  Possible directory traversal attack."
+      quit 1
+    # Blob hash verification (v2 manifests only)
+    if e.hash.len > 0:
+      let actualHash = sha256sum(inPath)
+      if actualHash != e.hash:
+        stderr.writeLine &"FATAL: integrity check failed for {e.path}"
+        stderr.writeLine &"  Expected: {e.hash}"
+        stderr.writeLine &"  Actual:   {actualHash}"
+        stderr.writeLine "  The vault blob may have been tampered with."
+        quit 1
+
+  # Launch all GPG decrypts in parallel (direct invocation, no shell)
   var procs: seq[(VaultEntry, Process)] = @[]
   for e in entries:
     let inPath = vaultDir(repo) / &"{e.id}.gpg"
     let outPath = resolvePath(cfg, e.path)
-    if not fileExists(inPath):
-      stderr.writeLine &"FATAL: vault blob missing: {inPath}"
-      quit 1
     createDir(outPath.parentDir)
-    let p = startProcess("/bin/bash",
-      args = ["-c", &"gpg --batch --yes --quiet -d -o {outPath.quoteShell} {inPath.quoteShell}"],
-      options = {poUsePath, poStdErrToStdOut})
+    let p = startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+               "-d", "-o", outPath, inPath],
+      options = {poUsePath})
     procs.add((e, p))
 
-  # Collect results
+  # Collect results and check signatures
   for (e, p) in procs:
-    let output = p.outputStream.readAll()
+    discard p.outputStream.readAll()  # empty with -o
+    let status = p.errorStream.readAll()
     let code = p.waitForExit()
     p.close()
     if code != 0:
-      stderr.writeLine &"FATAL: failed to unseal {e.path}\n{output}"
+      stderr.writeLine &"FATAL: failed to unseal {e.path}\n{status}"
       quit 1
+    if "BADSIG" in status or "ERRSIG" in status:
+      stderr.writeLine &"FATAL: bad signature on blob for {e.path}"
+      stderr.writeLine "  The vault may have been tampered with."
+      quit 1
+    if "GOODSIG" notin status:
+      stderr.writeLine &"WARNING: unsigned blob for {e.path}"
+      stderr.writeLine "  Run 'nimvault seal' to re-encrypt with signatures."
     setFilePermissions(resolvePath(cfg, e.path), {fpUserRead, fpUserWrite})
     echo &"  {e.path}"
 
@@ -65,14 +93,15 @@ proc seal*(repo: string, cfg: GpgConfig) =
       stderr.writeLine "  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry."
       quit 1
 
-  # Launch all GPG encrypts in parallel
+  # Launch all GPG encrypts in parallel (direct invocation, no shell)
   var procs: seq[(VaultEntry, Process)] = @[]
   for e in entries:
     let inPath = resolvePath(cfg, e.path)
     let outPath = vaultDir(repo) / &"{e.id}.gpg"
-    let p = startProcess("/bin/bash",
-      args = ["-c", &"gpg --batch --yes --quiet --trust-model always " &
-        &"-e -r {cfg.recipient} --set-filename \"\" -o {outPath.quoteShell} {inPath.quoteShell}"],
+    let p = startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
+               "--sign", "-e", "-r", cfg.recipient,
+               "--set-filename", "", "-o", outPath, inPath],
       options = {poUsePath, poStdErrToStdOut})
     procs.add((e, p))
 
@@ -86,8 +115,14 @@ proc seal*(repo: string, cfg: GpgConfig) =
       quit 1
     echo &"  {e.path}"
 
-  # Re-encrypt manifest
-  saveManifest(repo, entries, cfg)
+  # Compute blob hashes and save v2 manifest
+  var hashedEntries: seq[VaultEntry] = @[]
+  for e in entries:
+    let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+    hashedEntries.add((e.id, e.path, sha256sum(blobPath)))
+
+  # Re-encrypt manifest (signed, v2 with hashes)
+  saveManifest(repo, hashedEntries, cfg)
   echo &"\nSealed {entries.len} file(s)."
 
 proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
@@ -114,8 +149,16 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
       stderr.writeLine &"Already in vault: {storedPath}"
       quit 1
 
-  # Append to .gitignore if not already ignored (unless --no-gitignore)
+  # Check if file is already tracked by git (prevents plaintext leaks)
   let checkPath = if cfg.root.len > 0: storedPath else: absPath
+  let (_, lsCode) = execCmdEx(&"git ls-files --error-unmatch {checkPath.quoteShell}",
+    workingDir = repo)
+  if lsCode == 0:
+    stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
+    stderr.writeLine &"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first."
+    quit 1
+
+  # Append to .gitignore if not already ignored (unless --no-gitignore)
   let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
     workingDir = repo)
   if gitCheckCode != 0:
@@ -137,7 +180,8 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   banner(&"Adding {storedPath} to vault ...")
   createDir(vaultDir(repo))
   gpgEncrypt(cfg, absPath, outPath)
-  entries.add((id, storedPath))
+  let hash = sha256sum(outPath)
+  entries.add((id, storedPath, hash))
   saveManifest(repo, entries, cfg)
   echo &"  id:   {id}"
   echo &"  path: {storedPath}"

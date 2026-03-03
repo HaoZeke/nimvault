@@ -79,7 +79,7 @@ block initGpgConfigFromFile:
   echo "PASS: initGpgConfig from config file"
 
 block encryptDecryptCycle:
-  ## Encrypt then decrypt, verify round-trip.
+  ## Encrypt (signed) then decrypt with verification, verify round-trip.
   let cfg = GpgConfig(recipient: keyId)
   let tmpDir = createTempDir("nimvault_ed_", "_test")
   let plainIn = tmpDir / "secret.txt"
@@ -91,15 +91,15 @@ block encryptDecryptCycle:
   gpgEncrypt(cfg, plainIn, encrypted)
   doAssert fileExists(encrypted), "Encrypted file should exist"
 
-  gpgDecrypt(encrypted, plainOut)
+  gpgDecrypt(encrypted, plainOut, verifySig = true)
   doAssert fileExists(plainOut), "Decrypted file should exist"
   doAssert readFile(plainOut) == testContent, "Round-trip content mismatch"
 
   removeDir(tmpDir)
-  echo "PASS: encrypt/decrypt cycle"
+  echo "PASS: encrypt/decrypt cycle (signed)"
 
 block decryptToString:
-  ## gpgDecryptToString returns content directly.
+  ## gpgDecryptToString returns content directly with signature verification.
   let cfg = GpgConfig(recipient: keyId)
   let tmpDir = createTempDir("nimvault_ds_", "_test")
   let plainIn = tmpDir / "data.txt"
@@ -108,11 +108,11 @@ block decryptToString:
 
   writeFile(plainIn, testContent)
   gpgEncrypt(cfg, plainIn, encrypted)
-  let result = gpgDecryptToString(encrypted)
+  let result = gpgDecryptToString(encrypted, verifySig = true)
   doAssert result == testContent, "gpgDecryptToString content mismatch"
 
   removeDir(tmpDir)
-  echo "PASS: gpgDecryptToString"
+  echo "PASS: gpgDecryptToString (verified)"
 
 block sha256sumTest:
   let tmpDir = createTempDir("nimvault_sha_", "_test")

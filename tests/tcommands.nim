@@ -2,6 +2,7 @@
 ##
 ## Creates a temp git repo with a throwaway GPG key, runs full workflow:
 ## add -> list -> seal -> status -> unseal -> rm
+## Also tests blob hash integrity and path safety.
 
 import std/[os, osproc, strutils, strformat, tempfiles]
 import nimvault/[gpg, manifest, commands]
@@ -62,7 +63,9 @@ block addFile:
   doAssert resolvePath(cfg, entries[0].path) == secretPath
   let blobPath = vaultDir(repo) / &"{entries[0].id}.gpg"
   doAssert fileExists(blobPath), "Blob file should exist"
-  echo "PASS: add"
+  # v2: hash should be populated
+  doAssert entries[0].hash.len == 64, "Blob hash should be SHA-256 (64 hex chars)"
+  echo "PASS: add (with blob hash)"
 
 block listEntries:
   list(repo, cfg)
@@ -70,20 +73,24 @@ block listEntries:
 
 block sealEntries:
   seal(repo, cfg)
-  echo "PASS: seal"
+  # Verify manifest is v2 with hashes
+  let entries = loadManifest(repo)
+  doAssert entries.len == 1
+  doAssert entries[0].hash.len == 64, "Seal should produce v2 manifest with hashes"
+  echo "PASS: seal (signed, v2 manifest)"
 
 block statusCheck:
   status(repo, cfg)
   echo "PASS: status (visual check above)"
 
 block unsealEntries:
-  # Remove the plaintext, then unseal
+  # Remove the plaintext, then unseal (with signature + hash verification)
   removeFile(secretPath)
   doAssert not fileExists(secretPath)
   unseal(repo, cfg)
   doAssert fileExists(secretPath), "Secret should be restored after unseal"
   doAssert readFile(secretPath) == "sk-test-12345-secret-key"
-  echo "PASS: unseal round-trip"
+  echo "PASS: unseal round-trip (verified)"
 
 block moveEntry:
   let newPath = secretDir / "api_key_moved.txt"
@@ -119,6 +126,7 @@ block rootRelativeWorkflow:
   doAssert entries.len == 1
   doAssert entries[0].path == "conda/CLAUDE.md", &"Expected relative path, got: {entries[0].path}"
   doAssert resolvePath(rootCfg, entries[0].path) == rootSecretPath
+  doAssert entries[0].hash.len == 64, "Root-relative add should store blob hash"
   echo "PASS: root-relative add"
 
   # Seal and unseal round-trip
@@ -146,6 +154,15 @@ block rootRelativeWorkflow:
 
   removeDir(rootRepo)
   echo "PASS: root-relative workflow (pixi_envs parity)"
+
+# --- Path safety tests ---
+block pathSafetyInUnseal:
+  ## Verify that isPathSafe catches traversal attempts.
+  let safeCfg = GpgConfig(recipient: keyId, root: "/tmp/fakerepo")
+  doAssert isPathSafe(safeCfg, "secrets/key.txt"), "Normal path should pass"
+  doAssert not isPathSafe(safeCfg, "../../etc/passwd"), "Traversal should fail"
+  doAssert not isPathSafe(safeCfg, "../outside/file"), "Parent escape should fail"
+  echo "PASS: path safety validation"
 
 # Cleanup
 removeDir(repo)

@@ -1,0 +1,1 @@
+``unseal`` now validates that resolved paths stay within expected boundaries (repo root or ``$HOME``), preventing directory traversal via crafted manifest entries.
