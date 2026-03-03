@@ -71,7 +71,7 @@ proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
 
 proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path.
-  ## When verifySig is true, warns on missing signatures and fails on bad ones.
+  ## When verifySig is true, fails on bad or missing signatures (fail-closed).
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
              "-d", "-o", outPath, inPath],
@@ -90,8 +90,9 @@ proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
       stderr.writeLine "  The file may have been tampered with."
       quit 1
     if "GOODSIG" notin status:
-      stderr.writeLine &"WARNING: no signature on {inPath}"
-      stderr.writeLine "  Run 'nimvault seal' to re-encrypt with signatures."
+      stderr.writeLine &"FATAL: missing signature on {inPath}"
+      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
+      quit 1
 
 proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   ## Decrypt a GPG-encrypted file and return contents as a string.
@@ -114,8 +115,9 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
       stderr.writeLine "  The file may have been tampered with."
       quit 1
     if "GOODSIG" notin status:
-      stderr.writeLine &"WARNING: no signature on {inPath}"
-      stderr.writeLine "  Run 'nimvault seal' to re-encrypt with signatures."
+      stderr.writeLine &"FATAL: missing signature on {inPath}"
+      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
+      quit 1
 
 proc sha256sum*(path: string): string =
   ## Returns hex SHA-256 digest of a file.

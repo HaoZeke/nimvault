@@ -14,8 +14,9 @@ proc banner(msg: string) =
   styledEcho fgCyan, styleBright, "  ", msg
   echo line
 
-proc unseal*(repo: string, cfg: GpgConfig) =
-  let entries = loadManifest(repo, verifySig = true)
+proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
+  let requireSig = not allowUnsigned
+  let entries = loadManifest(repo, verifySig = requireSig)
   if entries.len == 0:
     echo "vault is empty"
     return
@@ -34,7 +35,7 @@ proc unseal*(repo: string, cfg: GpgConfig) =
       stderr.writeLine &"  Resolved: {normalizedPath(resolvePath(cfg, e.path))}"
       stderr.writeLine "  Possible directory traversal attack."
       quit 1
-    # Blob hash verification (v2 manifests only)
+    # Blob hash verification
     if e.hash.len > 0:
       let actualHash = sha256sum(inPath)
       if actualHash != e.hash:
@@ -43,37 +44,66 @@ proc unseal*(repo: string, cfg: GpgConfig) =
         stderr.writeLine &"  Actual:   {actualHash}"
         stderr.writeLine "  The vault blob may have been tampered with."
         quit 1
+    elif requireSig:
+      stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
+      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
+      quit 1
 
-  # Launch all GPG decrypts in parallel (direct invocation, no shell)
-  var procs: seq[(VaultEntry, Process)] = @[]
+  # Decrypt to temp files first (never directly to final path).
+  # This prevents release of unverified plaintext: GPG streams content to
+  # disk before the signature check completes, so writing to the final
+  # path would expose unverified data even if we abort on BADSIG.
+  var tmpPaths: seq[string] = @[]
+  var procs: seq[(VaultEntry, string, Process)] = @[]
   for e in entries:
     let inPath = vaultDir(repo) / &"{e.id}.gpg"
     let outPath = resolvePath(cfg, e.path)
+    let tmpPath = outPath & ".nimvault-tmp"
+    tmpPaths.add(tmpPath)
     createDir(outPath.parentDir)
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", outPath, inPath],
+               "-d", "-o", tmpPath, inPath],
       options = {poUsePath})
-    procs.add((e, p))
+    procs.add((e, tmpPath, p))
 
-  # Collect results and check signatures
-  for (e, p) in procs:
+  # Collect all results before touching any final paths
+  type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string, code: int]
+  var results: seq[DecryptResult] = @[]
+  for (e, tmpPath, p) in procs:
     discard p.outputStream.readAll()  # empty with -o
     let status = p.errorStream.readAll()
     let code = p.waitForExit()
     p.close()
-    if code != 0:
-      stderr.writeLine &"FATAL: failed to unseal {e.path}\n{status}"
-      quit 1
-    if "BADSIG" in status or "ERRSIG" in status:
-      stderr.writeLine &"FATAL: bad signature on blob for {e.path}"
-      stderr.writeLine "  The vault may have been tampered with."
-      quit 1
-    if "GOODSIG" notin status:
-      stderr.writeLine &"WARNING: unsigned blob for {e.path}"
-      stderr.writeLine "  Run 'nimvault seal' to re-encrypt with signatures."
-    setFilePermissions(resolvePath(cfg, e.path), {fpUserRead, fpUserWrite})
-    echo &"  {e.path}"
+    results.add((e, tmpPath, status, code))
+
+  # Abort helper: remove all temp files before exiting
+  template abortUnseal(msgs: varargs[string]) =
+    for tp in tmpPaths:
+      if fileExists(tp): removeFile(tp)
+    for msg in msgs:
+      stderr.writeLine msg
+    quit 1
+
+  # Verify all decryption results and signatures
+  for r in results:
+    if r.code != 0:
+      abortUnseal(&"FATAL: failed to unseal {r.entry.path}", r.status)
+    # Bad signatures are always fatal (even with --allow-unsigned)
+    if "BADSIG" in r.status or "ERRSIG" in r.status:
+      abortUnseal(&"FATAL: bad signature on blob for {r.entry.path}",
+        "  The vault may have been tampered with.")
+    # Missing signatures: fatal unless --allow-unsigned
+    if requireSig and "GOODSIG" notin r.status:
+      abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
+        "  Pass --allow-unsigned to accept unsigned vaults.")
+
+  # All verified: atomically move temp files to final locations
+  for r in results:
+    let outPath = resolvePath(cfg, r.entry.path)
+    moveFile(r.tmpPath, outPath)
+    setFilePermissions(outPath, {fpUserRead, fpUserWrite})
+    echo &"  {r.entry.path}"
 
   echo &"\nUnsealed {entries.len} file(s)."
 

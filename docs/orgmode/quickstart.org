@@ -26,7 +26,7 @@ Verify:
 
 #+begin_src bash
 nimvault --version
-# nimvault 0.1.0
+# nimvault 0.2.0
 #+end_src
 
 * Set up a test repo

@@ -4,7 +4,7 @@
 * Overview
 
 The manifest maps opaque blob IDs to target file paths. It is stored encrypted
-at ~.vault/manifest.gpg~ and decrypted on every operation.
+and GPG-signed at ~.vault/manifest.gpg~ and decrypted on every operation.
 
 #+begin_src dot :file ../images/manifest_flow.svg :exports results
 digraph G {
@@ -13,20 +13,36 @@ digraph G {
     edge [fontname="Jost", fontsize=11, color="#004D40"];
     graph [fontname="Jost"];
 
-    manifest_gpg [label="manifest.gpg\n(encrypted on disk)"];
-    gpg [label="GPG decrypt", fillcolor="#FF655D", fontcolor="white"];
+    manifest_gpg [label="manifest.gpg\n(signed + encrypted)"];
+    gpg [label="GPG decrypt\n+ verify sig", fillcolor="#FF655D", fontcolor="white"];
     tsv [label="Plaintext TSV\n(in memory)"];
-    entries [label="seq[VaultEntry]\nid + path tuples"];
+    entries [label="seq[VaultEntry]\nid + path + hash"];
 
     manifest_gpg -> gpg -> tsv -> entries;
     entries -> tsv [label="saveManifest", style=dashed];
-    tsv -> gpg [label="re-encrypt", style=dashed];
+    tsv -> gpg [label="sign + encrypt", style=dashed];
 }
 #+end_src
 
 * Format
 
-The plaintext manifest is a TSV (tab-separated values) file:
+** v2 (current, since 0.2.0)
+
+#+begin_src text
+# vault-manifest-v2
+a1b2c3d4e5f67890	~/.secret/api_key.txt	e3b0c44298fc1c14...
+fedcba9876543210	~/.config/app/credentials.json	a7ffc6f8bf1ed766...
+#+end_src
+
+- First line: version header (~# vault-manifest-v2~)
+- Subsequent lines: ~<id>\t<path>\t<sha256>~
+- Blank lines and lines starting with ~#~ are ignored
+
+The ~sha256~ field contains the SHA-256 hex digest of the corresponding
+~.vault/<id>.gpg~ blob. On ~unseal~, each blob hash is verified before
+decryption.
+
+** v1 (legacy, pre-0.2.0)
 
 #+begin_src text
 # vault-manifest-v1
@@ -34,32 +50,51 @@ a1b2c3d4e5f67890	~/.secret/api_key.txt
 fedcba9876543210	~/.config/app/credentials.json
 #+end_src
 
-- First line: version header (~# vault-manifest-v1~)
-- Subsequent lines: ~<id>\t<path>~
-- Blank lines and lines starting with ~#~ are ignored
+v1 manifests lack blob hashes and are unsigned. ~unseal~ rejects v1 manifests by
+default. Pass ~--allow-unsigned~ to accept them, then run ~seal~ to upgrade to
+v2.
 
 ** Fields
 
 - ~id~ :: 16-character lowercase hex string, generated from 8 bytes of
   cryptographic randomness (~std/sysrand~).
 - ~path~ :: Target file path. Paths under ~$HOME~ are stored with =~/= prefix
-  for portability across machines. Absolute paths outside ~$HOME~ are stored
+  for portability across machines. In root-relative mode, paths are stored
+  relative to the configured root. Absolute paths outside ~$HOME~ are stored
   as-is.
+- ~hash~ :: (v2 only) SHA-256 hex digest of the encrypted ~.gpg~ blob. Used for
+  integrity verification on ~unseal~.
 
 * Blob files
 
 Each manifest entry has a corresponding ~.vault/<id>.gpg~ file containing the
-GPG-encrypted file contents. The ~--set-filename ""~ flag is used during
-encryption to avoid leaking the original filename in GPG metadata.
+GPG-encrypted and signed file contents. The ~--set-filename ""~ flag is used
+during encryption to avoid leaking the original filename in GPG metadata.
+
+All blobs are signed with the user's default GPG key during ~seal~ and ~add~.
+
+* Integrity model
+
+The signed manifest is the integrity anchor. On ~unseal~:
+
+1. The manifest is decrypted and its GPG signature is verified
+2. Each blob's SHA-256 hash is compared against the manifest
+3. Blobs are decrypted to temporary files
+4. Each blob's GPG signature is verified
+5. Only after all checks pass are files moved to their final paths
+
+This prevents forgery (attacker encrypts a malicious blob to your public key),
+ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
+substitutes a v1 unsigned manifest).
 
 * Directory layout
 
 #+begin_src text
 .vault/
   config            # recipient configuration (plaintext)
-  manifest.gpg      # encrypted manifest
-  a1b2c3d4e5f67890.gpg  # encrypted blob
-  fedcba9876543210.gpg  # encrypted blob
+  manifest.gpg      # signed + encrypted manifest
+  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
+  fedcba9876543210.gpg  # signed + encrypted blob
 #+end_src
 
 Only ~.vault/~ is committed to git. The plaintext files live at their target
