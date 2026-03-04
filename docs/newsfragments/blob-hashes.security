@@ -1,0 +1,1 @@
+Manifest v2 stores SHA-256 hashes of encrypted blobs. ``unseal`` verifies each blob hash before decryption, preventing ciphertext forgery and swap attacks.

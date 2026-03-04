@@ -1,0 +1,1 @@
+``nimvault add`` now refuses files already tracked by git, preventing accidental plaintext commits alongside encrypted vault blobs.

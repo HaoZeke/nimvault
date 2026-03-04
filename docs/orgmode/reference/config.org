@@ -45,10 +45,16 @@ digraph G {
 #+begin_src ini
 # Lines starting with # are comments
 recipient = 9CCCE36402CB49A6
+root = repo
 #+end_src
 
-Only the ~recipient~ key is currently recognized. Whitespace around the ~=~ is
-ignored.
+Whitespace around the ~=~ is ignored. Recognized keys:
+
+- ~recipient~ :: GPG key ID for encryption (required).
+- ~root~ :: Base directory for path resolution. When set to ~repo~, paths are
+  stored relative to the repository root. When set to a relative path, it is
+  resolved against the repository root. When absent, paths use =~/= prefix for
+  portability.
 
 * GPG key ID
 

@@ -10,7 +10,7 @@ import cligen
 from ./gpg import GpgConfig, initGpgConfig
 from ./commands import nil
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 proc repoRoot(): string =
   let (output, code) = execCmdEx("git rev-parse --show-toplevel")
@@ -29,10 +29,10 @@ proc doSeal(recipient = "") =
   let (repo, cfg) = resolve(recipient)
   commands.seal(repo, cfg)
 
-proc doUnseal(recipient = "") =
+proc doUnseal(recipient = "", allowUnsigned = false) =
   ## Decrypt all vault entries to their target locations.
   let (repo, cfg) = resolve(recipient)
-  commands.unseal(repo, cfg)
+  commands.unseal(repo, cfg, allowUnsigned)
 
 proc doAdd(path: seq[string], recipient = "", noGitignore = false) =
   ## Add a file to the vault by its target path.
@@ -76,7 +76,8 @@ proc main*() =
     ["multi", doc = "GPG-encrypted opaque-blob vault with hidden filenames",
      cmdName = "nimvault"],
     [doSeal, cmdName = "seal", help = {"recipient": rh}],
-    [doUnseal, cmdName = "unseal", help = {"recipient": rh}],
+    [doUnseal, cmdName = "unseal", help = {"recipient": rh,
+      "allowUnsigned": "accept unsigned v1 vaults (skips signature checks)"}],
     [doAdd, cmdName = "add", positional = "path",
      help = {"path": "file path to add", "recipient": rh,
              "noGitignore": "skip auto-append to .gitignore"}],

@@ -1,6 +1,6 @@
 ## GPG encryption/decryption and recipient resolution.
 
-import std/[os, osproc, strutils, strformat]
+import std/[os, osproc, strutils, strformat, streams]
 
 type
   GpgConfig* = object
@@ -54,30 +54,79 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
     root: root,
   )
 
-proc run(cmd: string, workDir = ""): tuple[output: string, exitCode: int] =
-  execCmdEx(cmd, workingDir = if workDir.len > 0: workDir else: getCurrentDir())
-
-proc runOrDie(cmd: string, workDir = ""): string =
-  let (output, code) = run(cmd, workDir)
-  if code != 0:
-    stderr.writeLine &"FATAL: command failed (exit {code}):\n  {cmd}\n{output}"
-    quit 1
-  result = output.strip()
-
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
-  ## Encrypt a file using GPG with the configured recipient.
-  discard runOrDie(&"gpg --batch --yes --quiet --trust-model always " &
-    &"-e -r {cfg.recipient} --set-filename \"\" -o {outPath.quoteShell} {inPath.quoteShell}")
+  ## Encrypt and sign a file using GPG with the configured recipient.
+  ## Uses direct process invocation (no shell) to prevent command injection.
+  let p = startProcess("gpg",
+    args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
+             "--sign", "-e", "-r", cfg.recipient,
+             "--set-filename", "", "-o", outPath, inPath],
+    options = {poUsePath, poStdErrToStdOut})
+  let output = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0:
+    stderr.writeLine &"FATAL: gpg encrypt failed (exit {code}):\n{output}"
+    quit 1
 
-proc gpgDecrypt*(inPath, outPath: string) =
+proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path.
-  discard runOrDie(&"gpg --batch --yes --quiet -d -o {outPath.quoteShell} {inPath.quoteShell}")
+  ## When verifySig is true, fails on bad or missing signatures (fail-closed).
+  let p = startProcess("gpg",
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+             "-d", "-o", outPath, inPath],
+    options = {poUsePath})
+  discard p.outputStream.readAll()  # empty with -o
+  let status = p.errorStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0:
+    stderr.writeLine &"FATAL: gpg decrypt failed (exit {code})"
+    stderr.writeLine status
+    quit 1
+  if verifySig:
+    if "BADSIG" in status or "ERRSIG" in status:
+      stderr.writeLine &"FATAL: signature verification failed for {inPath}"
+      stderr.writeLine "  The file may have been tampered with."
+      quit 1
+    if "GOODSIG" notin status:
+      stderr.writeLine &"FATAL: missing signature on {inPath}"
+      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
+      quit 1
 
-proc gpgDecryptToString*(inPath: string): string =
+proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   ## Decrypt a GPG-encrypted file and return contents as a string.
-  runOrDie(&"gpg --batch --yes --quiet -d {inPath.quoteShell}")
+  ## Reads stdout for content and stderr for signature status.
+  ## Pipe-safe for typical vault entries (< 64KB).
+  let p = startProcess("gpg",
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
+    options = {poUsePath})
+  result = p.outputStream.readAll().strip()
+  let status = p.errorStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0:
+    stderr.writeLine &"FATAL: gpg decrypt failed (exit {code})"
+    stderr.writeLine status
+    quit 1
+  if verifySig:
+    if "BADSIG" in status or "ERRSIG" in status:
+      stderr.writeLine &"FATAL: signature verification failed for {inPath}"
+      stderr.writeLine "  The file may have been tampered with."
+      quit 1
+    if "GOODSIG" notin status:
+      stderr.writeLine &"FATAL: missing signature on {inPath}"
+      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
+      quit 1
 
 proc sha256sum*(path: string): string =
   ## Returns hex SHA-256 digest of a file.
-  let res = runOrDie(&"sha256sum {path.quoteShell}")
-  result = res.split(' ')[0]
+  let p = startProcess("sha256sum", args = @[path],
+    options = {poUsePath, poStdErrToStdOut})
+  let output = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0:
+    stderr.writeLine &"FATAL: sha256sum failed for {path}\n{output}"
+    quit 1
+  result = output.strip().split(' ')[0]
