@@ -111,8 +111,13 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#nimvault-0-1-0-2026-03-02">nimvault 0.1.0 (2026-03-02)</a><ul>
+<li><a class="reference internal" href="#nimvault-0-2-0-2026-03-04">nimvault 0.2.0 (2026-03-04)</a><ul>
+<li><a class="reference internal" href="#security">Security</a></li>
 <li><a class="reference internal" href="#added">Added</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nimvault-0-1-0-2026-03-02">nimvault 0.1.0 (2026-03-02)</a><ul>
+<li><a class="reference internal" href="#id1">Added</a></li>
 <li><a class="reference internal" href="#developer">Developer</a></li>
 </ul>
 </li>
@@ -206,10 +211,32 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
-<section id="nimvault-0-1-0-2026-03-02">
-<h2>nimvault 0.1.0 (2026-03-02)<a class="headerlink" href="#nimvault-0-1-0-2026-03-02" title="Link to this heading">¶</a></h2>
+<section id="nimvault-0-2-0-2026-03-04">
+<h2>nimvault 0.2.0 (2026-03-04)<a class="headerlink" href="#nimvault-0-2-0-2026-03-04" title="Link to this heading">¶</a></h2>
+<section id="security">
+<h3>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> now decrypts to temporary files and verifies all signatures before moving any file to its final path. This prevents release of unverified plaintext, where GPG streams decrypted content to disk before the signature check completes. (atomic-unseal)</p></li>
+<li><p>Manifest v2 stores SHA-256 hashes of encrypted blobs. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> verifies each blob hash before decryption, preventing ciphertext forgery and swap attacks. (blob-hashes)</p></li>
+<li><p>All vault blobs and the manifest are now GPG-signed during <code class="docutils literal notranslate"><span class="pre">seal</span></code>. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, signature verification detects tampered or forged blobs (warns for unsigned legacy vaults). (blob-signing)</p></li>
+<li><p>All GPG invocations now use direct process execution instead of shell interpolation, eliminating command injection via malicious <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> recipient values. (cmd-injection)</p></li>
+<li><p>Missing signatures and blob hashes are now fatal by default on <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, preventing downgrade attacks where an attacker replaces v2 manifests with unsigned v1 payloads. Pass <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code> to explicitly accept legacy unsigned vaults. (downgrade-attack)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> now refuses files already tracked by git, preventing accidental plaintext commits alongside encrypted vault blobs. (git-tracked)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> now validates that resolved paths stay within expected boundaries (repo root or <code class="docutils literal notranslate"><span class="pre">$HOME</span></code>), preventing directory traversal via crafted manifest entries. (path-traversal)</p></li>
+</ul>
+</section>
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> now automatically appends the stored path to <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> when the file is not already ignored, preventing accidental plaintext commits. (auto-gitignore)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> flag for <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> to opt out of automatic <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> updates and get a warning instead. (no-gitignore-flag)</p></li>
+</ul>
+</section>
+</section>
+<section id="nimvault-0-1-0-2026-03-02">
+<h2>nimvault 0.1.0 (2026-03-02)<a class="headerlink" href="#nimvault-0-1-0-2026-03-02" title="Link to this heading">¶</a></h2>
+<section id="id1">
+<h3>Added<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>GPG-encrypted opaque-blob vault with randomized filenames and encrypted manifest.</p></li>
 <li><p>3-tier recipient resolution: CLI flag, environment variable, <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> file.</p></li>
