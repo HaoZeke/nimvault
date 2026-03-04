@@ -1,1 +1,0 @@
-``unseal`` now decrypts to temporary files and verifies all signatures before moving any file to its final path. This prevents release of unverified plaintext, where GPG streams decrypted content to disk before the signature check completes.

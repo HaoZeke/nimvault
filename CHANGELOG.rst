@@ -4,6 +4,28 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.2.0 (2026-03-04)
+===========================
+
+Security
+--------
+
+- ``unseal`` now decrypts to temporary files and verifies all signatures before moving any file to its final path. This prevents release of unverified plaintext, where GPG streams decrypted content to disk before the signature check completes. (atomic-unseal)
+- Manifest v2 stores SHA-256 hashes of encrypted blobs. ``unseal`` verifies each blob hash before decryption, preventing ciphertext forgery and swap attacks. (blob-hashes)
+- All vault blobs and the manifest are now GPG-signed during ``seal``. On ``unseal``, signature verification detects tampered or forged blobs (warns for unsigned legacy vaults). (blob-signing)
+- All GPG invocations now use direct process execution instead of shell interpolation, eliminating command injection via malicious ``.vault/config`` recipient values. (cmd-injection)
+- Missing signatures and blob hashes are now fatal by default on ``unseal``, preventing downgrade attacks where an attacker replaces v2 manifests with unsigned v1 payloads. Pass ``--allow-unsigned`` to explicitly accept legacy unsigned vaults. (downgrade-attack)
+- ``nimvault add`` now refuses files already tracked by git, preventing accidental plaintext commits alongside encrypted vault blobs. (git-tracked)
+- ``unseal`` now validates that resolved paths stay within expected boundaries (repo root or ``$HOME``), preventing directory traversal via crafted manifest entries. (path-traversal)
+
+
+Added
+-----
+
+- ``nimvault add`` now automatically appends the stored path to ``.gitignore`` when the file is not already ignored, preventing accidental plaintext commits. (auto-gitignore)
+- ``--no-gitignore`` flag for ``nimvault add`` to opt out of automatic ``.gitignore`` updates and get a warning instead. (no-gitignore-flag)
+
+
 nimvault 0.1.0 (2026-03-02)
 ===========================
 

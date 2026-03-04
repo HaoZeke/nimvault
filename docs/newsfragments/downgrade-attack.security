@@ -1,1 +1,0 @@
-Missing signatures and blob hashes are now fatal by default on ``unseal``, preventing downgrade attacks where an attacker replaces v2 manifests with unsigned v1 payloads. Pass ``--allow-unsigned`` to explicitly accept legacy unsigned vaults.

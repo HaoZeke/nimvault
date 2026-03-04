@@ -1,1 +1,0 @@
-All vault blobs and the manifest are now GPG-signed during ``seal``. On ``unseal``, signature verification detects tampered or forged blobs (warns for unsigned legacy vaults).

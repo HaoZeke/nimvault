@@ -1,1 +1,0 @@
-All GPG invocations now use direct process execution instead of shell interpolation, eliminating command injection via malicious ``.vault/config`` recipient values.

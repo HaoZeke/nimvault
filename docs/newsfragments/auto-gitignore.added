@@ -1,1 +1,0 @@
-``nimvault add`` now automatically appends the stored path to ``.gitignore`` when the file is not already ignored, preventing accidental plaintext commits.

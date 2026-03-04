@@ -1,1 +1,0 @@
-``--no-gitignore`` flag for ``nimvault add`` to opt out of automatic ``.gitignore`` updates and get a warning instead.
