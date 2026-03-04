@@ -1,8 +1,8 @@
 nimTitle	commands	nimvault/commands.html	module src/nimvault/commands		0
-nim	unseal	nimvault/commands.html#unseal,string,GpgConfig	proc unseal(repo: string; cfg: GpgConfig)		17
-nim	seal	nimvault/commands.html#seal,string,GpgConfig	proc seal(repo: string; cfg: GpgConfig)		52
-nim	add	nimvault/commands.html#add,string,string,GpgConfig	proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)		93
-nim	remove	nimvault/commands.html#remove,string,string,GpgConfig	proc remove(repo, path: string; cfg: GpgConfig)		146
-nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		177
-nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		222
-nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		230
+nim	unseal	nimvault/commands.html#unseal,string,GpgConfig	proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)		17
+nim	seal	nimvault/commands.html#seal,string,GpgConfig	proc seal(repo: string; cfg: GpgConfig)		110
+nim	add	nimvault/commands.html#add,string,string,GpgConfig	proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)		158
+nim	remove	nimvault/commands.html#remove,string,string,GpgConfig	proc remove(repo, path: string; cfg: GpgConfig)		220
+nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		251
+nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		296
+nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		304

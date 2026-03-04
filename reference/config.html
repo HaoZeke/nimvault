@@ -240,10 +240,19 @@ value wins:</p>
 <p><code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> uses a simple key-value format:</p>
 <div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Lines starting with # are comments</span>
 </span><span data-line="2"><span class="na">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">9CCCE36402CB49A6</span>
+</span><span data-line="3"><span class="na">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">repo</span>
 </span></pre></div>
 </div>
-<p>Only the <code class="docutils literal notranslate"><span class="pre">recipient</span></code> key is currently recognized. Whitespace around the <code class="docutils literal notranslate"><span class="pre">=</span></code> is
-ignored.</p>
+<p>Whitespace around the <code class="docutils literal notranslate"><span class="pre">=</span></code> is ignored. Recognized keys:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">recipient</span></code></dt><dd><p>GPG key ID for encryption (required).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">root</span></code></dt><dd><p>Base directory for path resolution. When set to <code class="docutils literal notranslate"><span class="pre">repo</span></code>, paths are
+stored relative to the repository root. When set to a relative path, it is
+resolved against the repository root. When absent, paths use <code class="docutils literal notranslate"><span class="pre">~/</span></code> prefix for
+portability.</p>
+</dd>
+</dl>
 </section>
 <section id="gpg-key-id">
 <h2><a class="toc-backref" href="#id4" role="doc-backlink">3 GPG key ID</a><a class="headerlink" href="#gpg-key-id" title="Link to this heading">¶</a></h2>

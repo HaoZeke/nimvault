@@ -30,9 +30,11 @@ subcommand is a thin wrapper around the corresponding ``commands`` module proc.
 
     nimvault seal [--recipient KEY]
 
-Encrypt all vault entries from their plaintext locations. Reads each file at the
-path stored in the manifest, encrypts it in parallel via ``startProcess``, and
-writes ``.vault/<id>.gpg`` blobs. Re-encrypts the manifest after sealing.
+Encrypt and sign all vault entries from their plaintext locations. Reads each
+file at the path stored in the manifest, encrypts and GPG-signs it in parallel
+via ``startProcess``, and writes ``.vault/<id>.gpg`` blobs. Computes SHA-256 hashes
+of each blob and writes a v2 manifest with integrity data. Re-encrypts and signs
+the manifest after sealing.
 
 Exits non-zero if any plaintext file is missing.
 
@@ -41,28 +43,65 @@ Exits non-zero if any plaintext file is missing.
 
 .. code:: text
 
-    nimvault unseal [--recipient KEY]
+    nimvault unseal [--recipient KEY] [--allow-unsigned]
 
-Decrypt all vault blobs to their target paths in parallel. Creates parent
-directories as needed. Sets file permissions to 600 (owner read/write only).
+Decrypt all vault blobs to their target paths. Before decryption, verifies:
 
-Exits non-zero if any blob file is missing.
+- Manifest GPG signature
+
+- Blob SHA-256 hashes against manifest
+
+- Path safety (no directory traversal)
+
+Decryption writes to temporary files first. Only after all signatures and hashes
+pass does the tool move files to their final paths. This atomic approach prevents
+release of unverified plaintext.
+
+Creates parent directories as needed. Sets file permissions to 600 (owner
+read/write only).
+
+Exits non-zero if:
+
+- Any blob file is missing
+
+- Any blob hash does not match the manifest
+
+- Any signature is invalid or missing (unless ``--allow-unsigned``)
+
+- Any target path escapes the expected boundary
+
+2.2.1 ``--allow-unsigned``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
+(``BADSIG``) are still fatal even with this flag. Use this only for migrating
+legacy vaults created before v0.2.0. Run ``nimvault seal`` afterwards to upgrade
+the vault to signed v2 format.
 
 2.3 add
 ~~~~~~~
 
 .. code:: text
 
-    nimvault add <path> [--recipient KEY]
+    nimvault add <path> [--recipient KEY] [--no-gitignore]
 
 Add a file to the vault. The path is stored with ``~/`` for portability. Generates
-a random 16-char hex ID, encrypts the file, and appends to the manifest.
+a random 16-char hex ID, encrypts and signs the file, computes a SHA-256 blob
+hash, and appends to the manifest.
+
+Checks ``git ls-files`` to verify the file is not already tracked by git. If the
+file is tracked, exits with an error instructing the user to untrack it first.
+
+Appends the file path to ``.gitignore`` unless ``--no-gitignore`` is passed or the
+path is already gitignored.
 
 Exits non-zero if:
 
 - The file does not exist
 
 - The file is already in the vault
+
+- The file is tracked by git
 
 2.4 rm
 ~~~~~~
@@ -134,10 +173,55 @@ against decrypted blobs:
 
 .. table::
 
-    +------+----------------------------------------------------+
-    | Code | Meaning                                            |
-    +======+====================================================+
-    |    0 | Success                                            |
-    +------+----------------------------------------------------+
-    |    1 | Error (missing file, GPG failure, not in git repo) |
-    +------+----------------------------------------------------+
+    +------+--------------------------------------------------------------------+
+    | Code | Meaning                                                            |
+    +======+====================================================================+
+    |    0 | Success                                                            |
+    +------+--------------------------------------------------------------------+
+    |    1 | Error (missing file, GPG failure, integrity check, traversal, etc) |
+    +------+--------------------------------------------------------------------+
+
+5 Security model
+----------------
+
+All encryption operations also GPG-sign the payload. On ``unseal``, signatures and
+blob hashes are verified before any plaintext is written to disk:
+
+1. Manifest signature is checked during decryption
+
+2. Blob SHA-256 hashes are compared against the manifest
+
+3. Target paths are validated against directory traversal
+
+4. Blobs are decrypted to temporary files
+
+5. Signatures are verified on each blob
+
+6. Only after all checks pass are files moved to their final paths
+
+This design prevents forgery, ciphertext swapping, path traversal, and release
+of unverified plaintext.
+
+5.1 Known limitations
+~~~~~~~~~~~~~~~~~~~~~
+
+These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.
+
+5.1.1 Metadata leakage
+^^^^^^^^^^^^^^^^^^^^^^
+
+Because the tool encrypts files individually, an observer analyzing the Git
+history can track update frequency, ciphertext size variations, and file count
+over time. GPG ciphertext sizes correlate with plaintext sizes, so relative file
+sizes are visible. Wrapping the entire payload in an archive before encryption
+would conceal this metadata but sacrifice Git delta efficiency. For most personal
+vault use cases this trade-off is acceptable.
+
+5.1.2 No forward secrecy
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The vault relies on a single static GPG keypair. If an adversary archives your
+public Git history today and your private key is compromised in the future, they
+can retroactively decrypt every historical version of the vault. Mitigation
+options include periodic key rotation (re-seal the vault with a new key, then
+force-push to remove old history) or storing the repository in a private remote.

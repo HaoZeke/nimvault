@@ -114,7 +114,10 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#top-level-usage">1 Top-level usage</a></li>
 <li><a class="reference internal" href="#commands">2 Commands</a><ul>
 <li><a class="reference internal" href="#seal">2.1 seal</a></li>
-<li><a class="reference internal" href="#unseal">2.2 unseal</a></li>
+<li><a class="reference internal" href="#unseal">2.2 unseal</a><ul>
+<li><a class="reference internal" href="#allow-unsigned">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#add">2.3 add</a></li>
 <li><a class="reference internal" href="#rm">2.4 rm</a></li>
 <li><a class="reference internal" href="#mv">2.5 mv</a></li>
@@ -124,6 +127,14 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><a class="reference internal" href="#global-options">3 Global options</a></li>
 <li><a class="reference internal" href="#exit-codes">4 Exit codes</a></li>
+<li><a class="reference internal" href="#security-model">5 Security model</a><ul>
+<li><a class="reference internal" href="#known-limitations">5.1 Known limitations</a><ul>
+<li><a class="reference internal" href="#metadata-leakage">5.1.1 Metadata leakage</a></li>
+<li><a class="reference internal" href="#no-forward-secrecy">5.1.2 No forward secrecy</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -223,16 +234,30 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#commands" id="id3">2 Commands</a></p>
 <ul>
 <li><p><a class="reference internal" href="#seal" id="id4">2.1 seal</a></p></li>
-<li><p><a class="reference internal" href="#unseal" id="id5">2.2 unseal</a></p></li>
-<li><p><a class="reference internal" href="#add" id="id6">2.3 add</a></p></li>
-<li><p><a class="reference internal" href="#rm" id="id7">2.4 rm</a></p></li>
-<li><p><a class="reference internal" href="#mv" id="id8">2.5 mv</a></p></li>
-<li><p><a class="reference internal" href="#list" id="id9">2.6 list</a></p></li>
-<li><p><a class="reference internal" href="#status" id="id10">2.7 status</a></p></li>
+<li><p><a class="reference internal" href="#unseal" id="id5">2.2 unseal</a></p>
+<ul>
+<li><p><a class="reference internal" href="#allow-unsigned" id="id6">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#global-options" id="id11">3 Global options</a></p></li>
-<li><p><a class="reference internal" href="#exit-codes" id="id12">4 Exit codes</a></p></li>
+<li><p><a class="reference internal" href="#add" id="id7">2.3 add</a></p></li>
+<li><p><a class="reference internal" href="#rm" id="id8">2.4 rm</a></p></li>
+<li><p><a class="reference internal" href="#mv" id="id9">2.5 mv</a></p></li>
+<li><p><a class="reference internal" href="#list" id="id10">2.6 list</a></p></li>
+<li><p><a class="reference internal" href="#status" id="id11">2.7 status</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#global-options" id="id12">3 Global options</a></p></li>
+<li><p><a class="reference internal" href="#exit-codes" id="id13">4 Exit codes</a></p></li>
+<li><p><a class="reference internal" href="#security-model" id="id14">5 Security model</a></p>
+<ul>
+<li><p><a class="reference internal" href="#known-limitations" id="id15">5.1 Known limitations</a></p>
+<ul>
+<li><p><a class="reference internal" href="#metadata-leakage" id="id16">5.1.1 Metadata leakage</a></p></li>
+<li><p><a class="reference internal" href="#no-forward-secrecy" id="id17">5.1.2 No forward secrecy</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -255,35 +280,65 @@ subcommand is a thin wrapper around the corresponding <code class="docutils lite
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault seal [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Encrypt all vault entries from their plaintext locations. Reads each file at the
-path stored in the manifest, encrypts it in parallel via <code class="docutils literal notranslate"><span class="pre">startProcess</span></code>, and
-writes <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> blobs. Re-encrypts the manifest after sealing.</p>
+<p>Encrypt and sign all vault entries from their plaintext locations. Reads each
+file at the path stored in the manifest, encrypts and GPG-signs it in parallel
+via <code class="docutils literal notranslate"><span class="pre">startProcess</span></code>, and writes <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> blobs. Computes SHA-256 hashes
+of each blob and writes a v2 manifest with integrity data. Re-encrypts and signs
+the manifest after sealing.</p>
 <p>Exits non-zero if any plaintext file is missing.</p>
 </section>
 <section id="unseal">
 <h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 unseal</a><a class="headerlink" href="#unseal" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [--recipient KEY]
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [--recipient KEY] [--allow-unsigned]
 </span></pre></div>
 </div>
-<p>Decrypt all vault blobs to their target paths in parallel. Creates parent
-directories as needed. Sets file permissions to 600 (owner read/write only).</p>
-<p>Exits non-zero if any blob file is missing.</p>
+<p>Decrypt all vault blobs to their target paths. Before decryption, verifies:</p>
+<ul class="simple">
+<li><p>Manifest GPG signature</p></li>
+<li><p>Blob SHA-256 hashes against manifest</p></li>
+<li><p>Path safety (no directory traversal)</p></li>
+</ul>
+<p>Decryption writes to temporary files first. Only after all signatures and hashes
+pass does the tool move files to their final paths. This atomic approach prevents
+release of unverified plaintext.</p>
+<p>Creates parent directories as needed. Sets file permissions to 600 (owner
+read/write only).</p>
+<p>Exits non-zero if:</p>
+<ul class="simple">
+<li><p>Any blob file is missing</p></li>
+<li><p>Any blob hash does not match the manifest</p></li>
+<li><p>Any signature is invalid or missing (unless <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>)</p></li>
+<li><p>Any target path escapes the expected boundary</p></li>
+</ul>
+<section id="allow-unsigned">
+<h4><a class="toc-backref" href="#id6" role="doc-backlink">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a><a class="headerlink" href="#allow-unsigned" title="Link to this heading">¶</a></h4>
+<p>Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
+(<code class="docutils literal notranslate"><span class="pre">BADSIG</span></code>) are still fatal even with this flag. Use this only for migrating
+legacy vaults created before v0.2.0. Run <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">seal</span></code> afterwards to upgrade
+the vault to signed v2 format.</p>
+</section>
 </section>
 <section id="add">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">2.3 add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault add &lt;path&gt; [--recipient KEY]
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">2.3 add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault add &lt;path&gt; [--recipient KEY] [--no-gitignore]
 </span></pre></div>
 </div>
 <p>Add a file to the vault. The path is stored with <code class="docutils literal notranslate"><span class="pre">~/</span></code> for portability. Generates
-a random 16-char hex ID, encrypts the file, and appends to the manifest.</p>
+a random 16-char hex ID, encrypts and signs the file, computes a SHA-256 blob
+hash, and appends to the manifest.</p>
+<p>Checks <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">ls-files</span></code> to verify the file is not already tracked by git. If the
+file is tracked, exits with an error instructing the user to untrack it first.</p>
+<p>Appends the file path to <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> unless <code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> is passed or the
+path is already gitignored.</p>
 <p>Exits non-zero if:</p>
 <ul class="simple">
 <li><p>The file does not exist</p></li>
 <li><p>The file is already in the vault</p></li>
+<li><p>The file is tracked by git</p></li>
 </ul>
 </section>
 <section id="rm">
-<h3><a class="toc-backref" href="#id7" role="doc-backlink">2.4 rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">2.4 rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault rm &lt;path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
@@ -291,7 +346,7 @@ a random 16-char hex ID, encrypts the file, and appends to the manifest.</p>
 manifest entry. Does NOT delete the local plaintext file.</p>
 </section>
 <section id="mv">
-<h3><a class="toc-backref" href="#id8" role="doc-backlink">2.5 mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">2.5 mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault mv &lt;old-path&gt; &lt;new-path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
@@ -300,14 +355,14 @@ is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.</p>
 </section>
 <section id="list">
-<h3><a class="toc-backref" href="#id9" role="doc-backlink">2.6 list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">2.6 list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault list [--recipient KEY]
 </span></pre></div>
 </div>
 <p>List all vault entries showing their ID and target path.</p>
 </section>
 <section id="status">
-<h3><a class="toc-backref" href="#id10" role="doc-backlink">2.7 status</a><a class="headerlink" href="#status" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">2.7 status</a><a class="headerlink" href="#status" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault status [--recipient KEY]
 </span></pre></div>
 </div>
@@ -326,7 +381,7 @@ against decrypted blobs:</p>
 </section>
 </section>
 <section id="global-options">
-<h2><a class="toc-backref" href="#id11" role="doc-backlink">3 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">3 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code></dt><dd><p>GPG recipient key ID. Overrides env var and config file.
 See <a class="reference external" href="config.rst">configuration</a> for the full resolution chain.</p>
@@ -338,7 +393,7 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 </dl>
 </section>
 <section id="exit-codes">
-<h2><a class="toc-backref" href="#id12" role="doc-backlink">4 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">4 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper docutils container">
 <table class="docutils align-default">
 <thead>
@@ -351,11 +406,47 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 <td><p>Success</p></td>
 </tr>
 <tr class="row-odd"><td><p>1</p></td>
-<td><p>Error (missing file, GPG failure, not in git repo)</p></td>
+<td><p>Error (missing file, GPG failure, integrity check, traversal, etc)</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+</section>
+<section id="security-model">
+<h2><a class="toc-backref" href="#id14" role="doc-backlink">5 Security model</a><a class="headerlink" href="#security-model" title="Link to this heading">¶</a></h2>
+<p>All encryption operations also GPG-sign the payload. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, signatures and
+blob hashes are verified before any plaintext is written to disk:</p>
+<ol class="arabic simple">
+<li><p>Manifest signature is checked during decryption</p></li>
+<li><p>Blob SHA-256 hashes are compared against the manifest</p></li>
+<li><p>Target paths are validated against directory traversal</p></li>
+<li><p>Blobs are decrypted to temporary files</p></li>
+<li><p>Signatures are verified on each blob</p></li>
+<li><p>Only after all checks pass are files moved to their final paths</p></li>
+</ol>
+<p>This design prevents forgery, ciphertext swapping, path traversal, and release
+of unverified plaintext.</p>
+<section id="known-limitations">
+<h3><a class="toc-backref" href="#id15" role="doc-backlink">5.1 Known limitations</a><a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h3>
+<p>These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.</p>
+<section id="metadata-leakage">
+<h4><a class="toc-backref" href="#id16" role="doc-backlink">5.1.1 Metadata leakage</a><a class="headerlink" href="#metadata-leakage" title="Link to this heading">¶</a></h4>
+<p>Because the tool encrypts files individually, an observer analyzing the Git
+history can track update frequency, ciphertext size variations, and file count
+over time. GPG ciphertext sizes correlate with plaintext sizes, so relative file
+sizes are visible. Wrapping the entire payload in an archive before encryption
+would conceal this metadata but sacrifice Git delta efficiency. For most personal
+vault use cases this trade-off is acceptable.</p>
+</section>
+<section id="no-forward-secrecy">
+<h4><a class="toc-backref" href="#id17" role="doc-backlink">5.1.2 No forward secrecy</a><a class="headerlink" href="#no-forward-secrecy" title="Link to this heading">¶</a></h4>
+<p>The vault relies on a single static GPG keypair. If an adversary archives your
+public Git history today and your private key is compromised in the future, they
+can retroactively decrypt every historical version of the vault. Mitigation
+options include periodic key rotation (re-seal the vault with a new key, then
+force-push to remove old history) or storing the repository in a private remote.</p>
+</section>
+</section>
 </section>
 </section>
 

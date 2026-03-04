@@ -239,6 +239,10 @@ names.</p>
 <dt>Opaque filenames</dt><dd><p>Each file is assigned a 16-character random hex ID
 generated from 8 bytes of cryptographic randomness (<code class="docutils literal notranslate"><span class="pre">std/sysrand</span></code>).</p>
 </dd>
+<dt>Signed and verified</dt><dd><p>All blobs and the manifest are GPG-signed. <code class="docutils literal notranslate"><span class="pre">unseal</span></code>
+verifies signatures and SHA-256 blob hashes before writing any plaintext to
+disk (atomic, fail-closed).</p>
+</dd>
 <dt>Parallel GPG</dt><dd><p>Encryption and decryption spawn GPG processes in parallel via
 <code class="docutils literal notranslate"><span class="pre">startProcess</span></code> for fast batch operations.</p>
 </dd>

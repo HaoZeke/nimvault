@@ -37,6 +37,11 @@ Opaque filenames
     Each file is assigned a 16-character random hex ID
     generated from 8 bytes of cryptographic randomness (``std/sysrand``).
 
+Signed and verified
+    All blobs and the manifest are GPG-signed. ``unseal``
+    verifies signatures and SHA-256 blob hashes before writing any plaintext to
+    disk (atomic, fail-closed).
+
 Parallel GPG
     Encryption and decryption spawn GPG processes in parallel via
     ``startProcess`` for fast batch operations.

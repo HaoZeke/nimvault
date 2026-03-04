@@ -44,11 +44,11 @@
           </ul></dd>
 <dt><a name="gpgDecrypt" href="#gpgDecrypt"><span>gpgDecrypt:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="gpg: proc gpgDecrypt(inPath, outPath: string)" href="nimvault/gpg.html#gpgDecrypt%2Cstring%2Cstring">gpg: proc gpgDecrypt(inPath, outPath: string)</a></li>
+          data-doc-search-tag="gpg: proc gpgDecrypt(inPath, outPath: string; verifySig = false)" href="nimvault/gpg.html#gpgDecrypt%2Cstring%2Cstring">gpg: proc gpgDecrypt(inPath, outPath: string; verifySig = false)</a></li>
           </ul></dd>
 <dt><a name="gpgDecryptToString" href="#gpgDecryptToString"><span>gpgDecryptToString:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="gpg: proc gpgDecryptToString(inPath: string): string" href="nimvault/gpg.html#gpgDecryptToString%2Cstring">gpg: proc gpgDecryptToString(inPath: string): string</a></li>
+          data-doc-search-tag="gpg: proc gpgDecryptToString(inPath: string; verifySig = false): string" href="nimvault/gpg.html#gpgDecryptToString%2Cstring">gpg: proc gpgDecryptToString(inPath: string; verifySig = false): string</a></li>
           </ul></dd>
 <dt><a name="gpgEncrypt" href="#gpgEncrypt"><span>gpgEncrypt:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -58,13 +58,17 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig" href="nimvault/gpg.html#initGpgConfig%2Cstring%2Cstring">gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig</a></li>
           </ul></dd>
+<dt><a name="isPathSafe" href="#isPathSafe"><span>isPathSafe:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool" href="nimvault/manifest.html#isPathSafe%2CGpgConfig%2Cstring">manifest: proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool</a></li>
+          </ul></dd>
 <dt><a name="list" href="#list"><span>list:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc list(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#list%2Cstring%2CGpgConfig">commands: proc list(repo: string; cfg: GpgConfig)</a></li>
           </ul></dd>
 <dt><a name="loadManifest" href="#loadManifest"><span>loadManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="manifest: proc loadManifest(repo: string): seq[VaultEntry]" href="nimvault/manifest.html#loadManifest%2Cstring">manifest: proc loadManifest(repo: string): seq[VaultEntry]</a></li>
+          data-doc-search-tag="manifest: proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]" href="nimvault/manifest.html#loadManifest%2Cstring">manifest: proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]</a></li>
           </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -108,7 +112,7 @@
           </ul></dd>
 <dt><a name="unseal" href="#unseal"><span>unseal:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc unseal(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#unseal%2Cstring%2CGpgConfig">commands: proc unseal(repo: string; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="commands: proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)" href="nimvault/commands.html#unseal%2Cstring%2CGpgConfig">commands: proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)</a></li>
           </ul></dd>
 <dt><a name="vaultDir" href="#vaultDir"><span>vaultDir:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -122,7 +126,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-02 10:43:13 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-04 00:03:14 UTC</small>
       </div>
     </div>
   </div>
