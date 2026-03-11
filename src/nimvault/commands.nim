@@ -53,29 +53,34 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   # This prevents release of unverified plaintext: GPG streams content to
   # disk before the signature check completes, so writing to the final
   # path would expose unverified data even if we abort on BADSIG.
+  # Process in batches to avoid GPG memory exhaustion.
+  const batchSize = 4
   var tmpPaths: seq[string] = @[]
-  var procs: seq[(VaultEntry, string, Process)] = @[]
-  for e in entries:
-    let inPath = vaultDir(repo) / &"{e.id}.gpg"
-    let outPath = resolvePath(cfg, e.path)
-    let tmpPath = outPath & ".nimvault-tmp"
-    tmpPaths.add(tmpPath)
-    createDir(outPath.parentDir)
-    let p = startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", tmpPath, inPath],
-      options = {poUsePath})
-    procs.add((e, tmpPath, p))
-
-  # Collect all results before touching any final paths
   type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string, code: int]
   var results: seq[DecryptResult] = @[]
-  for (e, tmpPath, p) in procs:
-    discard p.outputStream.readAll()  # empty with -o
-    let status = p.errorStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    results.add((e, tmpPath, status, code))
+  for batchStart in countup(0, entries.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, entries.high)
+    var procs: seq[(VaultEntry, string, Process)] = @[]
+    for i in batchStart .. batchEnd:
+      let e = entries[i]
+      let inPath = vaultDir(repo) / &"{e.id}.gpg"
+      let outPath = resolvePath(cfg, e.path)
+      let tmpPath = outPath & ".nimvault-tmp"
+      tmpPaths.add(tmpPath)
+      createDir(outPath.parentDir)
+      let p = startProcess("gpg",
+        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "-o", tmpPath, inPath],
+        options = {poUsePath})
+      procs.add((e, tmpPath, p))
+
+    # Collect results for this batch
+    for (e, tmpPath, p) in procs:
+      discard p.outputStream.readAll()  # empty with -o
+      let status = p.errorStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      results.add((e, tmpPath, status, code))
 
   # Abort helper: remove all temp files before exiting
   template abortUnseal(msgs: varargs[string]) =
@@ -123,27 +128,33 @@ proc seal*(repo: string, cfg: GpgConfig) =
       stderr.writeLine "  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry."
       quit 1
 
-  # Launch all GPG encrypts in parallel (direct invocation, no shell)
-  var procs: seq[(VaultEntry, Process)] = @[]
-  for e in entries:
-    let inPath = resolvePath(cfg, e.path)
-    let outPath = vaultDir(repo) / &"{e.id}.gpg"
-    let p = startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
-               "--sign", "-e", "-r", cfg.recipient,
-               "--set-filename", "", "-o", outPath, inPath],
-      options = {poUsePath, poStdErrToStdOut})
-    procs.add((e, p))
+  # Launch GPG encrypts in batches to avoid memory exhaustion.
+  # GPG sign+encrypt is memory-intensive; launching all at once can trigger
+  # "Cannot allocate memory" on systems with many vault entries.
+  const batchSize = 4
+  for batchStart in countup(0, entries.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, entries.high)
+    var procs: seq[(VaultEntry, Process)] = @[]
+    for i in batchStart .. batchEnd:
+      let e = entries[i]
+      let inPath = resolvePath(cfg, e.path)
+      let outPath = vaultDir(repo) / &"{e.id}.gpg"
+      let p = startProcess("gpg",
+        args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
+                 "--sign", "-e", "-r", cfg.recipient,
+                 "--set-filename", "", "-o", outPath, inPath],
+        options = {poUsePath, poStdErrToStdOut})
+      procs.add((e, p))
 
-  # Collect results
-  for (e, p) in procs:
-    let output = p.outputStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      stderr.writeLine &"FATAL: failed to seal {e.path}\n{output}"
-      quit 1
-    echo &"  {e.path}"
+    # Collect results for this batch
+    for (e, p) in procs:
+      let output = p.outputStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      if code != 0:
+        stderr.writeLine &"FATAL: failed to seal {e.path}\n{output}"
+        quit 1
+      echo &"  {e.path}"
 
   # Compute blob hashes and save v2 manifest
   var hashedEntries: seq[VaultEntry] = @[]
