@@ -101,13 +101,18 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#nimvault-0-3-0-2026-03-11">nimvault 0.3.0 (2026-03-11)</a><ul>
+<li><a class="reference internal" href="#added">Added</a></li>
+<li><a class="reference internal" href="#fixed">Fixed</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#nimvault-0-2-0-2026-03-04">nimvault 0.2.0 (2026-03-04)</a><ul>
 <li><a class="reference internal" href="#security">Security</a></li>
-<li><a class="reference internal" href="#added">Added</a></li>
+<li><a class="reference internal" href="#id1">Added</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-1-0-2026-03-02">nimvault 0.1.0 (2026-03-02)</a><ul>
-<li><a class="reference internal" href="#id1">Added</a></li>
+<li><a class="reference internal" href="#id2">Added</a></li>
 <li><a class="reference internal" href="#developer">Developer</a></li>
 </ul>
 </li>
@@ -201,6 +206,21 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
+<section id="nimvault-0-3-0-2026-03-11">
+<h2>nimvault 0.3.0 (2026-03-11)<a class="headerlink" href="#nimvault-0-3-0-2026-03-11" title="Link to this heading">¶</a></h2>
+<section id="added">
+<h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">install</span></code> task builds in release mode and installs to <code class="docutils literal notranslate"><span class="pre">~/.local/bin/nimvault</span></code>. (pixi-install)</p></li>
+</ul>
+</section>
+<section id="fixed">
+<h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">seal</span></code> and <code class="docutils literal notranslate"><span class="pre">unseal</span></code> now process GPG operations in batches of 4 instead of launching all processes simultaneously, preventing “Cannot allocate memory” failures on systems with many vault entries and high memory pressure. (batch-gpg)</p></li>
+</ul>
+</section>
+</section>
 <section id="nimvault-0-2-0-2026-03-04">
 <h2>nimvault 0.2.0 (2026-03-04)<a class="headerlink" href="#nimvault-0-2-0-2026-03-04" title="Link to this heading">¶</a></h2>
 <section id="security">
@@ -215,8 +235,8 @@ data-aria-dark="Switch to auto color mode">
 <li><p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> now validates that resolved paths stay within expected boundaries (repo root or <code class="docutils literal notranslate"><span class="pre">$HOME</span></code>), preventing directory traversal via crafted manifest entries. (path-traversal)</p></li>
 </ul>
 </section>
-<section id="added">
-<h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<section id="id1">
+<h3>Added<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> now automatically appends the stored path to <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> when the file is not already ignored, preventing accidental plaintext commits. (auto-gitignore)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> flag for <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> to opt out of automatic <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> updates and get a warning instead. (no-gitignore-flag)</p></li>
@@ -225,8 +245,8 @@ data-aria-dark="Switch to auto color mode">
 </section>
 <section id="nimvault-0-1-0-2026-03-02">
 <h2>nimvault 0.1.0 (2026-03-02)<a class="headerlink" href="#nimvault-0-1-0-2026-03-02" title="Link to this heading">¶</a></h2>
-<section id="id1">
-<h3>Added<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<section id="id2">
+<h3>Added<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>GPG-encrypted opaque-blob vault with randomized filenames and encrypted manifest.</p></li>
 <li><p>3-tier recipient resolution: CLI flag, environment variable, <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> file.</p></li>
