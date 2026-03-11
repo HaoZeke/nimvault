@@ -4,6 +4,21 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.3.0 (2026-03-11)
+===========================
+
+Added
+-----
+
+- ``pixi run install`` task builds in release mode and installs to ``~/.local/bin/nimvault``. (pixi-install)
+
+
+Fixed
+-----
+
+- ``seal`` and ``unseal`` now process GPG operations in batches of 4 instead of launching all processes simultaneously, preventing "Cannot allocate memory" failures on systems with many vault entries and high memory pressure. (batch-gpg)
+
+
 nimvault 0.2.0 (2026-03-04)
 ===========================
 

@@ -10,7 +10,7 @@ import cligen
 from ./gpg import GpgConfig, initGpgConfig
 from ./commands import nil
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 proc repoRoot(): string =
   let (output, code) = execCmdEx("git rev-parse --show-toplevel")

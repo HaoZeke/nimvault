@@ -2,7 +2,7 @@
 directory = "docs/newsfragments"
 filename = "CHANGELOG.rst"
 name = "nimvault"
-version = "0.2.0"
+version = "0.3.0"
 
 [[tool.towncrier.type]]
 directory = "security"

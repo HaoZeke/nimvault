@@ -2,7 +2,7 @@
 channels = ["conda-forge"]
 name = "nimvault"
 platforms = ["linux-64"]
-version = "0.2.0"
+version = "0.3.0"
 
 [dependencies]
 nim = ">=2.0.0,<3"
