@@ -10,6 +10,7 @@ nim = ">=2.0.0,<3"
 [tasks]
 build = "nimble build -y"
 test = "nimble test -y"
+install = "nimble build -y -d:release && install -Dm755 bin/nimvault ~/.local/bin/nimvault"
 
 [feature.docs.dependencies]
 python = ">=3.12,<4"
