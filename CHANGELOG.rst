@@ -10,8 +10,9 @@ nimvault 0.4.0 (2026-03-12)
 Added
 -----
 
-- ``nimvault add-dir`` command to recursively add directories to the vault. Each file in the directory tree is encrypted individually with its own blob ID, and the directory structure is preserved via relative paths in the manifest. Useful for encrypting directories like ``.beads``, ``.env``, or any folder with multiple sensitive files. (directory-support)
-- Manifest v3 format adds an ``EntryKind`` field (file/dir) to support future directory entry types. Backward compatible with v1 and v2 manifests. (manifest-v3)
+- New ``add-dir`` command to recursively add directories to the vault. Each file in a directory tree is encrypted individually with its own blob ID, and the directory structure is preserved via relative paths in the manifest. (#12)
+- Manifest v3 format with ``EntryKind`` field to distinguish files from directories. Backward compatible with v1 and v2 manifests. (#13)
+
 
 nimvault 0.3.0 (2026-03-11)
 ===========================

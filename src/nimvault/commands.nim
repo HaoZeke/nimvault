@@ -245,7 +245,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
 
   # Collect all files in the directory tree (recursive)
   var filesToAdd: seq[string] = @[]
-  
+
   proc walkDirRecursive(dir: string) =
     for kind, path in walkDir(dir, relative = false):
       case kind
@@ -253,7 +253,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
         filesToAdd.add(path)
       of pcDir, pcLinkToDir:
         walkDirRecursive(path)
-  
+
   walkDirRecursive(absDirPath)
 
   if filesToAdd.len == 0:
