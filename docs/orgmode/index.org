@@ -146,6 +146,7 @@ digraph G {
      :caption: Getting Started
 
      quickstart
+     tutorials/directory-support
 #+end_export
 
 * Guides

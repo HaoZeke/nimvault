@@ -10,7 +10,7 @@ import cligen
 from ./gpg import GpgConfig, initGpgConfig
 from ./commands import nil
 
-const Version = "0.3.0"
+const Version = "0.4.0"
 
 proc repoRoot(): string =
   let (output, code) = execCmdEx("git rev-parse --show-toplevel")
@@ -41,6 +41,14 @@ proc doAdd(path: seq[string], recipient = "", noGitignore = false) =
     quit 1
   let (repo, cfg) = resolve(recipient)
   commands.add(repo, path[0], cfg, noGitignore)
+
+proc doAddDir(path: seq[string], recipient = "", noGitignore = false) =
+  ## Add a directory recursively to the vault.
+  if path.len != 1:
+    stderr.writeLine "usage: nimvault add-dir <directory>"
+    quit 1
+  let (repo, cfg) = resolve(recipient)
+  commands.addDir(repo, path[0], cfg, noGitignore)
 
 proc doRm(path: seq[string], recipient = "") =
   ## Remove a file from the vault.
@@ -80,6 +88,9 @@ proc main*() =
       "allowUnsigned": "accept unsigned v1 vaults (skips signature checks)"}],
     [doAdd, cmdName = "add", positional = "path",
      help = {"path": "file path to add", "recipient": rh,
+             "noGitignore": "skip auto-append to .gitignore"}],
+    [doAddDir, cmdName = "add-dir", positional = "path",
+     help = {"path": "directory path to add recursively", "recipient": rh,
              "noGitignore": "skip auto-append to .gitignore"}],
     [doRm, cmdName = "rm", positional = "path",
      help = {"path": "file path to remove", "recipient": rh}],

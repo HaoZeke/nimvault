@@ -130,6 +130,7 @@ rmdir ~/.config/myapp 2>/dev/null
 
 * Next steps
 
+- [[file:tutorials/directory-support.org][Encrypting directories]] -- add entire directories with ~add-dir~
 - [[file:howto/chezmoi.org][chezmoi integration]] -- use nimvault to encrypt dotfiles secrets
 - [[file:reference/cli.org][CLI reference]] -- all commands and flags
 - [[file:reference/config.org][Configuration]] -- recipient resolution chain

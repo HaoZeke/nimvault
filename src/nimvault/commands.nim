@@ -156,13 +156,13 @@ proc seal*(repo: string, cfg: GpgConfig) =
         quit 1
       echo &"  {e.path}"
 
-  # Compute blob hashes and save v2 manifest
+  # Compute blob hashes and save v3 manifest
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
     let blobPath = vaultDir(repo) / &"{e.id}.gpg"
-    hashedEntries.add((e.id, e.path, sha256sum(blobPath)))
+    hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind))
 
-  # Re-encrypt manifest (signed, v2 with hashes)
+  # Re-encrypt manifest (signed, v3 with hashes and kind)
   saveManifest(repo, hashedEntries, cfg)
   echo &"\nSealed {entries.len} file(s)."
 
@@ -222,11 +222,90 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   createDir(vaultDir(repo))
   gpgEncrypt(cfg, absPath, outPath)
   let hash = sha256sum(outPath)
-  entries.add((id, storedPath, hash))
+  entries.add((id, storedPath, hash, ekFile))
   saveManifest(repo, entries, cfg)
   echo &"  id:   {id}"
   echo &"  path: {storedPath}"
   echo &"  blob: .vault/{id}.gpg"
+
+proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
+  ## Add a directory recursively to the vault.
+  let absDirPath = if dirPath.isAbsolute:
+    dirPath
+  elif dirPath.startsWith("~/"):
+    expandHome(dirPath)
+  elif cfg.root.len > 0:
+    cfg.root / dirPath
+  else:
+    expandHome(dirPath)
+
+  if not dirExists(absDirPath):
+    stderr.writeLine &"FATAL: directory not found: {absDirPath}"
+    quit 1
+
+  # Collect all files in the directory tree (recursive)
+  var filesToAdd: seq[string] = @[]
+  
+  proc walkDirRecursive(dir: string) =
+    for kind, path in walkDir(dir, relative = false):
+      case kind
+      of pcFile, pcLinkToFile:
+        filesToAdd.add(path)
+      of pcDir, pcLinkToDir:
+        walkDirRecursive(path)
+  
+  walkDirRecursive(absDirPath)
+
+  if filesToAdd.len == 0:
+    stderr.writeLine &"FATAL: directory is empty: {absDirPath}"
+    quit 1
+
+  banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
+  createDir(vaultDir(repo))
+
+  var entries = loadManifest(repo)
+  for filePath in filesToAdd:
+    # Check for duplicates
+    for e in entries:
+      if resolvePath(cfg, e.path) == filePath:
+        stderr.writeLine &"Already in vault: {filePath}"
+        quit 1
+
+    # Check if file is already tracked by git
+    let storedPath = storePath(cfg, filePath, repo)
+    let checkPath = if cfg.root.len > 0: storedPath else: filePath
+    let (_, lsCode) = execCmdEx(&"git ls-files --error-unmatch {checkPath.quoteShell}",
+      workingDir = repo)
+    if lsCode == 0:
+      stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
+      stderr.writeLine &"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first."
+      quit 1
+
+    # Append to .gitignore if not already ignored
+    let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
+      workingDir = repo)
+    if gitCheckCode != 0:
+      if noGitignore:
+        stderr.writeLine &"WARNING: {storedPath} is NOT gitignored"
+      else:
+        let gitignorePath = repo / ".gitignore"
+        var f: File
+        if open(f, gitignorePath, fmAppend):
+          f.writeLine(storedPath)
+          f.close()
+        else:
+          stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
+
+    # Encrypt and add to manifest
+    let id = genId()
+    let outPath = vaultDir(repo) / &"{id}.gpg"
+    gpgEncrypt(cfg, filePath, outPath)
+    let hash = sha256sum(outPath)
+    entries.add((id, storedPath, hash, ekFile))
+    echo &"  {storedPath}"
+
+  saveManifest(repo, entries, cfg)
+  echo &"\nAdded {filesToAdd.len} file(s) from directory."
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
   let absPath = if path.isAbsolute:
