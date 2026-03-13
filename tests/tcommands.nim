@@ -155,6 +155,75 @@ block rootRelativeWorkflow:
   removeDir(rootRepo)
   echo "PASS: root-relative workflow (pixi_envs parity)"
 
+# --- Directory support tests ---
+block addDirectory:
+  ## Test adding a directory recursively.
+  let dirRepo = setupTestRepo()
+  let dirCfg = GpgConfig(recipient: keyId)
+
+  # Create a directory tree with multiple files
+  let testDir = createTempDir("nimvault_testdir_", "_tmp")
+  let subDir = testDir / "subdir"
+  createDir(subDir)
+  writeFile(testDir / "file1.txt", "content 1")
+  writeFile(testDir / "file2.txt", "content 2")
+  writeFile(subDir / "file3.txt", "content 3")
+  writeFile(subDir / "file4.txt", "content 4")
+
+  # Add the directory
+  addDir(dirRepo, testDir, dirCfg)
+  var entries = loadManifest(dirRepo)
+  doAssert entries.len == 4, &"Should have 4 entries after addDir, got {entries.len}"
+  echo "PASS: addDir (4 files)"
+
+  # Verify all entries are files with hashes
+  for e in entries:
+    doAssert e.kind == ekFile, "All entries should be files"
+    doAssert e.hash.len == 64, "All entries should have SHA-256 hashes"
+
+  # Seal
+  seal(dirRepo, dirCfg)
+  entries = loadManifest(dirRepo)
+  doAssert entries.len == 4
+  echo "PASS: seal with directory entries"
+
+  # Unseal and verify
+  # First remove all plaintext files
+  removeDir(testDir)
+  createDir(testDir)
+  doAssert not fileExists(testDir / "file1.txt")
+
+  unseal(dirRepo, dirCfg)
+  doAssert fileExists(testDir / "file1.txt")
+  doAssert fileExists(testDir / "file2.txt")
+  doAssert fileExists(subDir / "file3.txt")
+  doAssert fileExists(subDir / "file4.txt")
+  doAssert readFile(testDir / "file1.txt") == "content 1"
+  doAssert readFile(subDir / "file3.txt") == "content 3"
+  echo "PASS: unseal restores directory structure"
+
+  # Remove directory from vault (recursive)
+  proc removeDirFromVault(dir: string) =
+    for kind, path in walkDir(dir, relative = false):
+      case kind
+      of pcFile, pcLinkToFile:
+        remove(dirRepo, path, dirCfg)
+      of pcDir, pcLinkToDir:
+        removeDirFromVault(path)
+      else:
+        discard
+
+  removeDirFromVault(testDir)
+
+  entries = loadManifest(dirRepo)
+  doAssert entries.len == 0, "Should have 0 entries after removing all files"
+  echo "PASS: remove all directory files"
+
+  # Cleanup
+  removeDir(testDir)
+  removeDir(dirRepo)
+  echo "PASS: directory workflow"
+
 # --- Path safety tests ---
 block pathSafetyInUnseal:
   ## Verify that isPathSafe catches traversal attempts.
@@ -169,3 +238,33 @@ removeDir(repo)
 removeDir(gpgHome)
 delEnv("GNUPGHOME")
 echo "All integration tests passed."
+
+# --- Directory security tests ---
+block directorySecurityTests:
+  ## Security tests for directory support.
+  
+  # Test path safety with nested traversal attempts
+  let secCfg = GpgConfig(recipient: keyId, root: "/tmp/fakerepo")
+  doAssert not isPathSafe(secCfg, "secrets/../../etc/passwd"), "Nested traversal should fail"
+  doAssert not isPathSafe(secCfg, "a/b/../../../etc/passwd"), "Deep nested traversal should fail"
+  doAssert isPathSafe(secCfg, "secrets/subdir/file.txt"), "Legitimate nested path should pass"
+  echo "PASS: directory path safety"
+  
+  # Test empty directory rejection
+  let emptyDirRepo = setupTestRepo()
+  let emptyDirCfg = GpgConfig(recipient: keyId)
+  let emptyTestDir = createTempDir("nimvault_empty_", "_dir")
+  
+  try:
+    var exitCode: int
+    discard execCmdEx(&"nimvault add-dir {emptyTestDir}", workingDir = emptyDirRepo)
+    # Should fail since directory is empty
+    doAssert false, "Should have rejected empty directory"
+  except:
+    discard  # Expected to fail
+  
+  removeDir(emptyTestDir)
+  removeDir(emptyDirRepo)
+  echo "PASS: empty directory rejection"
+  
+  echo "PASS: all directory security tests"

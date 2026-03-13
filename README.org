@@ -30,8 +30,13 @@ nimble build -y
 mkdir -p .vault
 echo "recipient = YOUR_KEY_ID" > .vault/config
 
-# Add files, seal, commit
+# Add a single file
 nimvault add ~/.secret/api_key.txt
+
+# Add a directory recursively (e.g., .beads, .env)
+nimvault add-dir .secrets
+
+# Seal, commit
 nimvault seal
 git add .vault/ && git commit -m "vault: add secrets"
 
@@ -43,6 +48,9 @@ nimvault status
 * Documentation
 
 Full docs at [[https://nimvault.rgoswami.me]].
+
+- [[https://nimvault.rgoswami.me/tutorials/directory-support.html][Directory tutorial]] -- encrypt directories recursively
+- [[https://nimvault.rgoswami.me/reference/cli.html][CLI reference]] -- all commands and options
 
 * License
 

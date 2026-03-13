@@ -1,0 +1,226 @@
+#+TITLE: Encrypting Directories
+#+OPTIONS: toc:nil num:nil
+
+In this tutorial you will encrypt an entire directory of sensitive files using
+~nimvault add-dir~. By the end, you will have protected a directory structure
+with multiple secrets and verified the round-trip.
+
+This is the recommended approach for directories like ~.beads~ (issue tracking),
+~.env~ (environment variables), or any folder containing multiple sensitive
+files.
+
+* Prerequisites
+
+- nimvault installed (~nimble install nimvault~)
+- A git repository with ~.vault/config~ configured
+- GPG key set up
+
+* Create a test directory
+
+Let's create a directory with nested secrets to encrypt:
+
+#+begin_src bash
+mkdir -p .secrets/tokens
+cat > .secrets/api_key.txt << EOF
+sk-test-12345-secret-key
+EOF
+
+cat > .secrets/database.conf << EOF
+DB_HOST=localhost
+DB_USER=admin
+DB_PASSWORD=supersecret123
+EOF
+
+cat > .secrets/tokens/jwt_secret.txt << EOF
+my-jwt-signing-secret
+EOF
+
+cat > .secrets/tokens/refresh_token.txt << EOF
+refresh-token-abc123
+EOF
+#+end_src
+
+* Add the directory to the vault
+
+Use ~add-dir~ to recursively add all files:
+
+#+begin_src bash
+nimvault add-dir .secrets
+#+end_src
+
+You should see:
+
+#+begin_src text
+------------------------------------------------------------------------
+  Adding directory .secrets (4 files) to vault ...
+------------------------------------------------------------------------
+  .secrets/api_key.txt
+  .secrets/database.conf
+  .secrets/tokens/jwt_secret.txt
+  .secrets/tokens/refresh_token.txt
+
+Added 4 file(s) from directory.
+#+end_src
+
+What happened:
+- Each file was encrypted individually with its own random blob ID
+- The directory structure is preserved in the manifest paths
+- All files were added to ~.gitignore~ automatically
+- The manifest was updated with all 4 entries
+
+* Seal and commit
+
+#+begin_src bash
+nimvault seal
+git add .vault/ .gitignore
+git commit -m "vault: add secrets directory"
+#+end_src
+
+Output:
+
+#+begin_src text
+------------------------------------------------------------------------
+  Sealing vault ...
+------------------------------------------------------------------------
+  .secrets/api_key.txt
+  .secrets/database.conf
+  .secrets/tokens/jwt_secret.txt
+  .secrets/tokens/refresh_token.txt
+
+Sealed 4 file(s).
+#+end_src
+
+* Verify the status
+
+#+begin_src bash
+nimvault status
+#+end_src
+
+Expected output:
+
+#+begin_src text
+------------------------------------------------------------------------
+  Vault status
+------------------------------------------------------------------------
+  [in-sync]   .secrets/api_key.txt
+  [in-sync]   .secrets/database.conf
+  [in-sync]   .secrets/tokens/jwt_secret.txt
+  [in-sync]   .secrets/tokens/refresh_token.txt
+#+end_src
+
+* Test the round-trip
+
+Remove the plaintext and restore from the vault:
+
+#+begin_src bash
+# Remove plaintext
+rm -rf .secrets
+
+# Verify deletion
+ls .secrets  # Should fail: No such file or directory
+
+# Restore from vault
+nimvault unseal
+
+# Verify restoration
+ls -R .secrets/
+cat .secrets/api_key.txt
+#+end_src
+
+Output:
+
+#+begin_src text
+------------------------------------------------------------------------
+  Unsealing vault ...
+------------------------------------------------------------------------
+  .secrets/api_key.txt
+  .secrets/database.conf
+  .secrets/tokens/jwt_secret.txt
+  .secrets/tokens/refresh_token.txt
+
+Unsealed 4 file(s).
+
+.secrets/:
+api_key.txt  database.conf  tokens/
+
+.secrets/tokens/:
+jwt_secret.txt  refresh_token.txt
+
+sk-test-12345-secret-key
+#+end_src
+
+The directory structure is fully restored.
+
+* Modify and re-seal
+
+Add a new file to the directory:
+
+#+begin_src bash
+cat > .secrets/tokens/access_token.txt << EOF
+access-token-xyz789
+EOF
+
+nimvault status
+#+end_src
+
+Output:
+
+#+begin_src text
+------------------------------------------------------------------------
+  Vault status
+------------------------------------------------------------------------
+  [in-sync]   .secrets/api_key.txt
+  [in-sync]   .secrets/database.conf
+  [in-sync]   .secrets/tokens/jwt_secret.txt
+  [in-sync]   .secrets/tokens/refresh_token.txt
+  [missing]   .secrets/tokens/access_token.txt
+#+end_src
+
+The new file shows as ~[missing]~ because it's not in the vault yet. Add it:
+
+#+begin_src bash
+nimvault add .secrets/tokens/access_token.txt
+nimvault seal
+git add .vault/ .gitignore
+git commit -m "vault: add access_token"
+#+end_src
+
+* Remove files from the vault
+
+To remove a single file from the vault (keeping the plaintext):
+
+#+begin_src bash
+nimvault rm .secrets/tokens/access_token.txt
+#+end_src
+
+To remove the entire directory from the vault, remove each file:
+
+#+begin_src bash
+nimvault rm .secrets/api_key.txt
+nimvault rm .secrets/database.conf
+nimvault rm .secrets/tokens/jwt_secret.txt
+nimvault rm .secrets/tokens/refresh_token.txt
+#+end_src
+
+* Summary
+
+You have successfully:
+1. Added a directory with nested structure to the vault
+2. Sealed and committed the encrypted blobs
+3. Tested the unseal round-trip (directory structure restored)
+4. Modified files and re-sealed
+5. Removed files from the vault
+
+* Key points
+
+- ~add-dir~ recursively adds all files in a directory tree
+- Each file gets its own encrypted blob (one ID per file)
+- Directory structure is implicit in the manifest paths
+- All existing commands (~seal~, ~unseal~, ~status~, ~rm~) work with directory entries
+- Individual files can be added or removed from a directory
+
+* Next steps
+
+- [[file:../howto/chezmoi.org][chezmoi integration]] -- use nimvault with dotfile managers
+- [[file:../reference/cli.org][CLI reference]] -- all commands and flags
+- [[file:../reference/manifest.org][Manifest format]] -- how the encrypted index works
