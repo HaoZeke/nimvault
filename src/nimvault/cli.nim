@@ -4,7 +4,7 @@
 ## name collisions (cligen macros operate on typed AST). The `cmdName`
 ## parameter maps them to the desired subcommand names.
 
-import std/[osproc, strutils]
+import std/[os, osproc, strutils]
 import cligen
 
 from ./gpg import GpgConfig, initGpgConfig
@@ -76,6 +76,33 @@ proc doStatus(recipient = "") =
   let (repo, cfg) = resolve(recipient)
   commands.status(repo, cfg)
 
+proc doScan(path: seq[string], recipient = "") =
+  ## Scan a file or directory for unvaulted secrets.
+  ##
+  ## Resolves the target's own git root (not cwd). When the target lives in
+  ## a vault-enabled repo, vaulted files are skipped; otherwise everything
+  ## is scanned. Never requires GPG config for scan-only mode.
+  let targetArg = if path.len == 0: "." else: path[0]
+  let absTarget = if targetArg.isAbsolute: targetArg
+                  elif targetArg.startsWith("~/"):
+                    getHomeDir() / targetArg[2..^1]
+                  else: absolutePath(targetArg)
+  let baseDir = if dirExists(absTarget): absTarget
+                elif fileExists(absTarget): parentDir(absTarget)
+                else: getCurrentDir()
+  let (output, code) = execCmdEx("git -C " & quoteShell(baseDir) &
+                                 " rev-parse --show-toplevel")
+  if code == 0:
+    let repo = output.strip()
+    # Try to load GPG config; if unavailable, scan without manifest skip.
+    try:
+      let cfg = initGpgConfig(recipient, repo)
+      commands.scan(repo, absTarget, cfg)
+      return
+    except CatchableError:
+      discard
+  commands.scan("", absTarget, GpgConfig())
+
 const rh = "GPG recipient key (overrides env/config)"
 
 proc main*() =
@@ -98,4 +125,7 @@ proc main*() =
      help = {"paths": "<old-path> <new-path>", "recipient": rh}],
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
+    [doScan, cmdName = "scan", positional = "path",
+     help = {"path": "file or directory to scan (default: repo root)",
+             "recipient": rh}],
   )

@@ -1,9 +1,9 @@
-## Vault commands: seal, unseal, add, rm, mv, list, status.
+## Vault commands: seal, unseal, add, rm, mv, list, status, scan.
 ##
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
-import std/[os, osproc, strutils, strformat, streams, terminal]
+import std/[os, osproc, strutils, strformat, streams, terminal, re, sets]
 import ./gpg, ./manifest
 
 proc banner(msg: string) =
@@ -390,6 +390,125 @@ proc list*(repo: string, cfg: GpgConfig) =
     return
   for e in entries:
     echo &"  {e.id}  {e.path}"
+
+const BinaryExts = [
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff",
+  ".pdf", ".epub", ".mobi",
+  ".gz", ".zip", ".tar", ".bz2", ".xz", ".7z", ".zst",
+  ".so", ".dylib", ".dll", ".o", ".a", ".bin", ".exe", ".rlib", ".wasm", ".elf",
+  ".mp3", ".mp4", ".wav", ".ogg", ".flac", ".m4a", ".webm", ".mov", ".avi",
+  ".ttf", ".otf", ".woff", ".woff2", ".eot",
+  ".sqlite", ".sqlite3", ".db", ".gpg", ".age", ".key", ".pem", ".pfx",
+]
+
+const SkipDirs = [
+  ".git", ".vault", ".cache", ".tmpclaude", ".pixi", ".venv", "venv",
+  "target", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache",
+  ".pytest_cache", ".tox", "build", "dist", ".claude/projects",
+  ".claude/cache", ".claude/plugins", ".claude/sessions",
+]
+
+type SecretHit = tuple[file, rule, snippet: string, line: int]
+
+proc compileRules(): seq[(string, Regex)] =
+  ## Returns (rule-name, compiled-regex) pairs. Order matters: more specific
+  ## prefixes first so the Anthropic match wins against the generic sk- rule.
+  @[
+    ("anthropic-api-key", re(r"sk-ant-[A-Za-z0-9_\-]{24,}")),
+    ("context7-api-key", re(r"ctx7sk-[a-f0-9\-]{20,}")),
+    ("openai-api-key", re(r"sk-[A-Za-z0-9]{20,}")),
+    ("github-pat", re(r"gh[pousr]_[A-Za-z0-9]{20,}")),
+    ("gitlab-pat", re(r"glpat-[A-Za-z0-9_\-]{20,}")),
+    ("slack-token", re(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
+    ("aws-access-key", re(r"(AKIA|ASIA)[0-9A-Z]{16}")),
+    ("ssh-private-key", re(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+  ]
+
+proc isSkippedDir(dir: string): bool =
+  let base = lastPathPart(dir)
+  for s in SkipDirs:
+    if base == s: return true
+  false
+
+proc isBinaryExt(path: string): bool =
+  let ext = splitFile(path).ext.toLowerAscii
+  for b in BinaryExts:
+    if ext == b: return true
+  false
+
+proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
+  if not fileExists(path): return
+  if getFileSize(path) > 2_000_000: return  # skip very large files
+  var content: string
+  try:
+    content = readFile(path)
+  except IOError:
+    return
+  var lineNo = 0
+  for line in content.splitLines:
+    inc lineNo
+    # Short-circuit on extremely long lines (minified JS, base64 blobs)
+    if line.len > 2000: continue
+    for (name, rx) in rules:
+      if line.contains(rx):
+        let snip = if line.len > 120: line[0..117] & "..." else: line
+        result.add((path, name, snip.strip(), lineNo))
+        break  # one hit per line is enough
+
+proc scan*(repo: string, target: string, cfg: GpgConfig) =
+  ## Walk `target` (file or dir) and flag any file containing a secret
+  ## pattern that is NOT already in the vault.
+  let abs = if target.isAbsolute: target
+            elif target.startsWith("~/"): expandHome(target)
+            elif target.len == 0: repo
+            else: absolutePath(target)
+
+  if not fileExists(abs) and not dirExists(abs):
+    stderr.writeLine &"FATAL: not a file or directory: {abs}"
+    quit 1
+
+  # Build set of vault-protected absolute paths (empty when not in a repo).
+  var vaulted: HashSet[string]
+  if repo.len > 0:
+    for e in loadManifest(repo):
+      vaulted.incl(resolvePath(cfg, e.path))
+
+  let rules = compileRules()
+
+  var files: seq[string]
+  if fileExists(abs):
+    files.add(abs)
+  else:
+    for path in walkDirRec(abs, yieldFilter = {pcFile},
+                           skipSpecial = true, relative = false):
+      # Check each path component against SkipDirs
+      var skip = false
+      for part in path.splitPath.head.split(DirSep):
+        if part in SkipDirs:
+          skip = true
+          break
+      if skip: continue
+      files.add(path)
+
+  var hits: seq[SecretHit]
+  var scanned = 0
+  for f in files:
+    if f in vaulted: continue
+    if isBinaryExt(f): continue
+    inc scanned
+    hits.add(scanFile(f, rules))
+
+  if hits.len == 0:
+    echo &"scanned {scanned} file(s); no unvaulted secrets found"
+    return
+
+  banner(&"Unvaulted secrets found ({hits.len})")
+  for h in hits:
+    styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line}"
+    echo &"    {h.snippet}"
+  echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
+  echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  quit 1
 
 proc status*(repo: string, cfg: GpgConfig) =
   let entries = loadManifest(repo)
