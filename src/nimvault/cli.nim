@@ -76,12 +76,17 @@ proc doStatus(recipient = "") =
   let (repo, cfg) = resolve(recipient)
   commands.status(repo, cfg)
 
-proc doScan(path: seq[string], recipient = "") =
+proc doScan(path: seq[string], recipient = "", vault = "") =
   ## Scan a file or directory for unvaulted secrets.
   ##
-  ## Resolves the target's own git root (not cwd). When the target lives in
-  ## a vault-enabled repo, vaulted files are skipped; otherwise everything
-  ## is scanned. Never requires GPG config for scan-only mode.
+  ## Resolution order for the vault repo (determines which manifest entries
+  ## are treated as already-safe and skipped):
+  ## 1. `--vault` flag if provided.
+  ## 2. Target's own git root (if it has a `.vault/manifest.gpg`).
+  ## 3. `NIMVAULT_VAULT_REPO` env var.
+  ## 4. `~/.local/share/chezmoi` if that path has a manifest (covers the
+  ##    common case of scanning `~/.claude` or `~/.codex`).
+  ## 5. No vault; every candidate file is scanned.
   let targetArg = if path.len == 0: "." else: path[0]
   let absTarget = if targetArg.isAbsolute: targetArg
                   elif targetArg.startsWith("~/"):
@@ -90,11 +95,24 @@ proc doScan(path: seq[string], recipient = "") =
   let baseDir = if dirExists(absTarget): absTarget
                 elif fileExists(absTarget): parentDir(absTarget)
                 else: getCurrentDir()
-  let (output, code) = execCmdEx("git -C " & quoteShell(baseDir) &
-                                 " rev-parse --show-toplevel")
-  if code == 0:
-    let repo = output.strip()
-    # Try to load GPG config; if unavailable, scan without manifest skip.
+
+  proc hasVault(repo: string): bool =
+    repo.len > 0 and fileExists(repo / ".vault" / "manifest.gpg")
+
+  var repo = ""
+  if vault.len > 0:
+    repo = if vault.startsWith("~/"): getHomeDir() / vault[2..^1] else: vault
+  elif hasVault(execCmdEx("git -C " & quoteShell(baseDir) &
+                          " rev-parse --show-toplevel")[0].strip()):
+    repo = execCmdEx("git -C " & quoteShell(baseDir) &
+                     " rev-parse --show-toplevel")[0].strip()
+  elif getEnv("NIMVAULT_VAULT_REPO").len > 0 and
+       hasVault(getEnv("NIMVAULT_VAULT_REPO")):
+    repo = getEnv("NIMVAULT_VAULT_REPO")
+  elif hasVault(getHomeDir() / ".local/share/chezmoi"):
+    repo = getHomeDir() / ".local/share/chezmoi"
+
+  if repo.len > 0:
     try:
       let cfg = initGpgConfig(recipient, repo)
       commands.scan(repo, absTarget, cfg)
@@ -127,5 +145,7 @@ proc main*() =
     [doStatus, cmdName = "status", help = {"recipient": rh}],
     [doScan, cmdName = "scan", positional = "path",
      help = {"path": "file or directory to scan (default: repo root)",
-             "recipient": rh}],
+             "recipient": rh,
+             "vault": "override vault repo (default: target's git root, " &
+                      "or NIMVAULT_VAULT_REPO, or ~/.local/share/chezmoi)"}],
   )

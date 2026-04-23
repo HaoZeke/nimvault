@@ -404,8 +404,20 @@ const BinaryExts = [
 const SkipDirs = [
   ".git", ".vault", ".cache", ".tmpclaude", ".pixi", ".venv", "venv",
   "target", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache",
-  ".pytest_cache", ".tox", "build", "dist", ".claude/projects",
-  ".claude/cache", ".claude/plugins", ".claude/sessions",
+  ".pytest_cache", ".tox", "build", "dist",
+  # Claude Code / Codex runtime state: edit-history and session logs hold
+  # historical versions of files, including keys that have since been
+  # rotated or vaulted. Flagging them creates noise, not action.
+  "projects", "cache", "plugins", "sessions", "file-history", "backups",
+  "tasks", "plans", "teams", "todos", "debug", "downloads", "telemetry",
+  "paste-cache", "session-env", "shell-snapshots", "shell_snapshots",
+  "memories", "log", "logs", "tmp", ".tmp",
+]
+
+const SkipFileNames = [
+  # Claude Code's own OAuth token file; it is managed natively and not a
+  # vault target.
+  ".credentials.json",
 ]
 
 type SecretHit = tuple[file, rule, snippet: string, line: int]
@@ -434,6 +446,12 @@ proc isBinaryExt(path: string): bool =
   let ext = splitFile(path).ext.toLowerAscii
   for b in BinaryExts:
     if ext == b: return true
+  false
+
+proc isSkippedFile(path: string): bool =
+  let base = lastPathPart(path)
+  for s in SkipFileNames:
+    if base == s: return true
   false
 
 proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
@@ -495,6 +513,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   for f in files:
     if f in vaulted: continue
     if isBinaryExt(f): continue
+    if isSkippedFile(f): continue
     inc scanned
     hits.add(scanFile(f, rules))
 
