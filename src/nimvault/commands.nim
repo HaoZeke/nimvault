@@ -107,7 +107,22 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   for r in results:
     let outPath = resolvePath(cfg, r.entry.path)
     moveFile(r.tmpPath, outPath)
-    setFilePermissions(outPath, {fpUserRead, fpUserWrite})
+    # Default to user-only 0600; give +x when the file is a shebang-style
+    # script. Without this, unseal silently breaks hooks (e.g. the Claude
+    # Code rtk-rewrite.sh PreToolUse hook would fail with "Permission
+    # denied" on the next Bash call after a fresh machine was unsealed).
+    var perms = {fpUserRead, fpUserWrite}
+    try:
+      var f: File
+      if open(f, outPath, fmRead):
+        defer: f.close()
+        var head: array[2, char]
+        let n = f.readBuffer(addr head[0], 2)
+        if n == 2 and head[0] == '#' and head[1] == '!':
+          perms.incl(fpUserExec)
+    except IOError:
+      discard
+    setFilePermissions(outPath, perms)
     echo &"  {r.entry.path}"
 
   echo &"\nUnsealed {entries.len} file(s)."
