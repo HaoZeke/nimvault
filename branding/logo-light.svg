@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="nimvault">
+  <rect width="128" height="128" rx="28" fill="#f8fafc"/>
+  <circle cx="64" cy="64" r="52" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+  <path fill="#e0e7ff" stroke="#4f46e5" stroke-width="2.5" stroke-linejoin="round"
+        d="M64 22 L98 40 L98 76 L64 94 L30 76 L30 40 Z"/>
+  <path fill="#c7d2fe" d="M64 34 L88 47 L88 71 L64 84 L40 71 L40 47 Z"/>
+  <ellipse cx="64" cy="58" rx="18" ry="14" fill="#0f172a" stroke="#0d9488" stroke-width="2.5"/>
+  <ellipse cx="64" cy="58" rx="10" ry="7" fill="#115e59"/>
+  <rect x="58" y="68" width="12" height="10" rx="2" fill="#0d9488"/>
+  <circle cx="64" cy="73" r="2.2" fill="#f8fafc"/>
+</svg>

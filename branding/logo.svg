@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="nimvault">
+  <title>nimvault</title>
+  <desc>Sealed vault hexagon with opaque encrypted blob</desc>
+  <rect width="128" height="128" rx="28" fill="#0f1117"/>
+  <circle cx="64" cy="64" r="52" fill="none" stroke="#1e293b" stroke-width="2"/>
+  <path fill="#1e1b4b" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round"
+        d="M64 22 L98 40 L98 76 L64 94 L30 76 L30 40 Z"/>
+  <path fill="#312e81" opacity="0.95"
+        d="M64 34 L88 47 L88 71 L64 84 L40 71 L40 47 Z"/>
+  <ellipse cx="64" cy="58" rx="18" ry="14" fill="#0f172a" stroke="#2dd4bf" stroke-width="2.5"/>
+  <ellipse cx="64" cy="58" rx="10" ry="7" fill="#134e4a" opacity="0.9"/>
+  <rect x="58" y="68" width="12" height="10" rx="2" fill="#2dd4bf"/>
+  <circle cx="64" cy="73" r="2.2" fill="#0f1117"/>
+  <g fill="#2dd4bf" opacity="0.35">
+    <circle cx="48" cy="50" r="1.2"/>
+    <circle cx="78" cy="52" r="1"/>
+    <circle cx="52" cy="66" r="0.9"/>
+    <circle cx="74" cy="64" r="1.1"/>
+  </g>
+</svg>
