@@ -7,7 +7,8 @@ type
   EntryKind* = enum
     ekFile = "file",    ## Regular file entry
     ekDir = "dir"      ## Directory entry (for future use)
-  VaultEntry* = tuple[id, path, hash: string, kind: EntryKind]
+  ## hash = SHA-256 of ciphertext blob; contentHash = SHA-256 of plaintext (optional, v4+).
+  VaultEntry* = tuple[id, path, hash: string, kind: EntryKind, contentHash: string]
 
 proc genId*(): string =
   ## 16-char random hex via cryptographic randomness.
@@ -63,7 +64,7 @@ proc vaultDir*(repo: string): string =
 proc loadManifest*(repo: string, verifySig = false): seq[VaultEntry] =
   ## Decrypt and parse the vault manifest.
   ## Returns empty seq if no manifest exists.
-  ## Supports v1 (id\tpath), v2 (id\tpath\thash), and v3 (id\tpath\thash\tkind) formats.
+  ## Supports v1–v4 (v4 adds plaintext contentHash for fast `status`).
   let enc = vaultDir(repo) / "manifest.gpg"
   if not fileExists(enc):
     return @[]
@@ -74,23 +75,27 @@ proc loadManifest*(repo: string, verifySig = false): seq[VaultEntry] =
       continue
     let parts = stripped.split('\t')
     if parts.len == 2:
-      # v1 format: id\tpath (default to file)
-      result.add((parts[0], parts[1], "", ekFile))
+      # v1: id\tpath
+      result.add((parts[0], parts[1], "", ekFile, ""))
     elif parts.len == 3:
-      # v2 format: id\tpath\thash (default to file)
-      result.add((parts[0], parts[1], parts[2], ekFile))
-    elif parts.len >= 4:
-      # v3 format: id\tpath\thash\tkind
+      # v2: id\tpath\thash
+      result.add((parts[0], parts[1], parts[2], ekFile, ""))
+    elif parts.len == 4:
+      # v3: id\tpath\thash\tkind
       let kind = if parts[3] == "dir": ekDir else: ekFile
-      result.add((parts[0], parts[1], parts[2], kind))
+      result.add((parts[0], parts[1], parts[2], kind, ""))
+    elif parts.len >= 5:
+      # v4: id\tpath\thash\tkind\tcontentHash
+      let kind = if parts[3] == "dir": ekDir else: ekFile
+      result.add((parts[0], parts[1], parts[2], kind, parts[4]))
 
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig) =
-  ## Serialize entries (v3 format with hashes and kind) and encrypt as the vault manifest.
+  ## Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt.
   let plainPath = vaultDir(repo) / ".manifest.plain"
   let encPath = vaultDir(repo) / "manifest.gpg"
-  var content = "# vault-manifest-v3\n"
+  var content = "# vault-manifest-v4\n"
   for e in entries:
-    content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\n")
+    content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
   gpgEncrypt(cfg, plainPath, encPath)
   removeFile(plainPath)

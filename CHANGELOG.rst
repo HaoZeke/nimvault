@@ -4,6 +4,17 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.4.1 (2026-06-26)
+===========================
+
+Changed
+-------
+
+- ``status`` uses manifest **v4** plaintext ``contentHash`` when present (no GPG per entry).
+- In-process SHA-256 via ``checksums`` instead of spawning ``sha256sum``.
+- Default GPG batch parallelism raised to 8 (``NIMVAULT_GPG_PARALLEL``).
+
+
 nimvault 0.4.0 (2026-03-12)
 ===========================
 

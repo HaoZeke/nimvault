@@ -53,8 +53,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   # This prevents release of unverified plaintext: GPG streams content to
   # disk before the signature check completes, so writing to the final
   # path would expose unverified data even if we abort on BADSIG.
-  # Process in batches to avoid GPG memory exhaustion.
-  const batchSize = 4
+  # Process in batches to avoid GPG memory exhaustion (NIMVAULT_GPG_PARALLEL).
+  let batchSize = gpgParallelism()
   var tmpPaths: seq[string] = @[]
   type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string, code: int]
   var results: seq[DecryptResult] = @[]
@@ -143,10 +143,10 @@ proc seal*(repo: string, cfg: GpgConfig) =
       stderr.writeLine "  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry."
       quit 1
 
-  # Launch GPG encrypts in batches to avoid memory exhaustion.
+  # Launch GPG encrypts in batches (NIMVAULT_GPG_PARALLEL, default 8).
   # GPG sign+encrypt is memory-intensive; launching all at once can trigger
   # "Cannot allocate memory" on systems with many vault entries.
-  const batchSize = 4
+  let batchSize = gpgParallelism()
   for batchStart in countup(0, entries.high, batchSize):
     let batchEnd = min(batchStart + batchSize - 1, entries.high)
     var procs: seq[(VaultEntry, Process)] = @[]
@@ -171,13 +171,13 @@ proc seal*(repo: string, cfg: GpgConfig) =
         quit 1
       echo &"  {e.path}"
 
-  # Compute blob hashes and save v3 manifest
+  # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
     let blobPath = vaultDir(repo) / &"{e.id}.gpg"
-    hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind))
+    let plainPath = resolvePath(cfg, e.path)
+    hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind, sha256sum(plainPath)))
 
-  # Re-encrypt manifest (signed, v3 with hashes and kind)
   saveManifest(repo, hashedEntries, cfg)
   echo &"\nSealed {entries.len} file(s)."
 
@@ -237,7 +237,8 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   createDir(vaultDir(repo))
   gpgEncrypt(cfg, absPath, outPath)
   let hash = sha256sum(outPath)
-  entries.add((id, storedPath, hash, ekFile))
+  let contentHash = sha256sum(absPath)
+  entries.add((id, storedPath, hash, ekFile, contentHash))
   saveManifest(repo, entries, cfg)
   echo &"  id:   {id}"
   echo &"  path: {storedPath}"
@@ -316,7 +317,8 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
     let outPath = vaultDir(repo) / &"{id}.gpg"
     gpgEncrypt(cfg, filePath, outPath)
     let hash = sha256sum(outPath)
-    entries.add((id, storedPath, hash, ekFile))
+    let contentHash = sha256sum(filePath)
+    entries.add((id, storedPath, hash, ekFile, contentHash))
     echo &"  {storedPath}"
 
   saveManifest(repo, entries, cfg)
@@ -545,12 +547,15 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   quit 1
 
 proc status*(repo: string, cfg: GpgConfig) =
+  ## Fast path: when manifest has plaintext contentHash (v4 / post-seal), compare
+  ## in-process SHA-256 only. Slow path: batch-decrypt blobs and hash (legacy entries).
   let entries = loadManifest(repo)
   if entries.len == 0:
     echo "vault is empty"
     return
 
   banner("Vault status")
+  var needDecrypt: seq[VaultEntry] = @[]
   for e in entries:
     let localPath = resolvePath(cfg, e.path)
     let blobPath = vaultDir(repo) / &"{e.id}.gpg"
@@ -563,14 +568,52 @@ proc status*(repo: string, cfg: GpgConfig) =
       styledEcho fgRed, &"  [no-blob]   {e.path}"
       continue
 
-    # Compare SHA-256 of local file vs decrypted vault blob
     let localHash = sha256sum(localPath)
-    let tmpPath = vaultDir(repo) / &".status-tmp-{e.id}"
-    gpgDecrypt(blobPath, tmpPath)
-    let vaultHash = sha256sum(tmpPath)
-    removeFile(tmpPath)
+    if e.contentHash.len > 0:
+      if localHash == e.contentHash:
+        styledEcho fgGreen, &"  [in-sync]   {e.path}"
+      else:
+        styledEcho fgRed, &"  [modified]  {e.path}"
+      continue
 
-    if localHash == vaultHash:
-      styledEcho fgGreen, &"  [in-sync]   {e.path}"
+    # Legacy manifest without contentHash: defer GPG decrypt
+    needDecrypt.add(e)
+
+  if needDecrypt.len == 0:
+    return
+
+  let batchSize = gpgParallelism()
+  type StRow = tuple[entry: VaultEntry, localHash, tmpPath, status: string, code: int]
+  var rows: seq[StRow] = @[]
+  for batchStart in countup(0, needDecrypt.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, needDecrypt.high)
+    var procs: seq[(VaultEntry, string, string, Process)] = @[]
+    for i in batchStart .. batchEnd:
+      let e = needDecrypt[i]
+      let localPath = resolvePath(cfg, e.path)
+      let localHash = sha256sum(localPath)
+      let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+      let tmpPath = vaultDir(repo) / &".status-tmp-{e.id}"
+      let p = startProcess("gpg",
+        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "-o", tmpPath, blobPath],
+        options = {poUsePath})
+      procs.add((e, localHash, tmpPath, p))
+    for (e, localHash, tmpPath, p) in procs:
+      discard p.outputStream.readAll()
+      let status = p.errorStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      rows.add((e, localHash, tmpPath, status, code))
+
+  for r in rows:
+    defer:
+      if fileExists(r.tmpPath): removeFile(r.tmpPath)
+    if r.code != 0:
+      styledEcho fgRed, &"  [error]     {r.entry.path}"
+      continue
+    let vaultHash = sha256sum(r.tmpPath)
+    if r.localHash == vaultHash:
+      styledEcho fgGreen, &"  [in-sync]   {r.entry.path}"
     else:
-      styledEcho fgRed, &"  [modified]  {e.path}"
+      styledEcho fgRed, &"  [modified]  {r.entry.path}"

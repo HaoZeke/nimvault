@@ -1,5 +1,5 @@
 # Package
-version       = "0.4.0"
+version       = "0.4.1"
 author        = "Rohit Goswami"
 description   = "GPG-encrypted opaque-blob vault with hidden filenames"
 license       = "MIT"
@@ -11,6 +11,7 @@ binDir        = "bin"
 # Dependencies
 requires "nim >= 2.0.0"
 requires "cligen >= 1.9.0"
+requires "checksums >= 0.2.0"
 
 task test, "Run test suite":
   for f in listFiles("tests"):
