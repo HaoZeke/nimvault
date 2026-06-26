@@ -242,29 +242,24 @@ echo "All integration tests passed."
 # --- Directory security tests ---
 block directorySecurityTests:
   ## Security tests for directory support.
-  
+
   # Test path safety with nested traversal attempts
   let secCfg = GpgConfig(recipient: keyId, root: "/tmp/fakerepo")
   doAssert not isPathSafe(secCfg, "secrets/../../etc/passwd"), "Nested traversal should fail"
   doAssert not isPathSafe(secCfg, "a/b/../../../etc/passwd"), "Deep nested traversal should fail"
   doAssert isPathSafe(secCfg, "secrets/subdir/file.txt"), "Legitimate nested path should pass"
   echo "PASS: directory path safety"
-  
-  # Test empty directory rejection
+
+  # Test empty directory rejection (CLI must exit non-zero; execCmdEx does not raise)
   let emptyDirRepo = setupTestRepo()
-  let emptyDirCfg = GpgConfig(recipient: keyId)
   let emptyTestDir = createTempDir("nimvault_empty_", "_dir")
-  
-  try:
-    var exitCode: int
-    discard execCmdEx(&"nimvault add-dir {emptyTestDir}", workingDir = emptyDirRepo)
-    # Should fail since directory is empty
-    doAssert false, "Should have rejected empty directory"
-  except:
-    discard  # Expected to fail
-  
+
+  let (emptyOut, emptyCode) = execCmdEx(&"nimvault add-dir {emptyTestDir}",
+                                        workingDir = emptyDirRepo)
+  doAssert emptyCode != 0, "Should have rejected empty directory, got:\n" & emptyOut
+
   removeDir(emptyTestDir)
   removeDir(emptyDirRepo)
   echo "PASS: empty directory rejection"
-  
+
   echo "PASS: all directory security tests"
