@@ -1,7 +1,7 @@
 #+TITLE: nimvault
 
 #+ATTR_HTML: :width 128 :alt nimvault
-[[file:branding/logo.svg]]
+[[file:branding/logo/nimvault.svg]]
 #+OPTIONS: toc:nil num:nil
 
 GPG-encrypted opaque-blob vault with hidden filenames.
