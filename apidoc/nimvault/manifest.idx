@@ -1,13 +1,13 @@
-nimTitle	manifest	nimvault/manifest.html	module src/nimvault/manifest		0
+nimTitle	manifest	nimvault/manifest.html	module nimvault/manifest		0
 nim	ekFile	nimvault/manifest.html#ekFile	EntryKind.ekFile		7
 nim	ekDir	nimvault/manifest.html#ekDir	EntryKind.ekDir		7
 nim	EntryKind	nimvault/manifest.html#EntryKind	enum EntryKind		7
-nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		10
-nim	genId	nimvault/manifest.html#genId	proc genId(): string		12
-nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		19
-nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		26
-nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		35
-nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		46
-nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		59
-nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]		63
-nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)		87
+nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		11
+nim	genId	nimvault/manifest.html#genId	proc genId(): string		13
+nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		20
+nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		27
+nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		36
+nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		47
+nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		60
+nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]		64
+nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)		92

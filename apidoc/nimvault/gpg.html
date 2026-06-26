@@ -5,7 +5,7 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>src/nimvault/gpg</title>
+<title>nimvault/gpg</title>
 
 <!-- Google fonts -->
 <link href='https://fonts.googleapis.com/css?family=Lato:400,600,900' rel='stylesheet' type='text/css'/>
@@ -24,7 +24,7 @@
 <body>
   <div class="document" id="documentId">
     <div class="container">
-      <h1 class="title">src/nimvault/gpg</h1>
+      <h1 class="title">nimvault/gpg</h1>
       <div class="row">
   <div class="three columns">
     <div class="theme-select-wrapper">
@@ -78,6 +78,10 @@
   <li><a class="reference" href="#gpgEncrypt%2CGpgConfig%2Cstring%2Cstring" title="gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)">gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gpgParallelism
+  <li><a class="reference" href="#gpgParallelism" title="gpgParallelism(): int">gpgParallelism(): int</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">initGpgConfig
   <li><a class="reference" href="#initGpgConfig%2Cstring%2Cstring" title="initGpgConfig(cliRecipient: string; repo: string): GpgConfig">initGpgConfig(cliRecipient: string; repo: string): GpgConfig</a></li>
 
@@ -88,6 +92,10 @@
 </ul>
 <ul class="simple nested-toc-section">sha256sum
   <li><a class="reference" href="#sha256sum%2Cstring" title="sha256sum(path: string): string">sha256sum(path: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">sha256sumBytes
+  <li><a class="reference" href="#sha256sumBytes%2Cstring" title="sha256sumBytes(data: string): string">sha256sumBytes(data: string): string</a></li>
 
 </ul>
 
@@ -161,6 +169,17 @@
 </div>
 
 </div>
+<div id="gpgParallelism-procs-all">
+  <div id="gpgParallelism">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgParallelism"><span class="Identifier">gpgParallelism</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">int</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Concurrent GPG processes for seal/unseal/status decrypt batches. Override with NIMVAULT_GPG_PARALLEL (1..64). Default 8.
+    
+  </dd>
+</div>
+
+</div>
 <div id="initGpgConfig-procs-all">
   <div id="initGpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#initGpgConfig%2Cstring%2Cstring"><span class="Identifier">initGpgConfig</span></a><span class="Other">(</span><span class="Identifier">cliRecipient</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> {.
@@ -193,12 +212,23 @@
 </div>
 <div id="sha256sum-procs-all">
   <div id="sha256sum,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#sha256sum%2Cstring"><span class="Identifier">sha256sum</span></a><span class="Other">(</span><span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
-    <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
-    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#sha256sum%2Cstring"><span class="Identifier">sha256sum</span></a><span class="Other">(</span><span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span>
+                                       <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span>
+                                       <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Returns hex SHA-256 digest of a file.
+    In-process SHA-256 (hex) of a file. Avoids spawning <tt class="docutils literal"><span class="pre"><span class="Identifier">sha256sum</span></span></tt> per path.
+    
+  </dd>
+</div>
+
+</div>
+<div id="sha256sumBytes-procs-all">
+  <div id="sha256sumBytes,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#sha256sumBytes%2Cstring"><span class="Identifier">sha256sumBytes</span></a><span class="Other">(</span><span class="Identifier">data</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    In-process SHA-256 (hex) of an in-memory buffer.
     
   </dd>
 </div>
@@ -214,7 +244,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-26 16:19:45 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-26 17:37:53 UTC</small>
       </div>
     </div>
   </div>
