@@ -143,6 +143,8 @@ Clean up
 Next steps
 ----------
 
+- `Encrypting directories <tutorials/directory-support.rst>`_ -- add entire directories with ``add-dir``
+
 - `chezmoi integration <howto/chezmoi.rst>`_ -- use nimvault to encrypt dotfiles secrets
 
 - `CLI reference <reference/cli.rst>`_ -- all commands and flags

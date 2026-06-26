@@ -96,6 +96,7 @@ Getting Started
      :caption: Getting Started
 
      quickstart
+     tutorials/directory-support
 
 Guides
 ------

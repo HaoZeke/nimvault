@@ -33,7 +33,7 @@ subcommand is a thin wrapper around the corresponding ``commands`` module proc.
 Encrypt and sign all vault entries from their plaintext locations. Reads each
 file at the path stored in the manifest, encrypts and GPG-signs it in parallel
 via ``startProcess``, and writes ``.vault/<id>.gpg`` blobs. Computes SHA-256 hashes
-of each blob and writes a v2 manifest with integrity data. Re-encrypts and signs
+of each blob and writes a v3 manifest with integrity data. Re-encrypts and signs
 the manifest after sealing.
 
 Exits non-zero if any plaintext file is missing.
@@ -78,7 +78,39 @@ Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
 legacy vaults created before v0.2.0. Run ``nimvault seal`` afterwards to upgrade
 the vault to signed v2 format.
 
-2.3 add
+2.3 add-dir
+~~~~~~~~~~~
+
+.. code:: text
+
+    nimvault add-dir <directory> [--recipient KEY] [--no-gitignore]
+
+Add a directory recursively to the vault. Walks the directory tree and adds each
+file individually with its own encrypted blob. The directory structure is
+preserved via the relative paths stored in the manifest.
+
+Each file undergoes the same checks as ``nimvault add``:
+
+- Verifies the file is not already in the vault
+
+- Checks ``git ls-files`` to ensure the file is not tracked by git
+
+- Appends to ``.gitignore`` unless ``--no-gitignore`` is passed
+
+Use ``add-dir`` for directories like ``.beads``, ``.env``, or any folder containing
+multiple sensitive files.
+
+Exits non-zero if:
+
+- The directory does not exist
+
+- The directory is empty
+
+- Any file is already in the vault
+
+- Any file is tracked by git
+
+2.4 add
 ~~~~~~~
 
 .. code:: text
@@ -103,7 +135,7 @@ Exits non-zero if:
 
 - The file is tracked by git
 
-2.4 rm
+2.5 rm
 ~~~~~~
 
 .. code:: text
@@ -113,7 +145,7 @@ Exits non-zero if:
 Remove a file from the vault. Deletes the encrypted blob and removes the
 manifest entry. Does NOT delete the local plaintext file.
 
-2.5 mv
+2.6 mv
 ~~~~~~
 
 .. code:: text
@@ -124,7 +156,7 @@ Move/rename a vault entry's target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.
 
-2.6 list
+2.7 list
 ~~~~~~~~
 
 .. code:: text
@@ -133,7 +165,7 @@ updated.
 
 List all vault entries showing their ID and target path.
 
-2.7 status
+2.8 status
 ~~~~~~~~~~
 
 .. code:: text
@@ -154,6 +186,9 @@ against decrypted blobs:
 
 ``[no-blob]``
     encrypted blob missing (needs ``seal`` or ``add``)
+
+Directory entries: When you ``add-dir`` a directory, each file appears individually
+in ``list`` and ``status`` output. The directory structure is implicit in the paths.
 
 3 Global options
 ----------------

@@ -58,7 +58,10 @@
   <details open>
     <summary><a class="reference reference-toplevel" href="#7" id="57">Types</a></summary>
     <ul class="simple simple-toc-section">
-      <li><a class="reference" href="#VaultEntry" title="VaultEntry = tuple[id, path, hash: string]">VaultEntry</a></li>
+      <li><a class="reference" href="#EntryKind" title="EntryKind = enum
+  ekFile = &quot;file&quot;,          ## Regular file entry
+  ekDir = &quot;dir&quot;              ## Directory entry (for future use)">EntryKind</a></li>
+<li><a class="reference" href="#VaultEntry" title="VaultEntry = tuple[id, path, hash: string, kind: EntryKind]">VaultEntry</a></li>
 
     </ul>
   </details>
@@ -121,8 +124,18 @@
 <div class="section" id="7">
   <h1><a class="toc-backref" href="#7">Types</a></h1>
   <dl class="item">
-    <div id="VaultEntry">
-  <dt><pre><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a> <span class="Other">=</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">id</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">,</span> <span class="Identifier">hash</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span></pre></dt>
+    <div id="EntryKind">
+  <dt><pre><a href="manifest.html#EntryKind"><span class="Identifier">EntryKind</span></a> <span class="Other">=</span> <span class="Keyword">enum</span>
+  <span class="Identifier">ekFile</span> <span class="Other">=</span> <span class="StringLit">&quot;file&quot;</span><span class="Other">,</span>          <span class="Comment">## Regular file entry</span>
+  <span class="Identifier">ekDir</span> <span class="Other">=</span> <span class="StringLit">&quot;dir&quot;</span>              <span class="Comment">## Directory entry (for future use)</span></pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+<div id="VaultEntry">
+  <dt><pre><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a> <span class="Other">=</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">id</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">,</span> <span class="Identifier">hash</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">,</span> <span class="Identifier">kind</span><span class="Other">:</span> <a href="manifest.html#EntryKind"><span class="Identifier">EntryKind</span></a><span class="Other">]</span></pre></dt>
   <dd>
     
     
@@ -179,7 +192,7 @@
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Decrypt and parse the vault manifest. Returns empty seq if no manifest exists. Supports both v1 (idtpath) and v2 (idtpaththash) formats.
+    Decrypt and parse the vault manifest. Returns empty seq if no manifest exists. Supports v1 (idtpath), v2 (idtpaththash), and v3 (idtpaththashtkind) formats.
     
   </dd>
 </div>
@@ -205,7 +218,7 @@
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Serialize entries (v2 format with hashes) and encrypt as the vault manifest.
+    Serialize entries (v3 format with hashes and kind) and encrypt as the vault manifest.
     
   </dd>
 </div>
@@ -245,7 +258,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-13 11:15:07 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-26 16:19:45 UTC</small>
       </div>
     </div>
   </div>

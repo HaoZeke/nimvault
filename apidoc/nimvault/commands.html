@@ -62,6 +62,10 @@
   <li><a class="reference" href="#add%2Cstring%2Cstring%2CGpgConfig" title="add(repo, path: string; cfg: GpgConfig; noGitignore = false)">add(repo, path: string; cfg: GpgConfig; noGitignore = false)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">addDir
+  <li><a class="reference" href="#addDir%2Cstring%2Cstring%2CGpgConfig" title="addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)">addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">list
   <li><a class="reference" href="#list%2Cstring%2CGpgConfig" title="list(repo: string; cfg: GpgConfig)">list(repo: string; cfg: GpgConfig)</a></li>
 
@@ -72,6 +76,10 @@
 </ul>
 <ul class="simple nested-toc-section">remove
   <li><a class="reference" href="#remove%2Cstring%2Cstring%2CGpgConfig" title="remove(repo, path: string; cfg: GpgConfig)">remove(repo, path: string; cfg: GpgConfig)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">scan
+  <li><a class="reference" href="#scan%2Cstring%2Cstring%2CGpgConfig" title="scan(repo: string; target: string; cfg: GpgConfig)">scan(repo: string; target: string; cfg: GpgConfig)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">seal
@@ -98,7 +106,7 @@
     
     <div id="tocRoot"></div>
     
-    <p class="module-desc"><p>Vault commands: seal, unseal, add, rm, mv, list, status.</p>
+    <p class="module-desc"><p>Vault commands: seal, unseal, add, rm, mv, list, status, scan.</p>
 <p>All commands take a repo path and GpgConfig. Parallel GPG via startProcess with direct invocation (no shell).</p>
 </p>
     <div class="section" id="6">
@@ -119,6 +127,20 @@
   <dd>
     
     Add a file by its target path.
+    
+  </dd>
+</div>
+
+</div>
+<div id="addDir-procs-all">
+  <div id="addDir,string,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#addDir%2Cstring%2Cstring%2CGpgConfig"><span class="Identifier">addDir</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">,</span> <span class="Identifier">dirPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">noGitignore</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Add a directory recursively to the vault.
     
   </dd>
 </div>
@@ -161,6 +183,20 @@
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="scan-procs-all">
+  <div id="scan,string,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#scan%2Cstring%2Cstring%2CGpgConfig"><span class="Identifier">scan</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">target</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Walk <tt class="docutils literal"><span class="pre"><span class="Identifier">target</span></span></tt> (file or dir) and flag any file containing a secret pattern that is NOT already in the vault.
     
   </dd>
 </div>
@@ -218,7 +254,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-13 11:15:07 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-26 16:19:45 UTC</small>
       </div>
     </div>
   </div>
