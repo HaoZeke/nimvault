@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="nimvault">
-  <rect width="128" height="128" rx="28" fill="#f8fafc"/>
-  <circle cx="64" cy="64" r="52" fill="none" stroke="#e2e8f0" stroke-width="2"/>
-  <path fill="#e0e7ff" stroke="#4f46e5" stroke-width="2.5" stroke-linejoin="round"
-        d="M64 22 L98 40 L98 76 L64 94 L30 76 L30 40 Z"/>
-  <path fill="#c7d2fe" d="M64 34 L88 47 L88 71 L64 84 L40 71 L40 47 Z"/>
-  <ellipse cx="64" cy="58" rx="18" ry="14" fill="#0f172a" stroke="#0d9488" stroke-width="2.5"/>
-  <ellipse cx="64" cy="58" rx="10" ry="7" fill="#115e59"/>
-  <rect x="58" y="68" width="12" height="10" rx="2" fill="#0d9488"/>
-  <circle cx="64" cy="73" r="2.2" fill="#f8fafc"/>
+  <rect width="128" height="128" rx="24" fill="#f8fafc"/>
+  <path fill="#ccfbf1" stroke="#0f766e" stroke-width="5" stroke-linejoin="round"
+        d="M32 48 L64 28 L96 48 L96 92 Q96 100 88 100 L40 100 Q32 100 32 92 Z"/>
+  <g stroke="#5eead4" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <line x1="44" y1="52" x2="84" y2="52"/>
+    <line x1="44" y1="64" x2="84" y2="64"/>
+    <line x1="44" y1="76" x2="72" y2="76"/>
+    <line x1="44" y1="88" x2="68" y2="88"/>
+  </g>
+  <ellipse cx="78" cy="62" rx="28" ry="18" fill="#1e1b4b" stroke="#0f766e" stroke-width="3.5" transform="rotate(-28 78 62)"/>
+  <g stroke="#5eead4" stroke-width="1.6" stroke-linecap="round" transform="rotate(-28 78 62)">
+    <line x1="72" y1="62" x2="84" y2="62"/>
+    <line x1="76" y1="58" x2="76" y2="66"/>
+    <line x1="80" y1="58" x2="80" y2="66"/>
+  </g>
 </svg>
