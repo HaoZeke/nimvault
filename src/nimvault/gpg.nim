@@ -151,11 +151,17 @@ proc sha256sum*(path: string): string =
       ctx.update(buf)
       break
     ctx.update(buf)
-  # digest() stringifies to lowercase hex
-  result = $ctx.digest()
+  # Avoid `$ctx.digest()` — breaks nimdoc on some Nim versions; encode explicitly.
+  let d = ctx.digest()
+  for i in 0 ..< d.len:
+    result.add toHex(int(d[i]), 2)
+  result = result.toLowerAscii()
 
 proc sha256sumBytes*(data: string): string =
   ## In-process SHA-256 (hex) of an in-memory buffer.
   var ctx = initSha_256()
   ctx.update(data)
-  result = $ctx.digest()
+  let d = ctx.digest()
+  for i in 0 ..< d.len:
+    result.add toHex(int(d[i]), 2)
+  result = result.toLowerAscii()

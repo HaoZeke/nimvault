@@ -42,7 +42,9 @@ jobs:
         run: pixi run -e docs sphinxbld
 
       - name: Build Nim API docs
-        run: nim doc --project --index:on --outdir:docs/build/apidoc src/nimvault.nim
+        run: |
+          nimble install -y checksums
+          nim doc --project --index:on --outdir:docs/build/apidoc --path:src src/nimvault.nim
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
