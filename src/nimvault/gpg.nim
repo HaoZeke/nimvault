@@ -1,6 +1,7 @@
 ## GPG encryption/decryption and recipient resolution.
 
 import std/[os, osproc, strutils, strformat, streams]
+import checksums/sha2
 
 type
   GpgConfig* = object
@@ -119,14 +120,42 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
       stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
       quit 1
 
+proc gpgParallelism*(): int =
+  ## Concurrent GPG processes for seal/unseal/status decrypt batches.
+  ## Override with NIMVAULT_GPG_PARALLEL (1..64). Default 8.
+  let raw = getEnv("NIMVAULT_GPG_PARALLEL")
+  if raw.len == 0:
+    return 8
+  try:
+    result = parseInt(raw)
+  except ValueError:
+    return 8
+  if result < 1: result = 1
+  if result > 64: result = 64
+
 proc sha256sum*(path: string): string =
-  ## Returns hex SHA-256 digest of a file.
-  let p = startProcess("sha256sum", args = @[path],
-    options = {poUsePath, poStdErrToStdOut})
-  let output = p.outputStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
-    stderr.writeLine &"FATAL: sha256sum failed for {path}\n{output}"
+  ## In-process SHA-256 (hex) of a file. Avoids spawning `sha256sum` per path.
+  const chunk = 1024 * 1024
+  var ctx = initSha_256()
+  var f: File
+  if not open(f, path, fmRead):
+    stderr.writeLine &"FATAL: cannot open for hashing: {path}"
     quit 1
-  result = output.strip().split(' ')[0]
+  defer: f.close()
+  var buf = newString(chunk)
+  while true:
+    let n = f.readBuffer(addr buf[0], chunk)
+    if n <= 0: break
+    if n < chunk:
+      buf.setLen(n)
+      ctx.update(buf)
+      break
+    ctx.update(buf)
+  # digest() stringifies to lowercase hex
+  result = $ctx.digest()
+
+proc sha256sumBytes*(data: string): string =
+  ## In-process SHA-256 (hex) of an in-memory buffer.
+  var ctx = initSha_256()
+  ctx.update(data)
+  result = $ctx.digest()
