@@ -30,8 +30,13 @@ nimble build -y
 mkdir -p .vault
 echo "recipient = YOUR_KEY_ID" > .vault/config
 
-# Add files, seal, commit
+# Add a single file
 nimvault add ~/.secret/api_key.txt
+
+# Add a directory recursively (e.g., .beads, .env)
+nimvault add-dir .secrets
+
+# Seal, commit
 nimvault seal
 git add .vault/ && git commit -m "vault: add secrets"
 
@@ -44,6 +49,22 @@ nimvault status
 
 Full docs at [[https://nimvault.rgoswami.me]].
 
+- [[https://nimvault.rgoswami.me/tutorials/directory-support.html][Directory tutorial]] -- encrypt directories recursively
+- [[https://nimvault.rgoswami.me/reference/cli.html][CLI reference]] -- all commands and options
+
 * License
 
 MIT. See [[file:LICENSE][LICENSE]].
+
+* MCP server (agents)
+
+Agent-facing MCP wrapper (ookcite-mcp style): [[https://github.com/HaoZeke/nimvault-mcp][HaoZeke/nimvault-mcp]].
+
+#+BEGIN_SRC bash
+cargo install --git https://github.com/HaoZeke/nimvault-mcp
+nimvault-mcp setup
+# or: grok plugin install https://github.com/HaoZeke/nimvault-mcp.git
+#+END_SRC
+
+Pass =repo_path= to the git root that owns =.vault/=. Mutating tools require
+=NIMVAULT_MCP_ALLOW_MUTATE=1= and an unlocked GPG agent.

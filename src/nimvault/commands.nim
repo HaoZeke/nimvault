@@ -1,9 +1,9 @@
-## Vault commands: seal, unseal, add, rm, mv, list, status.
+## Vault commands: seal, unseal, add, rm, mv, list, status, scan.
 ##
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
-import std/[os, osproc, strutils, strformat, streams, terminal]
+import std/[os, osproc, strutils, strformat, streams, terminal, re, sets]
 import ./gpg, ./manifest
 
 proc banner(msg: string) =
@@ -107,7 +107,22 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   for r in results:
     let outPath = resolvePath(cfg, r.entry.path)
     moveFile(r.tmpPath, outPath)
-    setFilePermissions(outPath, {fpUserRead, fpUserWrite})
+    # Default to user-only 0600; give +x when the file is a shebang-style
+    # script. Without this, unseal silently breaks hooks (e.g. the Claude
+    # Code rtk-rewrite.sh PreToolUse hook would fail with "Permission
+    # denied" on the next Bash call after a fresh machine was unsealed).
+    var perms = {fpUserRead, fpUserWrite}
+    try:
+      var f: File
+      if open(f, outPath, fmRead):
+        defer: f.close()
+        var head: array[2, char]
+        let n = f.readBuffer(addr head[0], 2)
+        if n == 2 and head[0] == '#' and head[1] == '!':
+          perms.incl(fpUserExec)
+    except IOError:
+      discard
+    setFilePermissions(outPath, perms)
     echo &"  {r.entry.path}"
 
   echo &"\nUnsealed {entries.len} file(s)."
@@ -156,13 +171,13 @@ proc seal*(repo: string, cfg: GpgConfig) =
         quit 1
       echo &"  {e.path}"
 
-  # Compute blob hashes and save v2 manifest
+  # Compute blob hashes and save v3 manifest
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
     let blobPath = vaultDir(repo) / &"{e.id}.gpg"
-    hashedEntries.add((e.id, e.path, sha256sum(blobPath)))
+    hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind))
 
-  # Re-encrypt manifest (signed, v2 with hashes)
+  # Re-encrypt manifest (signed, v3 with hashes and kind)
   saveManifest(repo, hashedEntries, cfg)
   echo &"\nSealed {entries.len} file(s)."
 
@@ -222,11 +237,90 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   createDir(vaultDir(repo))
   gpgEncrypt(cfg, absPath, outPath)
   let hash = sha256sum(outPath)
-  entries.add((id, storedPath, hash))
+  entries.add((id, storedPath, hash, ekFile))
   saveManifest(repo, entries, cfg)
   echo &"  id:   {id}"
   echo &"  path: {storedPath}"
   echo &"  blob: .vault/{id}.gpg"
+
+proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
+  ## Add a directory recursively to the vault.
+  let absDirPath = if dirPath.isAbsolute:
+    dirPath
+  elif dirPath.startsWith("~/"):
+    expandHome(dirPath)
+  elif cfg.root.len > 0:
+    cfg.root / dirPath
+  else:
+    expandHome(dirPath)
+
+  if not dirExists(absDirPath):
+    stderr.writeLine &"FATAL: directory not found: {absDirPath}"
+    quit 1
+
+  # Collect all files in the directory tree (recursive)
+  var filesToAdd: seq[string] = @[]
+
+  proc walkDirRecursive(dir: string) =
+    for kind, path in walkDir(dir, relative = false):
+      case kind
+      of pcFile, pcLinkToFile:
+        filesToAdd.add(path)
+      of pcDir, pcLinkToDir:
+        walkDirRecursive(path)
+
+  walkDirRecursive(absDirPath)
+
+  if filesToAdd.len == 0:
+    stderr.writeLine &"FATAL: directory is empty: {absDirPath}"
+    quit 1
+
+  banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
+  createDir(vaultDir(repo))
+
+  var entries = loadManifest(repo)
+  for filePath in filesToAdd:
+    # Check for duplicates
+    for e in entries:
+      if resolvePath(cfg, e.path) == filePath:
+        stderr.writeLine &"Already in vault: {filePath}"
+        quit 1
+
+    # Check if file is already tracked by git
+    let storedPath = storePath(cfg, filePath, repo)
+    let checkPath = if cfg.root.len > 0: storedPath else: filePath
+    let (_, lsCode) = execCmdEx(&"git ls-files --error-unmatch {checkPath.quoteShell}",
+      workingDir = repo)
+    if lsCode == 0:
+      stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
+      stderr.writeLine &"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first."
+      quit 1
+
+    # Append to .gitignore if not already ignored
+    let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
+      workingDir = repo)
+    if gitCheckCode != 0:
+      if noGitignore:
+        stderr.writeLine &"WARNING: {storedPath} is NOT gitignored"
+      else:
+        let gitignorePath = repo / ".gitignore"
+        var f: File
+        if open(f, gitignorePath, fmAppend):
+          f.writeLine(storedPath)
+          f.close()
+        else:
+          stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
+
+    # Encrypt and add to manifest
+    let id = genId()
+    let outPath = vaultDir(repo) / &"{id}.gpg"
+    gpgEncrypt(cfg, filePath, outPath)
+    let hash = sha256sum(outPath)
+    entries.add((id, storedPath, hash, ekFile))
+    echo &"  {storedPath}"
+
+  saveManifest(repo, entries, cfg)
+  echo &"\nAdded {filesToAdd.len} file(s) from directory."
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
   let absPath = if path.isAbsolute:
@@ -311,6 +405,144 @@ proc list*(repo: string, cfg: GpgConfig) =
     return
   for e in entries:
     echo &"  {e.id}  {e.path}"
+
+const BinaryExts = [
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff",
+  ".pdf", ".epub", ".mobi",
+  ".gz", ".zip", ".tar", ".bz2", ".xz", ".7z", ".zst",
+  ".so", ".dylib", ".dll", ".o", ".a", ".bin", ".exe", ".rlib", ".wasm", ".elf",
+  ".mp3", ".mp4", ".wav", ".ogg", ".flac", ".m4a", ".webm", ".mov", ".avi",
+  ".ttf", ".otf", ".woff", ".woff2", ".eot",
+  ".sqlite", ".sqlite3", ".db", ".gpg", ".age", ".key", ".pem", ".pfx",
+]
+
+const SkipDirs = [
+  ".git", ".vault", ".cache", ".tmpclaude", ".pixi", ".venv", "venv",
+  "target", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache",
+  ".pytest_cache", ".tox", "build", "dist",
+  # Claude Code / Codex runtime state: edit-history and session logs hold
+  # historical versions of files, including keys that have since been
+  # rotated or vaulted. Flagging them creates noise, not action.
+  "projects", "cache", "plugins", "sessions", "file-history", "backups",
+  "tasks", "plans", "teams", "todos", "debug", "downloads", "telemetry",
+  "paste-cache", "session-env", "shell-snapshots", "shell_snapshots",
+  "memories", "log", "logs", "tmp", ".tmp",
+]
+
+const SkipFileNames = [
+  # Claude Code's own OAuth token file; it is managed natively and not a
+  # vault target.
+  ".credentials.json",
+]
+
+type SecretHit = tuple[file, rule, snippet: string, line: int]
+
+proc compileRules(): seq[(string, Regex)] =
+  ## Returns (rule-name, compiled-regex) pairs. Order matters: more specific
+  ## prefixes first so the Anthropic match wins against the generic sk- rule.
+  @[
+    ("anthropic-api-key", re(r"sk-ant-[A-Za-z0-9_\-]{24,}")),
+    ("context7-api-key", re(r"ctx7sk-[a-f0-9\-]{20,}")),
+    ("openai-api-key", re(r"sk-[A-Za-z0-9]{20,}")),
+    ("github-pat", re(r"gh[pousr]_[A-Za-z0-9]{20,}")),
+    ("gitlab-pat", re(r"glpat-[A-Za-z0-9_\-]{20,}")),
+    ("slack-token", re(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
+    ("aws-access-key", re(r"(AKIA|ASIA)[0-9A-Z]{16}")),
+    ("ssh-private-key", re(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+  ]
+
+proc isSkippedDir(dir: string): bool =
+  let base = lastPathPart(dir)
+  for s in SkipDirs:
+    if base == s: return true
+  false
+
+proc isBinaryExt(path: string): bool =
+  let ext = splitFile(path).ext.toLowerAscii
+  for b in BinaryExts:
+    if ext == b: return true
+  false
+
+proc isSkippedFile(path: string): bool =
+  let base = lastPathPart(path)
+  for s in SkipFileNames:
+    if base == s: return true
+  false
+
+proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
+  if not fileExists(path): return
+  if getFileSize(path) > 2_000_000: return  # skip very large files
+  var content: string
+  try:
+    content = readFile(path)
+  except IOError:
+    return
+  var lineNo = 0
+  for line in content.splitLines:
+    inc lineNo
+    # Short-circuit on extremely long lines (minified JS, base64 blobs)
+    if line.len > 2000: continue
+    for (name, rx) in rules:
+      if line.contains(rx):
+        let snip = if line.len > 120: line[0..117] & "..." else: line
+        result.add((path, name, snip.strip(), lineNo))
+        break  # one hit per line is enough
+
+proc scan*(repo: string, target: string, cfg: GpgConfig) =
+  ## Walk `target` (file or dir) and flag any file containing a secret
+  ## pattern that is NOT already in the vault.
+  let abs = if target.isAbsolute: target
+            elif target.startsWith("~/"): expandHome(target)
+            elif target.len == 0: repo
+            else: absolutePath(target)
+
+  if not fileExists(abs) and not dirExists(abs):
+    stderr.writeLine &"FATAL: not a file or directory: {abs}"
+    quit 1
+
+  # Build set of vault-protected absolute paths (empty when not in a repo).
+  var vaulted: HashSet[string]
+  if repo.len > 0:
+    for e in loadManifest(repo):
+      vaulted.incl(resolvePath(cfg, e.path))
+
+  let rules = compileRules()
+
+  var files: seq[string]
+  if fileExists(abs):
+    files.add(abs)
+  else:
+    for path in walkDirRec(abs, yieldFilter = {pcFile},
+                           skipSpecial = true, relative = false):
+      # Check each path component against SkipDirs
+      var skip = false
+      for part in path.splitPath.head.split(DirSep):
+        if part in SkipDirs:
+          skip = true
+          break
+      if skip: continue
+      files.add(path)
+
+  var hits: seq[SecretHit]
+  var scanned = 0
+  for f in files:
+    if f in vaulted: continue
+    if isBinaryExt(f): continue
+    if isSkippedFile(f): continue
+    inc scanned
+    hits.add(scanFile(f, rules))
+
+  if hits.len == 0:
+    echo &"scanned {scanned} file(s); no unvaulted secrets found"
+    return
+
+  banner(&"Unvaulted secrets found ({hits.len})")
+  for h in hits:
+    styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line}"
+    echo &"    {h.snippet}"
+  echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
+  echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  quit 1
 
 proc status*(repo: string, cfg: GpgConfig) =
   let entries = loadManifest(repo)

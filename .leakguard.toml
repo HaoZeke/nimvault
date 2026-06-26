@@ -1,7 +1,7 @@
 context_allow = [
-    "project = \"n[i]mvault\"",
-    "html_logo = \"\\.\\./\\.\\./branding/logo/n[i]mvault\\.svg\"",
-    "\"source_repo\": \"n[i]mvault\"",
-    "github\\.com/HaoZeke/n[i]mvault",
-    "\"url\": \"apidoc/n[i]mvault\"",
+  "project = \"n[i]mvault\"",
+  "html_logo = \"\\.\\./\\.\\./branding/logo/n[i]mvault\\.svg\"",
+  "\"source_repo\": \"n[i]mvault\"",
+  "github\\.com/HaoZeke/n[i]mvault",
+  "\"url\": \"apidoc/n[i]mvault\"",
 ]

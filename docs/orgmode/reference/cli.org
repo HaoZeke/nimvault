@@ -25,7 +25,7 @@ nimvault seal [--recipient KEY]
 Encrypt and sign all vault entries from their plaintext locations. Reads each
 file at the path stored in the manifest, encrypts and GPG-signs it in parallel
 via ~startProcess~, and writes ~.vault/<id>.gpg~ blobs. Computes SHA-256 hashes
-of each blob and writes a v2 manifest with integrity data. Re-encrypts and signs
+of each blob and writes a v3 manifest with integrity data. Re-encrypts and signs
 the manifest after sealing.
 
 Exits non-zero if any plaintext file is missing.
@@ -60,6 +60,30 @@ Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
 (~BADSIG~) are still fatal even with this flag. Use this only for migrating
 legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
 the vault to signed v2 format.
+
+** add-dir
+
+#+begin_src text
+nimvault add-dir <directory> [--recipient KEY] [--no-gitignore]
+#+end_src
+
+Add a directory recursively to the vault. Walks the directory tree and adds each
+file individually with its own encrypted blob. The directory structure is
+preserved via the relative paths stored in the manifest.
+
+Each file undergoes the same checks as ~nimvault add~:
+- Verifies the file is not already in the vault
+- Checks ~git ls-files~ to ensure the file is not tracked by git
+- Appends to ~.gitignore~ unless ~--no-gitignore~ is passed
+
+Use ~add-dir~ for directories like ~.beads~, ~.env~, or any folder containing
+multiple sensitive files.
+
+Exits non-zero if:
+- The directory does not exist
+- The directory is empty
+- Any file is already in the vault
+- Any file is tracked by git
 
 ** add
 
@@ -122,6 +146,9 @@ against decrypted blobs:
 - ~[modified]~ :: local differs from vault (needs ~seal~)
 - ~[missing]~ :: local file not found (needs ~unseal~)
 - ~[no-blob]~ :: encrypted blob missing (needs ~seal~ or ~add~)
+
+Directory entries: When you ~add-dir~ a directory, each file appears individually
+in ~list~ and ~status~ output. The directory structure is implicit in the paths.
 
 * Global options
 
