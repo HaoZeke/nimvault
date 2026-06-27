@@ -400,13 +400,16 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   saveManifest(repo, entries, cfg)
   echo &"  Updated manifest (blob unchanged)"
 
-proc list*(repo: string, cfg: GpgConfig) =
+proc listReport*(repo: string, cfg: GpgConfig): string =
+  ## Library-friendly list (no terminal styling). Used by CLI and C ABI.
   let entries = loadManifest(repo)
   if entries.len == 0:
-    echo "vault is empty"
-    return
+    return "vault is empty\n"
   for e in entries:
-    echo &"  {e.id}  {e.path}"
+    result.add &"  {e.id}  {e.path}\n"
+
+proc list*(repo: string, cfg: GpgConfig) =
+  stdout.write listReport(repo, cfg)
 
 const BinaryExts = [
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff",
@@ -546,9 +549,77 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
   quit 1
 
+proc statusReport*(repo: string, cfg: GpgConfig): string =
+  ## Library-friendly status (no colors). Fast path uses contentHash when present.
+  let entries = loadManifest(repo)
+  if entries.len == 0:
+    return "vault is empty\n"
+
+  result.add "Vault status\n"
+  var needDecrypt: seq[VaultEntry] = @[]
+  for e in entries:
+    let localPath = resolvePath(cfg, e.path)
+    let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+
+    if not fileExists(localPath):
+      result.add &"  [missing]   {e.path}\n"
+      continue
+
+    if not fileExists(blobPath):
+      result.add &"  [no-blob]   {e.path}\n"
+      continue
+
+    let localHash = sha256sum(localPath)
+    if e.contentHash.len > 0:
+      if localHash == e.contentHash:
+        result.add &"  [in-sync]   {e.path}\n"
+      else:
+        result.add &"  [modified]  {e.path}\n"
+      continue
+
+    needDecrypt.add(e)
+
+  if needDecrypt.len == 0:
+    return
+
+  let batchSize = gpgParallelism()
+  type StRow = tuple[entry: VaultEntry, localHash, tmpPath, status: string, code: int]
+  var rows: seq[StRow] = @[]
+  for batchStart in countup(0, needDecrypt.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, needDecrypt.high)
+    var procs: seq[(VaultEntry, string, string, Process)] = @[]
+    for i in batchStart .. batchEnd:
+      let e = needDecrypt[i]
+      let localPath = resolvePath(cfg, e.path)
+      let localHash = sha256sum(localPath)
+      let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+      let tmpPath = vaultDir(repo) / &".status-tmp-{e.id}"
+      let p = startProcess("gpg",
+        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "-o", tmpPath, blobPath],
+        options = {poUsePath})
+      procs.add((e, localHash, tmpPath, p))
+    for (e, localHash, tmpPath, p) in procs:
+      discard p.outputStream.readAll()
+      let status = p.errorStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      rows.add((e, localHash, tmpPath, status, code))
+
+  for r in rows:
+    defer:
+      if fileExists(r.tmpPath): removeFile(r.tmpPath)
+    if r.code != 0:
+      result.add &"  [error]     {r.entry.path}\n"
+      continue
+    let vaultHash = sha256sum(r.tmpPath)
+    if r.localHash == vaultHash:
+      result.add &"  [in-sync]   {r.entry.path}\n"
+    else:
+      result.add &"  [modified]  {r.entry.path}\n"
+
 proc status*(repo: string, cfg: GpgConfig) =
-  ## Fast path: when manifest has plaintext contentHash (v4 / post-seal), compare
-  ## in-process SHA-256 only. Slow path: batch-decrypt blobs and hash (legacy entries).
+  ## Terminal status (colors). Delegates logic to statusReport for library reuse.
   let entries = loadManifest(repo)
   if entries.len == 0:
     echo "vault is empty"
@@ -576,7 +647,6 @@ proc status*(repo: string, cfg: GpgConfig) =
         styledEcho fgRed, &"  [modified]  {e.path}"
       continue
 
-    # Legacy manifest without contentHash: defer GPG decrypt
     needDecrypt.add(e)
 
   if needDecrypt.len == 0:

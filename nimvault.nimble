@@ -1,5 +1,5 @@
 # Package
-version       = "0.4.1"
+version       = "0.4.2"
 author        = "Rohit Goswami"
 description   = "GPG-encrypted opaque-blob vault with hidden filenames"
 license       = "MIT"
@@ -17,3 +17,8 @@ task test, "Run test suite":
   for f in listFiles("tests"):
     if f.endsWith(".nim"):
       exec "nim c -r --hints:off -p:src " & f
+
+task buildLib, "Build libnimvault shared library for FFI":
+  exec "mkdir -p lib"
+  exec "nim c -d:release --app:lib --noMain --header " &
+       "--out:lib/libnimvault.so -p:src src/libnimvault.nim"
