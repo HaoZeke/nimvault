@@ -34,6 +34,14 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)" href="nimvault/commands.html#addDir%2Cstring%2Cstring%2CGpgConfig">commands: proc addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)</a></li>
           </ul></dd>
+<dt><a name="addDirReport" href="#addDirReport"><span>addDirReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string" href="nimvault/commands.html#addDirReport%2Cstring%2Cstring%2CGpgConfig">commands: proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string</a></li>
+          </ul></dd>
+<dt><a name="addReport" href="#addReport"><span>addReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string" href="nimvault/commands.html#addReport%2Cstring%2Cstring%2CGpgConfig">commands: proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string</a></li>
+          </ul></dd>
 <dt><a name="ekDir" href="#ekDir"><span>ekDir:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: EntryKind.ekDir" href="nimvault/manifest.html#ekDir">manifest: EntryKind.ekDir</a></li>
@@ -96,15 +104,35 @@
           </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="cli: proc main()" href="nimvault/cli.html#main">cli: proc main()</a></li>
+          data-doc-search-tag="cli: proc main(args: seq[string] = commandLineParams())" href="nimvault/cli.html#main%2Cseq%5Bstring%5D">cli: proc main(args: seq[string] = commandLineParams())</a></li>
           </ul></dd>
 <dt><a name="move" href="#move"><span>move:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc move(repo, oldPath, newPath: string; cfg: GpgConfig)" href="nimvault/commands.html#move%2Cstring%2Cstring%2Cstring%2CGpgConfig">commands: proc move(repo, oldPath, newPath: string; cfg: GpgConfig)</a></li>
           </ul></dd>
+<dt><a name="moveReport" href="#moveReport"><span>moveReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string" href="nimvault/commands.html#moveReport%2Cstring%2Cstring%2Cstring%2CGpgConfig">commands: proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="NimvaultError" href="#NimvaultError"><span>NimvaultError:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: object NimvaultError" href="nimvault/gpg.html#NimvaultError">gpg: object NimvaultError</a></li>
+          </ul></dd>
+<dt><a name="nvQuiet" href="#nvQuiet"><span>nvQuiet:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: var nvQuiet" href="nimvault/gpg.html#nvQuiet">gpg: var nvQuiet</a></li>
+          </ul></dd>
+<dt><a name="nvRaise" href="#nvRaise"><span>nvRaise:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc nvRaise(msg: string)" href="nimvault/gpg.html#nvRaise%2Cstring">gpg: proc nvRaise(msg: string)</a></li>
+          </ul></dd>
 <dt><a name="remove" href="#remove"><span>remove:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc remove(repo, path: string; cfg: GpgConfig)" href="nimvault/commands.html#remove%2Cstring%2Cstring%2CGpgConfig">commands: proc remove(repo, path: string; cfg: GpgConfig)</a></li>
+          </ul></dd>
+<dt><a name="removeReport" href="#removeReport"><span>removeReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc removeReport(repo, path: string; cfg: GpgConfig): string" href="nimvault/commands.html#removeReport%2Cstring%2Cstring%2CGpgConfig">commands: proc removeReport(repo, path: string; cfg: GpgConfig): string</a></li>
           </ul></dd>
 <dt><a name="resolvePath" href="#resolvePath"><span>resolvePath:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -122,9 +150,17 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc scan(repo: string; target: string; cfg: GpgConfig)" href="nimvault/commands.html#scan%2Cstring%2Cstring%2CGpgConfig">commands: proc scan(repo: string; target: string; cfg: GpgConfig)</a></li>
           </ul></dd>
+<dt><a name="scanReport" href="#scanReport"><span>scanReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc scanReport(repo, target: string; cfg: GpgConfig): string" href="nimvault/commands.html#scanReport%2Cstring%2Cstring%2CGpgConfig">commands: proc scanReport(repo, target: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
 <dt><a name="seal" href="#seal"><span>seal:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc seal(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#seal%2Cstring%2CGpgConfig">commands: proc seal(repo: string; cfg: GpgConfig)</a></li>
+          </ul></dd>
+<dt><a name="sealReport" href="#sealReport"><span>sealReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc sealReport(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#sealReport%2Cstring%2CGpgConfig">commands: proc sealReport(repo: string; cfg: GpgConfig): string</a></li>
           </ul></dd>
 <dt><a name="sha256sum" href="#sha256sum"><span>sha256sum:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -150,6 +186,10 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)" href="nimvault/commands.html#unseal%2Cstring%2CGpgConfig">commands: proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)</a></li>
           </ul></dd>
+<dt><a name="unsealReport" href="#unsealReport"><span>unsealReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false): string" href="nimvault/commands.html#unsealReport%2Cstring%2CGpgConfig">commands: proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false): string</a></li>
+          </ul></dd>
 <dt><a name="vaultDir" href="#vaultDir"><span>vaultDir:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc vaultDir(repo: string): string" href="nimvault/manifest.html#vaultDir%2Cstring">manifest: proc vaultDir(repo: string): string</a></li>
@@ -158,11 +198,15 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: tuple VaultEntry" href="nimvault/manifest.html#VaultEntry">manifest: tuple VaultEntry</a></li>
           </ul></dd>
+<dt><a name="Version" href="#Version"><span>Version:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="cli: const Version" href="nimvault/cli.html#Version">cli: const Version</a></li>
+          </ul></dd>
 </dl>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-27 08:54:03 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-27 09:06:59 UTC</small>
       </div>
     </div>
   </div>
