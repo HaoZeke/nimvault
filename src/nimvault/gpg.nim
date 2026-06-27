@@ -4,9 +4,16 @@ import std/[os, osproc, strutils, strformat, streams]
 import checksums/sha2
 
 type
+  NimvaultError* = object of CatchableError
   GpgConfig* = object
     recipient*: string
     root*: string  ## When non-empty, paths are relative to this dir (not ~/...)
+
+proc nvRaise*(msg: string) =
+  ## Library-safe failure (no process exit). CLI catches and quits.
+  raise newException(NimvaultError, msg)
+
+var nvQuiet* {.threadvar.}: bool  ## When true, suppress banners/echo (C ABI / MCP in-process)
 
 proc parseVaultConfig(configFile: string): tuple[recipient, root: string] =
   ## Parse .vault/config for recipient and root keys.
@@ -37,9 +44,7 @@ proc resolveRecipient*(cli, env, configRecipient: string): string =
     return envVal
   if configRecipient.len > 0:
     return configRecipient
-  stderr.writeLine "FATAL: no GPG recipient found"
-  stderr.writeLine "  Set via --recipient, NIMVAULT_GPG_RECIPIENT env, or .vault/config"
-  quit 1
+  nvRaise("FATAL: no GPG recipient found. Set via --recipient, NIMVAULT_GPG_RECIPIENT env, or .vault/config")
 
 proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
   ## Build a GpgConfig by resolving recipient and root from the 3-tier chain.
@@ -57,7 +62,6 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
 
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## Encrypt and sign a file using GPG with the configured recipient.
-  ## Uses direct process invocation (no shell) to prevent command injection.
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
              "--sign", "-e", "-r", cfg.recipient,
@@ -67,38 +71,27 @@ proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   let code = p.waitForExit()
   p.close()
   if code != 0:
-    stderr.writeLine &"FATAL: gpg encrypt failed (exit {code}):\n{output}"
-    quit 1
+    nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
 
 proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path.
-  ## When verifySig is true, fails on bad or missing signatures (fail-closed).
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
              "-d", "-o", outPath, inPath],
     options = {poUsePath})
-  discard p.outputStream.readAll()  # empty with -o
+  discard p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
   if code != 0:
-    stderr.writeLine &"FATAL: gpg decrypt failed (exit {code})"
-    stderr.writeLine status
-    quit 1
+    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
   if verifySig:
     if "BADSIG" in status or "ERRSIG" in status:
-      stderr.writeLine &"FATAL: signature verification failed for {inPath}"
-      stderr.writeLine "  The file may have been tampered with."
-      quit 1
+      nvRaise(&"FATAL: signature verification failed for {inPath}")
     if "GOODSIG" notin status:
-      stderr.writeLine &"FATAL: missing signature on {inPath}"
-      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
-      quit 1
+      nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 
 proc gpgDecryptToString*(inPath: string, verifySig = false): string =
-  ## Decrypt a GPG-encrypted file and return contents as a string.
-  ## Reads stdout for content and stderr for signature status.
-  ## Pipe-safe for typical vault entries (< 64KB).
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
     options = {poUsePath})
@@ -107,22 +100,14 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   let code = p.waitForExit()
   p.close()
   if code != 0:
-    stderr.writeLine &"FATAL: gpg decrypt failed (exit {code})"
-    stderr.writeLine status
-    quit 1
+    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
   if verifySig:
     if "BADSIG" in status or "ERRSIG" in status:
-      stderr.writeLine &"FATAL: signature verification failed for {inPath}"
-      stderr.writeLine "  The file may have been tampered with."
-      quit 1
+      nvRaise(&"FATAL: signature verification failed for {inPath}")
     if "GOODSIG" notin status:
-      stderr.writeLine &"FATAL: missing signature on {inPath}"
-      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
-      quit 1
+      nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 
 proc gpgParallelism*(): int =
-  ## Concurrent GPG processes for seal/unseal/status decrypt batches.
-  ## Override with NIMVAULT_GPG_PARALLEL (1..64). Default 8.
   let raw = getEnv("NIMVAULT_GPG_PARALLEL")
   if raw.len == 0:
     return 8
@@ -134,13 +119,11 @@ proc gpgParallelism*(): int =
   if result > 64: result = 64
 
 proc sha256sum*(path: string): string =
-  ## In-process SHA-256 (hex) of a file. Avoids spawning `sha256sum` per path.
   const chunk = 1024 * 1024
   var ctx = initSha_256()
   var f: File
   if not open(f, path, fmRead):
-    stderr.writeLine &"FATAL: cannot open for hashing: {path}"
-    quit 1
+    nvRaise(&"FATAL: cannot open for hashing: {path}")
   defer: f.close()
   var buf = newString(chunk)
   while true:
@@ -151,14 +134,12 @@ proc sha256sum*(path: string): string =
       ctx.update(buf)
       break
     ctx.update(buf)
-  # Avoid `$ctx.digest()` — breaks nimdoc on some Nim versions; encode explicitly.
   let d = ctx.digest()
   for i in 0 ..< d.len:
     result.add toHex(int(d[i]), 2)
   result = result.toLowerAscii()
 
 proc sha256sumBytes*(data: string): string =
-  ## In-process SHA-256 (hex) of an in-memory buffer.
   var ctx = initSha_256()
   ctx.update(data)
   let d = ctx.digest()

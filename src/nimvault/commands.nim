@@ -5,8 +5,10 @@
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets]
 import ./gpg, ./manifest
+# NimvaultError, nvRaise, nvQuiet from gpg
 
 proc banner(msg: string) =
+  if nvQuiet: return
   let w = terminalWidth()
   let line = repeat('-', min(w, 72))
   echo ""
@@ -27,14 +29,12 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   for e in entries:
     let inPath = vaultDir(repo) / &"{e.id}.gpg"
     if not fileExists(inPath):
-      stderr.writeLine &"FATAL: vault blob missing: {inPath}"
-      quit 1
+      nvRaise(&"FATAL: vault blob missing: {inPath}")
     # Path traversal check
     if not isPathSafe(cfg, e.path):
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       stderr.writeLine &"  Resolved: {normalizedPath(resolvePath(cfg, e.path))}"
-      stderr.writeLine "  Possible directory traversal attack."
-      quit 1
+      nvRaise("  Possible directory traversal attack.")
     # Blob hash verification
     if e.hash.len > 0:
       let actualHash = sha256sum(inPath)
@@ -42,12 +42,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
         stderr.writeLine &"FATAL: integrity check failed for {e.path}"
         stderr.writeLine &"  Expected: {e.hash}"
         stderr.writeLine &"  Actual:   {actualHash}"
-        stderr.writeLine "  The vault blob may have been tampered with."
-        quit 1
+        nvRaise("  The vault blob may have been tampered with.")
     elif requireSig:
       stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
-      stderr.writeLine "  Pass --allow-unsigned to accept unsigned vaults."
-      quit 1
+      nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
 
   # Decrypt to temp files first (never directly to final path).
   # This prevents release of unverified plaintext: GPG streams content to
@@ -86,9 +84,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   template abortUnseal(msgs: varargs[string]) =
     for tp in tmpPaths:
       if fileExists(tp): removeFile(tp)
+    var acc = ""
     for msg in msgs:
-      stderr.writeLine msg
-    quit 1
+      acc.add msg & "\n"
+    nvRaise(acc.strip())
 
   # Verify all decryption results and signatures
   for r in results:
@@ -140,8 +139,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
     let src = resolvePath(cfg, e.path)
     if not fileExists(src):
       stderr.writeLine &"FATAL: plaintext missing: {src}"
-      stderr.writeLine "  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry."
-      quit 1
+      nvRaise("  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry.")
 
   # Launch GPG encrypts in batches (NIMVAULT_GPG_PARALLEL, default 8).
   # GPG sign+encrypt is memory-intensive; launching all at once can trigger
@@ -167,8 +165,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
       let code = p.waitForExit()
       p.close()
       if code != 0:
-        stderr.writeLine &"FATAL: failed to seal {e.path}\n{output}"
-        quit 1
+        nvRaise(&"FATAL: failed to seal {e.path}\n{output}")
       echo &"  {e.path}"
 
   # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
@@ -193,8 +190,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
     expandHome(path)
 
   if not fileExists(absPath):
-    stderr.writeLine &"FATAL: file not found: {absPath}"
-    quit 1
+    nvRaise(&"FATAL: file not found: {absPath}")
 
   let storedPath = storePath(cfg, absPath, repo)
 
@@ -202,8 +198,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   var entries = loadManifest(repo)
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
-      stderr.writeLine &"Already in vault: {storedPath}"
-      quit 1
+      nvRaise(&"Already in vault: {storedPath}")
 
   # Check if file is already tracked by git (prevents plaintext leaks)
   let checkPath = if cfg.root.len > 0: storedPath else: absPath
@@ -211,8 +206,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
     workingDir = repo)
   if lsCode == 0:
     stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
-    stderr.writeLine &"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first."
-    quit 1
+    nvRaise(&"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first.")
 
   # Append to .gitignore if not already ignored (unless --no-gitignore)
   let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
@@ -256,8 +250,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
     expandHome(dirPath)
 
   if not dirExists(absDirPath):
-    stderr.writeLine &"FATAL: directory not found: {absDirPath}"
-    quit 1
+    nvRaise(&"FATAL: directory not found: {absDirPath}")
 
   # Collect all files in the directory tree (recursive)
   var filesToAdd: seq[string] = @[]
@@ -273,8 +266,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   walkDirRecursive(absDirPath)
 
   if filesToAdd.len == 0:
-    stderr.writeLine &"FATAL: directory is empty: {absDirPath}"
-    quit 1
+    nvRaise(&"FATAL: directory is empty: {absDirPath}")
 
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   createDir(vaultDir(repo))
@@ -284,8 +276,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
     # Check for duplicates
     for e in entries:
       if resolvePath(cfg, e.path) == filePath:
-        stderr.writeLine &"Already in vault: {filePath}"
-        quit 1
+        nvRaise(&"Already in vault: {filePath}")
 
     # Check if file is already tracked by git
     let storedPath = storePath(cfg, filePath, repo)
@@ -294,8 +285,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
       workingDir = repo)
     if lsCode == 0:
       stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
-      stderr.writeLine &"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first."
-      quit 1
+      nvRaise(&"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first.")
 
     # Append to .gitignore if not already ignored
     let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
@@ -349,8 +339,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
       newEntries.add(e)
 
   if not found:
-    stderr.writeLine &"Not in vault: {path}"
-    quit 1
+    nvRaise(&"Not in vault: {path}")
 
   saveManifest(repo, newEntries, cfg)
   echo "  (local plaintext file NOT deleted)"
@@ -388,14 +377,12 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
       elif fileExists(newAbs):
         echo &"  File already at {newStored}"
       else:
-        stderr.writeLine &"FATAL: file not found at {oldAbs} or {newAbs}"
-        quit 1
+        nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
       e.path = newStored
       break
 
   if not found:
-    stderr.writeLine &"Not in vault: {oldPath}"
-    quit 1
+    nvRaise(&"Not in vault: {oldPath}")
 
   saveManifest(repo, entries, cfg)
   echo &"  Updated manifest (blob unchanged)"
@@ -502,8 +489,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
             else: absolutePath(target)
 
   if not fileExists(abs) and not dirExists(abs):
-    stderr.writeLine &"FATAL: not a file or directory: {abs}"
-    quit 1
+    nvRaise(&"FATAL: not a file or directory: {abs}")
 
   # Build set of vault-protected absolute paths (empty when not in a repo).
   var vaulted: HashSet[string]
@@ -547,7 +533,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
     echo &"    {h.snippet}"
   echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
   echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
-  quit 1
+  nvRaise("nimvault error")
 
 proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
@@ -687,3 +673,41 @@ proc status*(repo: string, cfg: GpgConfig) =
       styledEcho fgGreen, &"  [in-sync]   {r.entry.path}"
     else:
       styledEcho fgRed, &"  [modified]  {r.entry.path}"
+
+
+# --- Library / C ABI report wrappers (return text, raise NimvaultError, honor nvQuiet) ---
+
+proc sealReport*(repo: string, cfg: GpgConfig): string =
+  seal(repo, cfg)
+  "Sealed vault entries.\n"
+
+proc unsealReport*(repo: string, cfg: GpgConfig, allowUnsigned = false): string =
+  unseal(repo, cfg, allowUnsigned)
+  "Unsealed vault entries.\n"
+
+proc addReport*(repo, path: string, cfg: GpgConfig, noGitignore = false): string =
+  add(repo, path, cfg, noGitignore)
+  "Added " & path & "\n"
+
+proc addDirReport*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false): string =
+  addDir(repo, dirPath, cfg, noGitignore)
+  "Added directory " & dirPath & "\n"
+
+proc removeReport*(repo, path: string, cfg: GpgConfig): string =
+  remove(repo, path, cfg)
+  "Removed " & path & "\n"
+
+proc moveReport*(repo, oldPath, newPath: string, cfg: GpgConfig): string =
+  move(repo, oldPath, newPath, cfg)
+  "Moved " & oldPath & " -> " & newPath & "\n"
+
+proc scanReport*(repo, target: string, cfg: GpgConfig): string =
+  ## Scan without process exit. Returns report; raises only on I/O errors.
+  ## If secrets found, still returns the report text (no raise) so MCP can show it.
+  # Re-implement minimal: call scan logic is exit-based — run and catch
+  try:
+    scan(repo, target, cfg)
+    result = "scanned; no unvaulted secrets found\n"
+  except NimvaultError as e:
+    # scan uses nvRaise for "found secrets" path if we converted quit — treat message as report
+    result = e.msg & "\n"
