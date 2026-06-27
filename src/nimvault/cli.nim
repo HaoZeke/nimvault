@@ -89,8 +89,17 @@ proc doScan(path: seq[string], recipient = "", vault = "") =
     let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
     commands.scan(repo, target, cfg)
 
+proc doVersion() =
+  ## Print package version (also via --version / -V before dispatch).
+  echo "nimvault ", Version
+
 proc main*(args: seq[string] = commandLineParams()) =
   ## Entry used by nimvault.nim when isMainModule.
+  # Early version flags — cligen's multi-dispatch does not wire package version by default.
+  for a in args:
+    if a in ["--version", "-V", "version"]:
+      doVersion()
+      return
   const rh = "GPG recipient key id (or use .vault/config / NIMVAULT_GPG_RECIPIENT)"
   dispatchMulti(
     [doSeal, cmdName = "seal", help = {"recipient": rh}],
@@ -106,6 +115,7 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doStatus, cmdName = "status", help = {"recipient": rh}],
     [doScan, cmdName = "scan", positional = "path",
      help = {"recipient": rh, "vault": "vault repo override"}],
+    [doVersion, cmdName = "version"],
   )
 
 when isMainModule:
