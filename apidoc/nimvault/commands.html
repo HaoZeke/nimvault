@@ -70,6 +70,10 @@
   <li><a class="reference" href="#list%2Cstring%2CGpgConfig" title="list(repo: string; cfg: GpgConfig)">list(repo: string; cfg: GpgConfig)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">listReport
+  <li><a class="reference" href="#listReport%2Cstring%2CGpgConfig" title="listReport(repo: string; cfg: GpgConfig): string">listReport(repo: string; cfg: GpgConfig): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">move
   <li><a class="reference" href="#move%2Cstring%2Cstring%2Cstring%2CGpgConfig" title="move(repo, oldPath, newPath: string; cfg: GpgConfig)">move(repo, oldPath, newPath: string; cfg: GpgConfig)</a></li>
 
@@ -88,6 +92,10 @@
 </ul>
 <ul class="simple nested-toc-section">status
   <li><a class="reference" href="#status%2Cstring%2CGpgConfig" title="status(repo: string; cfg: GpgConfig)">status(repo: string; cfg: GpgConfig)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">statusReport
+  <li><a class="reference" href="#statusReport%2Cstring%2CGpgConfig" title="statusReport(repo: string; cfg: GpgConfig): string">statusReport(repo: string; cfg: GpgConfig): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">unseal
@@ -149,12 +157,26 @@
 <div id="list-procs-all">
   <div id="list,string,GpgConfig">
   <dt><pre><span class="Keyword">proc</span> <a href="#list%2Cstring%2CGpgConfig"><span class="Identifier">list</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="listReport-procs-all">
+  <div id="listReport,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#listReport%2Cstring%2CGpgConfig"><span class="Identifier">listReport</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    
+    Library-friendly list (no terminal styling). Used by CLI and C ABI.
     
   </dd>
 </div>
@@ -224,7 +246,21 @@
     <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Fast path: when manifest has plaintext contentHash (v4 / post-seal), compare in-process SHA-256 only. Slow path: batch-decrypt blobs and hash (legacy entries).
+    Terminal status (colors). Delegates logic to statusReport for library reuse.
+    
+  </dd>
+</div>
+
+</div>
+<div id="statusReport-procs-all">
+  <div id="statusReport,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#statusReport%2Cstring%2CGpgConfig"><span class="Identifier">statusReport</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Library-friendly status (no colors). Fast path uses contentHash when present.
     
   </dd>
 </div>
@@ -254,7 +290,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-26 17:44:35 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-06-27 08:54:03 UTC</small>
       </div>
     </div>
   </div>
