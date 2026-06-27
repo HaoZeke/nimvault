@@ -16,11 +16,16 @@ proc banner(msg: string) =
   styledEcho fgCyan, styleBright, "  ", msg
   echo line
 
+proc nvEcho(msg: string) =
+  ## Progress output for CLI; suppressed when nvQuiet (C ABI / MCP in-process).
+  if nvQuiet: return
+  echo msg
+
 proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   let requireSig = not allowUnsigned
   let entries = loadManifest(repo, verifySig = requireSig)
   if entries.len == 0:
-    echo "vault is empty"
+    nvEcho("vault is empty")
     return
 
   banner("Unsealing vault ...")
@@ -122,14 +127,14 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
     except IOError:
       discard
     setFilePermissions(outPath, perms)
-    echo &"  {r.entry.path}"
+    nvEcho(&"  {r.entry.path}")
 
-  echo &"\nUnsealed {entries.len} file(s)."
+  nvEcho(&"\nUnsealed {entries.len} file(s).")
 
 proc seal*(repo: string, cfg: GpgConfig) =
   let entries = loadManifest(repo)
   if entries.len == 0:
-    echo "vault is empty"
+    nvEcho("vault is empty")
     return
 
   banner("Sealing vault ...")
@@ -166,7 +171,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
       p.close()
       if code != 0:
         nvRaise(&"FATAL: failed to seal {e.path}\n{output}")
-      echo &"  {e.path}"
+      nvEcho(&"  {e.path}")
 
   # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
   var hashedEntries: seq[VaultEntry] = @[]
@@ -176,7 +181,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
     hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind, sha256sum(plainPath)))
 
   saveManifest(repo, hashedEntries, cfg)
-  echo &"\nSealed {entries.len} file(s)."
+  nvEcho(&"\nSealed {entries.len} file(s).")
 
 proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a file by its target path.
@@ -234,9 +239,9 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   let contentHash = sha256sum(absPath)
   entries.add((id, storedPath, hash, ekFile, contentHash))
   saveManifest(repo, entries, cfg)
-  echo &"  id:   {id}"
-  echo &"  path: {storedPath}"
-  echo &"  blob: .vault/{id}.gpg"
+  nvEcho(&"  id:   {id}")
+  nvEcho(&"  path: {storedPath}")
+  nvEcho(&"  blob: .vault/{id}.gpg")
 
 proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a directory recursively to the vault.
@@ -309,10 +314,10 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
     let hash = sha256sum(outPath)
     let contentHash = sha256sum(filePath)
     entries.add((id, storedPath, hash, ekFile, contentHash))
-    echo &"  {storedPath}"
+    nvEcho(&"  {storedPath}")
 
   saveManifest(repo, entries, cfg)
-  echo &"\nAdded {filesToAdd.len} file(s) from directory."
+  nvEcho(&"\nAdded {filesToAdd.len} file(s) from directory.")
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
   let absPath = if path.isAbsolute:
@@ -333,8 +338,8 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
       let blobPath = vaultDir(repo) / &"{e.id}.gpg"
       if fileExists(blobPath):
         removeFile(blobPath)
-        echo &"  Removed .vault/{e.id}.gpg"
-      echo &"  Removed manifest entry: {e.path}"
+        nvEcho(&"  Removed .vault/{e.id}.gpg")
+      nvEcho(&"  Removed manifest entry: {e.path}")
     else:
       newEntries.add(e)
 
@@ -342,7 +347,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
     nvRaise(&"Not in vault: {path}")
 
   saveManifest(repo, newEntries, cfg)
-  echo "  (local plaintext file NOT deleted)"
+  nvEcho("  (local plaintext file NOT deleted)")
 
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   let oldAbs = if oldPath.isAbsolute:
@@ -373,9 +378,9 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
       if fileExists(oldAbs):
         createDir(newAbs.parentDir)
         moveFile(oldAbs, newAbs)
-        echo &"  Moved {e.path} -> {newStored}"
+        nvEcho(&"  Moved {e.path} -> {newStored}")
       elif fileExists(newAbs):
-        echo &"  File already at {newStored}"
+        nvEcho(&"  File already at {newStored}")
       else:
         nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
       e.path = newStored
@@ -385,7 +390,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
     nvRaise(&"Not in vault: {oldPath}")
 
   saveManifest(repo, entries, cfg)
-  echo &"  Updated manifest (blob unchanged)"
+  nvEcho(&"  Updated manifest (blob unchanged)")
 
 proc listReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly list (no terminal styling). Used by CLI and C ABI.
@@ -524,16 +529,25 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
     hits.add(scanFile(f, rules))
 
   if hits.len == 0:
-    echo &"scanned {scanned} file(s); no unvaulted secrets found"
+    if not nvQuiet:
+      echo &"scanned {scanned} file(s); no unvaulted secrets found"
+    else:
+      nvRaise(&"scanned {scanned} file(s); no unvaulted secrets found")
     return
 
-  banner(&"Unvaulted secrets found ({hits.len})")
+  if not nvQuiet:
+    banner(&"Unvaulted secrets found ({hits.len})")
+    for h in hits:
+      styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line}"
+      echo &"    {h.snippet}"
+    echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
+    echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  var report = &"Unvaulted secrets found ({hits.len})\n"
   for h in hits:
-    styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line}"
-    echo &"    {h.snippet}"
-  echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
-  echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
-  nvRaise("nimvault error")
+    report.add &"  [{h.rule}] {h.file}:{h.line}\n    {h.snippet}\n"
+  report.add &"\nscanned {scanned} file(s); {hits.len} potential secret(s).\n"
+  report.add "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  nvRaise(report)
 
 proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
