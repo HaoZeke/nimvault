@@ -67,6 +67,49 @@ block addFile:
   doAssert entries[0].hash.len == 64, "Blob hash should be SHA-256 (64 hex chars)"
   echo "PASS: add (with blob hash)"
 
+block getSingleEntry:
+  # `get` must return exactly the plaintext with nothing else on the stream:
+  # its whole purpose is to be read by another program.
+  let got = get(repo, secretPath, cfg, allowUnsigned = true)
+  doAssert got == "sk-test-12345-secret-key", "get returned: " & got
+  echo "PASS: get returns plaintext"
+
+block getLeavesNothingBehind:
+  # Unlike unseal, get must not materialise anything. Remove the plaintext and
+  # confirm get still answers from the blob without recreating the file.
+  let saved = readFile(secretPath)
+  removeFile(secretPath)
+  let got = get(repo, secretPath, cfg, allowUnsigned = true)
+  doAssert got == saved, "get should read the blob, not the file"
+  doAssert not fileExists(secretPath), "get must not write the entry to disk"
+  writeFile(secretPath, saved)
+  echo "PASS: get writes nothing to disk"
+
+block getRejectsUnknownPath:
+  var raised = false
+  try:
+    discard get(repo, repo / "secrets" / "nope.txt", cfg, allowUnsigned = true)
+  except CatchableError:
+    raised = true
+  doAssert raised, "get should refuse a path that is not in the vault"
+  echo "PASS: get refuses an untracked path"
+
+block getDetectsTamperedBlob:
+  # The integrity check is why get repeats unseal's guards rather than trusting
+  # the blob: a caller reading one secret needs it as much as one reading all.
+  let entries = loadManifest(repo)
+  let blobPath = vaultDir(repo) / &"{entries[0].id}.gpg"
+  let original = readFile(blobPath)
+  writeFile(blobPath, original & "tamper")
+  var raised = false
+  try:
+    discard get(repo, secretPath, cfg, allowUnsigned = false)
+  except CatchableError:
+    raised = true
+  doAssert raised, "get should refuse a blob whose hash does not match"
+  writeFile(blobPath, original)
+  echo "PASS: get detects a tampered blob"
+
 block listEntries:
   list(repo, cfg)
   echo "PASS: list (visual check above)"

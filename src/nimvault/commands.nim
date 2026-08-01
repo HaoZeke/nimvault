@@ -349,6 +349,57 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   saveManifest(repo, newEntries, cfg)
   nvEcho("  (local plaintext file NOT deleted)")
 
+proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
+  ## Decrypt one tracked entry and return its plaintext. Nothing is written to
+  ## disk and nothing else in the vault is touched.
+  ##
+  ## `unseal` is all-or-nothing and materialises every entry, which is the wrong
+  ## shape for a caller that wants one credential: a forced-command SSH gate
+  ## serving a single allowlisted secret, a service reading one token at start
+  ## up. Without this those callers shell out to gpg against the blobs directly,
+  ## which works but puts secrets outside anything `list`, `status` or `scan`
+  ## can see.
+  ##
+  ## The same checks `unseal` performs still apply. A caller asking for one
+  ## entry has no less need of a path-safety check and an integrity check than
+  ## one asking for all of them.
+  let requireSig = not allowUnsigned
+  let entries = loadManifest(repo, verifySig = requireSig)
+
+  let absPath = if path.isAbsolute:
+    path
+  elif path.startsWith("~/"):
+    expandHome(path)
+  elif cfg.root.len > 0:
+    cfg.root / path
+  else:
+    expandHome(path)
+
+  for e in entries:
+    if resolvePath(cfg, e.path) != absPath:
+      continue
+
+    if not isPathSafe(cfg, e.path):
+      stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
+      nvRaise("  Possible directory traversal attack.")
+
+    let inPath = vaultDir(repo) / &"{e.id}.gpg"
+    if not fileExists(inPath):
+      nvRaise(&"FATAL: vault blob missing: {inPath}")
+
+    if e.hash.len > 0:
+      let actualHash = sha256sum(inPath)
+      if actualHash != e.hash:
+        stderr.writeLine &"FATAL: integrity check failed for {e.path}"
+        nvRaise("  The vault blob may have been tampered with.")
+    elif requireSig:
+      stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
+      nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
+
+    return gpgDecryptToString(inPath, verifySig = requireSig)
+
+  nvRaise(&"Not in vault: {path}")
+
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   let oldAbs = if oldPath.isAbsolute:
     oldPath

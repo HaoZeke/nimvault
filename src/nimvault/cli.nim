@@ -56,6 +56,17 @@ proc doAddDir(path: seq[string], recipient = "", noGitignore = false) =
     let (repo, cfg) = resolve(recipient)
     commands.addDir(repo, path[0], cfg, noGitignore)
 
+proc doGet(path: seq[string], recipient = "", allowUnsigned = false) =
+  ## Print one entry's plaintext on stdout. Deliberately quiet: the output is
+  ## meant to be read by another program, so nothing decorative may share the
+  ## stream with a secret.
+  if path.len != 1:
+    stderr.writeLine "usage: nimvault get <path>"
+    quit 1
+  cliRun:
+    let (repo, cfg) = resolve(recipient)
+    stdout.write(commands.get(repo, path[0], cfg, allowUnsigned))
+
 proc doRm(path: seq[string], recipient = "") =
   if path.len != 1:
     stderr.writeLine "usage: nimvault rm <path>"
@@ -110,6 +121,9 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doAddDir, cmdName = "add-dir", positional = "path",
      help = {"recipient": rh, "noGitignore": "do not append paths to .gitignore"}],
     [doRm, cmdName = "rm", positional = "path", help = {"recipient": rh}],
+    [doGet, cmdName = "get", positional = "path",
+     help = {"recipient": rh,
+             "allowUnsigned": "accept unsigned legacy manifests"}],
     [doMv, cmdName = "mv", positional = "paths", help = {"recipient": rh}],
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
