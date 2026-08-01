@@ -8,6 +8,17 @@ type
   GpgConfig* = object
     recipient*: string
     root*: string  ## When non-empty, paths are relative to this dir (not ~/...)
+    ## Which primitive encrypts blobs and the manifest. "gpg" keeps the
+    ## long-standing behaviour where signing and encryption are one operation.
+    ## "age" separates them: age has no signing, so authenticity moves to a
+    ## detached signature over the manifest, whose recorded hashes already
+    ## cover every blob.
+    backend*: string        ## "gpg" (default) | "age"
+    identity*: string       ## age identity file; required when backend is age
+    signer*: string         ## "gpg" (default) | "ssh" | "none"
+    signKey*: string        ## ssh private key used to sign the manifest
+    allowedSigners*: string ## ssh allowed-signers file used to verify it
+    signerIdentity*: string ## principal to match within allowed_signers
 
 proc nvRaise*(msg: string) =
   ## Library-safe failure (no process exit). CLI catches and quits.
@@ -15,10 +26,15 @@ proc nvRaise*(msg: string) =
 
 var nvQuiet* {.threadvar.}: bool  ## When true, suppress banners/echo (C ABI / MCP in-process)
 
-proc parseVaultConfig(configFile: string): tuple[recipient, root: string] =
-  ## Parse .vault/config for recipient and root keys.
+type VaultConfigFile* = tuple[recipient, root, backend, identity, signer,
+                              signKey, allowedSigners, signerIdentity: string]
+
+proc parseVaultConfig(configFile: string): VaultConfigFile =
+  ## Parse .vault/config. Unknown keys are ignored so an older binary reading a
+  ## newer vault fails on the crypto it cannot do, with a clear message, rather
+  ## than on the config it does not recognise.
   if not fileExists(configFile):
-    return ("", "")
+    return
   for line in lines(configFile):
     let stripped = line.strip()
     if stripped.len == 0 or stripped.startsWith("#"):
@@ -31,6 +47,13 @@ proc parseVaultConfig(configFile: string): tuple[recipient, root: string] =
         case key
         of "recipient": result.recipient = val
         of "root": result.root = val
+        of "backend": result.backend = val
+        of "identity": result.identity = val
+        of "signer": result.signer = val
+        of "sign_key": result.signKey = val
+        of "allowed_signers": result.allowedSigners = val
+        of "signer_identity": result.signerIdentity = val
+        else: discard
 
 proc resolveRecipient*(cli, env, configRecipient: string): string =
   ## 3-tier recipient lookup:
@@ -49,15 +72,44 @@ proc resolveRecipient*(cli, env, configRecipient: string): string =
 proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
   ## Build a GpgConfig by resolving recipient and root from the 3-tier chain.
   let configPath = repo / ".vault" / "config"
-  let (cfgRecipient, cfgRoot) = parseVaultConfig(configPath)
-  var root = cfgRoot
+  let c = parseVaultConfig(configPath)
+  var root = c.root
   if root == "repo":
     root = repo
   elif root.len > 0 and not root.isAbsolute:
     root = repo / root
+
+  let backend = if getEnv("NIMVAULT_BACKEND").len > 0: getEnv("NIMVAULT_BACKEND")
+                elif c.backend.len > 0: c.backend
+                else: "gpg"
+
+  # The signer defaults to whatever the backend can do on its own. gpg signs as
+  # it encrypts, so it needs nothing further; age cannot sign at all, so a vault
+  # using it must say how its manifest is to be vouched for rather than silently
+  # ending up with no authenticity at all.
+  let signer = if c.signer.len > 0: c.signer
+               elif backend == "age": "ssh"
+               else: "gpg"
+
+  let identity = if getEnv("NIMVAULT_AGE_IDENTITY").len > 0: getEnv("NIMVAULT_AGE_IDENTITY")
+                 else: c.identity
+
+  # age recipients live in the config rather than the GPG env var, so only the
+  # gpg backend consults the 3-tier chain that raises when it finds nothing.
+  let recipient = if backend == "age":
+                    if cliRecipient.len > 0: cliRecipient else: c.recipient
+                  else:
+                    resolveRecipient(cliRecipient, "NIMVAULT_GPG_RECIPIENT", c.recipient)
+
   result = GpgConfig(
-    recipient: resolveRecipient(cliRecipient, "NIMVAULT_GPG_RECIPIENT", cfgRecipient),
+    recipient: recipient,
     root: root,
+    backend: backend,
+    identity: identity,
+    signer: signer,
+    signKey: c.signKey,
+    allowedSigners: c.allowedSigners,
+    signerIdentity: c.signerIdentity,
   )
 
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =

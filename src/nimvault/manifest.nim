@@ -2,6 +2,7 @@
 
 import std/[os, strutils, strformat, sysrand]
 import ./gpg
+import ./crypto
 
 type
   EntryKind* = enum
@@ -61,14 +62,20 @@ proc vaultDir*(repo: string): string =
   ## Path to the .vault directory within a repo.
   repo / ".vault"
 
-proc loadManifest*(repo: string, verifySig = false): seq[VaultEntry] =
+proc loadManifest*(repo: string, verifySig = false,
+                   cfg = GpgConfig()): seq[VaultEntry] =
   ## Decrypt and parse the vault manifest.
   ## Returns empty seq if no manifest exists.
   ## Supports v1–v4 (v4 adds plaintext contentHash for fast `status`).
-  let enc = vaultDir(repo) / "manifest.gpg"
-  if not fileExists(enc):
+  ##
+  ## `cfg` is optional so the many call sites that only read a gpg vault stay
+  ## unchanged. `findManifest` still refuses to report a vault sealed by the
+  ## other backend as empty, so omitting it fails loudly rather than quietly.
+  let enc = findManifest(repo, cfg)
+  if enc.len == 0:
     return @[]
-  let plain = gpgDecryptToString(enc, verifySig)
+  verifyManifest(cfg, enc, verifySig)
+  let plain = decryptToString(cfg, enc, verifySig)
   for line in plain.splitLines:
     let stripped = line.strip()
     if stripped.len == 0 or stripped.startsWith("#"):
@@ -92,10 +99,13 @@ proc loadManifest*(repo: string, verifySig = false): seq[VaultEntry] =
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig) =
   ## Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt.
   let plainPath = vaultDir(repo) / ".manifest.plain"
-  let encPath = vaultDir(repo) / "manifest.gpg"
+  let encPath = manifestPath(repo, cfg)
   var content = "# vault-manifest-v4\n"
   for e in entries:
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
-  gpgEncrypt(cfg, plainPath, encPath)
+  encryptFile(cfg, plainPath, encPath)
   removeFile(plainPath)
+  # The manifest is the trust root: its hashes are what vouch for every blob,
+  # so it is the one thing that has to be signed when the backend cannot.
+  signManifest(cfg, encPath)
