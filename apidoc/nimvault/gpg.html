@@ -57,8 +57,21 @@
     <ul class="simple simple-toc-section">
       <li><a class="reference" href="#GpgConfig" title="GpgConfig = object
   recipient*: string
-  root*: string              ## When non-empty, paths are relative to this dir (not ~/...)">GpgConfig</a></li>
+  root*: string ## When non-empty, paths are relative to this dir (not ~/...)
+                ## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the
+                ## long-standing behaviour where signing and encryption are one operation.
+                ## &quot;age&quot; separates them: age has no signing, so authenticity moves to a
+                ## detached signature over the manifest, whose recorded hashes already
+                ## cover every blob.
+  backend*: string           ## &quot;gpg&quot; (default) | &quot;age&quot;
+  identity*: string          ## age identity file; required when backend is age
+  signer*: string            ## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;
+  signKey*: string           ## ssh private key used to sign the manifest
+  allowedSigners*: string    ## ssh allowed-signers file used to verify it
+  signerIdentity*: string    ## principal to match within allowed_signers">GpgConfig</a></li>
 <li><a class="reference" href="#NimvaultError" title="NimvaultError = object of CatchableError">NimvaultError</a></li>
+<li><a class="reference" href="#VaultConfigFile" title="VaultConfigFile = tuple[recipient, root, backend, identity, signer, signKey,
+                        allowedSigners, signerIdentity: string]">VaultConfigFile</a></li>
 
     </ul>
   </details>
@@ -131,7 +144,18 @@
     <div id="GpgConfig">
   <dt><pre><a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
   <span class="Identifier">recipient</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
-  <span class="Identifier">root</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>              <span class="Comment">## When non-empty, paths are relative to this dir (not ~/...)</span></pre></dt>
+  <span class="Identifier">root</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Comment">## When non-empty, paths are relative to this dir (not ~/...)</span>
+                <span class="Comment">## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the</span>
+                <span class="Comment">## long-standing behaviour where signing and encryption are one operation.</span>
+                <span class="Comment">## &quot;age&quot; separates them: age has no signing, so authenticity moves to a</span>
+                <span class="Comment">## detached signature over the manifest, whose recorded hashes already</span>
+                <span class="Comment">## cover every blob.</span>
+  <span class="Identifier">backend</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>           <span class="Comment">## &quot;gpg&quot; (default) | &quot;age&quot;</span>
+  <span class="Identifier">identity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>          <span class="Comment">## age identity file; required when backend is age</span>
+  <span class="Identifier">signer</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>            <span class="Comment">## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;</span>
+  <span class="Identifier">signKey</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>           <span class="Comment">## ssh private key used to sign the manifest</span>
+  <span class="Identifier">allowedSigners</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## ssh allowed-signers file used to verify it</span>
+  <span class="Identifier">signerIdentity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## principal to match within allowed_signers</span></pre></dt>
   <dd>
     
     
@@ -140,6 +164,15 @@
 </div>
 <div id="NimvaultError">
   <dt><pre><a href="gpg.html#NimvaultError"><span class="Identifier">NimvaultError</span></a> <span class="Other">=</span> <span class="Keyword">object</span> <span class="Keyword">of</span> <span class="Identifier">CatchableError</span></pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+<div id="VaultConfigFile">
+  <dt><pre><a href="gpg.html#VaultConfigFile"><span class="Identifier">VaultConfigFile</span></a> <span class="Other">=</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">recipient</span><span class="Other">,</span> <span class="Identifier">root</span><span class="Other">,</span> <span class="Identifier">backend</span><span class="Other">,</span> <span class="Identifier">identity</span><span class="Other">,</span> <span class="Identifier">signer</span><span class="Other">,</span> <span class="Identifier">signKey</span><span class="Other">,</span>
+                        <span class="Identifier">allowedSigners</span><span class="Other">,</span> <span class="Identifier">signerIdentity</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span></pre></dt>
   <dd>
     
     
@@ -292,7 +325,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 21:47:30 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:03:27 UTC</small>
       </div>
     </div>
   </div>

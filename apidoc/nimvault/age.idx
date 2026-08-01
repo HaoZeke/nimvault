@@ -1,0 +1,8 @@
+nimTitle	age	nimvault/age.html	module nimvault/age		0
+nim	ageBinary	nimvault/age.html#ageBinary	proc ageBinary(): string		27
+nim	ageIdentityPath	nimvault/age.html#ageIdentityPath,GpgConfig	proc ageIdentityPath(cfg: GpgConfig): string		38
+nim	ageEncrypt	nimvault/age.html#ageEncrypt,GpgConfig,string,string	proc ageEncrypt(cfg: GpgConfig; inPath, outPath: string)		48
+nim	ageDecrypt	nimvault/age.html#ageDecrypt,GpgConfig,string,string	proc ageDecrypt(cfg: GpgConfig; inPath, outPath: string)		62
+nim	ageDecryptToString	nimvault/age.html#ageDecryptToString,GpgConfig,string	proc ageDecryptToString(cfg: GpgConfig; inPath: string): string		73
+nim	sshSign	nimvault/age.html#sshSign,GpgConfig,string	proc sshSign(cfg: GpgConfig; path: string)		87
+nim	sshVerify	nimvault/age.html#sshVerify,GpgConfig,string	proc sshVerify(cfg: GpgConfig; path: string)		105

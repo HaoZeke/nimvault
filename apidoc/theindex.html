@@ -25,7 +25,7 @@
   <div class="document" id="documentId">
     <div class="container">
       <h1 class="title">Index</h1>
-      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>.<br/><p /><h2>API symbols</h2>
+      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>.<br/><p /><h2>API symbols</h2>
 <dl><dt><a name="add" href="#add"><span>add:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)" href="nimvault/commands.html#add%2Cstring%2Cstring%2CGpgConfig">commands: proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)</a></li>
@@ -42,6 +42,42 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string" href="nimvault/commands.html#addReport%2Cstring%2Cstring%2CGpgConfig">commands: proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string</a></li>
           </ul></dd>
+<dt><a name="ageBinary" href="#ageBinary"><span>ageBinary:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc ageBinary(): string" href="nimvault/age.html#ageBinary">age: proc ageBinary(): string</a></li>
+          </ul></dd>
+<dt><a name="ageDecrypt" href="#ageDecrypt"><span>ageDecrypt:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc ageDecrypt(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/age.html#ageDecrypt%2CGpgConfig%2Cstring%2Cstring">age: proc ageDecrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
+          </ul></dd>
+<dt><a name="ageDecryptToString" href="#ageDecryptToString"><span>ageDecryptToString:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc ageDecryptToString(cfg: GpgConfig; inPath: string): string" href="nimvault/age.html#ageDecryptToString%2CGpgConfig%2Cstring">age: proc ageDecryptToString(cfg: GpgConfig; inPath: string): string</a></li>
+          </ul></dd>
+<dt><a name="ageEncrypt" href="#ageEncrypt"><span>ageEncrypt:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc ageEncrypt(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/age.html#ageEncrypt%2CGpgConfig%2Cstring%2Cstring">age: proc ageEncrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
+          </ul></dd>
+<dt><a name="ageIdentityPath" href="#ageIdentityPath"><span>ageIdentityPath:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc ageIdentityPath(cfg: GpgConfig): string" href="nimvault/age.html#ageIdentityPath%2CGpgConfig">age: proc ageIdentityPath(cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="blobExt" href="#blobExt"><span>blobExt:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc blobExt(cfg: GpgConfig): string" href="nimvault/crypto.html#blobExt%2CGpgConfig">crypto: proc blobExt(cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="decryptFile" href="#decryptFile"><span>decryptFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)" href="nimvault/crypto.html#decryptFile%2CGpgConfig%2Cstring%2Cstring">crypto: proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)</a></li>
+          </ul></dd>
+<dt><a name="decryptToString" href="#decryptToString"><span>decryptToString:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string" href="nimvault/crypto.html#decryptToString%2CGpgConfig%2Cstring">crypto: proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string</a></li>
+          </ul></dd>
+<dt><a name="effectiveSigner" href="#effectiveSigner"><span>effectiveSigner:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc effectiveSigner(cfg: GpgConfig): string" href="nimvault/crypto.html#effectiveSigner%2CGpgConfig">crypto: proc effectiveSigner(cfg: GpgConfig): string</a></li>
+          </ul></dd>
 <dt><a name="ekDir" href="#ekDir"><span>ekDir:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: EntryKind.ekDir" href="nimvault/manifest.html#ekDir">manifest: EntryKind.ekDir</a></li>
@@ -50,6 +86,10 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: EntryKind.ekFile" href="nimvault/manifest.html#ekFile">manifest: EntryKind.ekFile</a></li>
           </ul></dd>
+<dt><a name="encryptFile" href="#encryptFile"><span>encryptFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/crypto.html#encryptFile%2CGpgConfig%2Cstring%2Cstring">crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)</a></li>
+          </ul></dd>
 <dt><a name="EntryKind" href="#EntryKind"><span>EntryKind:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: enum EntryKind" href="nimvault/manifest.html#EntryKind">manifest: enum EntryKind</a></li>
@@ -57,6 +97,10 @@
 <dt><a name="expandHome" href="#expandHome"><span>expandHome:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc expandHome(p: string): string" href="nimvault/manifest.html#expandHome%2Cstring">manifest: proc expandHome(p: string): string</a></li>
+          </ul></dd>
+<dt><a name="findManifest" href="#findManifest"><span>findManifest:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc findManifest(repo: string; cfg: GpgConfig): string" href="nimvault/crypto.html#findManifest%2Cstring%2CGpgConfig">crypto: proc findManifest(repo: string; cfg: GpgConfig): string</a></li>
           </ul></dd>
 <dt><a name="genId" href="#genId"><span>genId:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -104,11 +148,15 @@
           </ul></dd>
 <dt><a name="loadManifest" href="#loadManifest"><span>loadManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="manifest: proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]" href="nimvault/manifest.html#loadManifest%2Cstring">manifest: proc loadManifest(repo: string; verifySig = false): seq[VaultEntry]</a></li>
+          data-doc-search-tag="manifest: proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]" href="nimvault/manifest.html#loadManifest%2Cstring">manifest: proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]</a></li>
           </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="cli: proc main(args: seq[string] = commandLineParams())" href="nimvault/cli.html#main%2Cseq%5Bstring%5D">cli: proc main(args: seq[string] = commandLineParams())</a></li>
+          </ul></dd>
+<dt><a name="manifestPath" href="#manifestPath"><span>manifestPath:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc manifestPath(repo: string; cfg: GpgConfig): string" href="nimvault/crypto.html#manifestPath%2Cstring%2CGpgConfig">crypto: proc manifestPath(repo: string; cfg: GpgConfig): string</a></li>
           </ul></dd>
 <dt><a name="move" href="#move"><span>move:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -174,6 +222,18 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc sha256sumBytes(data: string): string" href="nimvault/gpg.html#sha256sumBytes%2Cstring">gpg: proc sha256sumBytes(data: string): string</a></li>
           </ul></dd>
+<dt><a name="signManifest" href="#signManifest"><span>signManifest:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc signManifest(cfg: GpgConfig; path: string)" href="nimvault/crypto.html#signManifest%2CGpgConfig%2Cstring">crypto: proc signManifest(cfg: GpgConfig; path: string)</a></li>
+          </ul></dd>
+<dt><a name="sshSign" href="#sshSign"><span>sshSign:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc sshSign(cfg: GpgConfig; path: string)" href="nimvault/age.html#sshSign%2CGpgConfig%2Cstring">age: proc sshSign(cfg: GpgConfig; path: string)</a></li>
+          </ul></dd>
+<dt><a name="sshVerify" href="#sshVerify"><span>sshVerify:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="age: proc sshVerify(cfg: GpgConfig; path: string)" href="nimvault/age.html#sshVerify%2CGpgConfig%2Cstring">age: proc sshVerify(cfg: GpgConfig; path: string)</a></li>
+          </ul></dd>
 <dt><a name="status" href="#status"><span>status:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc status(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#status%2Cstring%2CGpgConfig">commands: proc status(repo: string; cfg: GpgConfig)</a></li>
@@ -198,6 +258,14 @@
              only: seq[string] = @[]): string" href="nimvault/commands.html#unsealReport%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;
              only: seq[string] = @[]): string</a></li>
           </ul></dd>
+<dt><a name="usesAge" href="#usesAge"><span>usesAge:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc usesAge(cfg: GpgConfig): bool" href="nimvault/crypto.html#usesAge%2CGpgConfig">crypto: proc usesAge(cfg: GpgConfig): bool</a></li>
+          </ul></dd>
+<dt><a name="VaultConfigFile" href="#VaultConfigFile"><span>VaultConfigFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: tuple VaultConfigFile" href="nimvault/gpg.html#VaultConfigFile">gpg: tuple VaultConfigFile</a></li>
+          </ul></dd>
 <dt><a name="vaultDir" href="#vaultDir"><span>vaultDir:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc vaultDir(repo: string): string" href="nimvault/manifest.html#vaultDir%2Cstring">manifest: proc vaultDir(repo: string): string</a></li>
@@ -205,6 +273,10 @@
 <dt><a name="VaultEntry" href="#VaultEntry"><span>VaultEntry:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: tuple VaultEntry" href="nimvault/manifest.html#VaultEntry">manifest: tuple VaultEntry</a></li>
+          </ul></dd>
+<dt><a name="verifyManifest" href="#verifyManifest"><span>verifyManifest:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)" href="nimvault/crypto.html#verifyManifest%2CGpgConfig%2Cstring%2Cbool">crypto: proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)</a></li>
           </ul></dd>
 <dt><a name="Version" href="#Version"><span>Version:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -214,7 +286,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 21:47:30 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:03:28 UTC</small>
       </div>
     </div>
   </div>

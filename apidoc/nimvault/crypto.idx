@@ -1,0 +1,11 @@
+nimTitle	crypto	nimvault/crypto.html	module nimvault/crypto		0
+nim	usesAge	nimvault/crypto.html#usesAge,GpgConfig	proc usesAge(cfg: GpgConfig): bool		10
+nim	blobExt	nimvault/crypto.html#blobExt,GpgConfig	proc blobExt(cfg: GpgConfig): string		13
+nim	manifestPath	nimvault/crypto.html#manifestPath,string,GpgConfig	proc manifestPath(repo: string; cfg: GpgConfig): string		20
+nim	findManifest	nimvault/crypto.html#findManifest,string,GpgConfig	proc findManifest(repo: string; cfg: GpgConfig): string		24
+nim	encryptFile	nimvault/crypto.html#encryptFile,GpgConfig,string,string	proc encryptFile(cfg: GpgConfig; inPath, outPath: string)		38
+nim	decryptFile	nimvault/crypto.html#decryptFile,GpgConfig,string,string	proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		42
+nim	decryptToString	nimvault/crypto.html#decryptToString,GpgConfig,string	proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string		49
+nim	effectiveSigner	nimvault/crypto.html#effectiveSigner,GpgConfig	proc effectiveSigner(cfg: GpgConfig): string		53
+nim	signManifest	nimvault/crypto.html#signManifest,GpgConfig,string	proc signManifest(cfg: GpgConfig; path: string)		62
+nim	verifyManifest	nimvault/crypto.html#verifyManifest,GpgConfig,string,bool	proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)		70
