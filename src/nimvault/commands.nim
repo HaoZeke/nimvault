@@ -4,7 +4,7 @@
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils]
-import ./gpg, ./manifest
+import ./gpg, ./manifest, ./crypto
 # NimvaultError, nvRaise, nvQuiet from gpg
 
 proc banner(msg: string) =
@@ -60,7 +60,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   ## subset of the vault otherwise has to model that split in whatever tool
   ## sits above this one, which is both duplicated and invisible from here.
   let requireSig = not allowUnsigned
-  let allEntries = loadManifest(repo, verifySig = requireSig)
+  let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
   if allEntries.len == 0:
     nvEcho("vault is empty")
     return
@@ -75,7 +75,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
 
   # Verify blob integrity and path safety before any decryption
   for e in entries:
-    let inPath = vaultDir(repo) / &"{e.id}.gpg"
+    let inPath = findBlob(repo, cfg, e.id)
     if not fileExists(inPath):
       nvRaise(&"FATAL: vault blob missing: {inPath}")
     # Path traversal check
@@ -109,15 +109,12 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     var procs: seq[(VaultEntry, string, Process)] = @[]
     for i in batchStart .. batchEnd:
       let e = entries[i]
-      let inPath = vaultDir(repo) / &"{e.id}.gpg"
+      let inPath = findBlob(repo, cfg, e.id)
       let outPath = resolvePath(cfg, e.path)
       let tmpPath = outPath & ".nimvault-tmp"
       tmpPaths.add(tmpPath)
       createDir(outPath.parentDir)
-      let p = startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-                 "-d", "-o", tmpPath, inPath],
-        options = {poUsePath})
+      let p = decryptProcess(cfg, inPath, tmpPath)
       procs.add((e, tmpPath, p))
 
     # Collect results for this batch
@@ -141,12 +138,17 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   for r in results:
     if r.code != 0:
       abortUnseal(&"FATAL: failed to unseal {r.entry.path}", r.status)
-    # Bad signatures are always fatal (even with --allow-unsigned)
-    if "BADSIG" in r.status or "ERRSIG" in r.status:
+    # Bad signatures are always fatal (even with --allow-unsigned).
+    #
+    # Only gpg reports this while decrypting. age blobs carry no signature at
+    # all, and their authenticity comes from the signed manifest plus the blob
+    # digest already checked above; demanding GOODSIG here would reject every
+    # one of them.
+    if cfg.signaturesInBand and ("BADSIG" in r.status or "ERRSIG" in r.status):
       abortUnseal(&"FATAL: bad signature on blob for {r.entry.path}",
         "  The vault may have been tampered with.")
     # Missing signatures: fatal unless --allow-unsigned
-    if requireSig and "GOODSIG" notin r.status:
+    if cfg.signaturesInBand and requireSig and "GOODSIG" notin r.status:
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
 
@@ -175,7 +177,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
 proc seal*(repo: string, cfg: GpgConfig) =
-  let entries = loadManifest(repo)
+  let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     nvEcho("vault is empty")
     return
@@ -199,12 +201,8 @@ proc seal*(repo: string, cfg: GpgConfig) =
     for i in batchStart .. batchEnd:
       let e = entries[i]
       let inPath = resolvePath(cfg, e.path)
-      let outPath = vaultDir(repo) / &"{e.id}.gpg"
-      let p = startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
-                 "--sign", "-e", "-r", cfg.recipient,
-                 "--set-filename", "", "-o", outPath, inPath],
-        options = {poUsePath, poStdErrToStdOut})
+      let outPath = crypto.blobPath(repo, cfg, e.id)
+      let p = encryptProcess(cfg, inPath, outPath)
       procs.add((e, p))
 
     # Collect results for this batch
@@ -219,7 +217,7 @@ proc seal*(repo: string, cfg: GpgConfig) =
   # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
-    let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+    let blobPath = findBlob(repo, cfg, e.id)
     let plainPath = resolvePath(cfg, e.path)
     hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind, sha256sum(plainPath)))
 
@@ -243,7 +241,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   let storedPath = storePath(cfg, absPath, repo)
 
   # Check for duplicates
-  var entries = loadManifest(repo)
+  var entries = loadManifest(repo, cfg = cfg)
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
       nvRaise(&"Already in vault: {storedPath}")
@@ -273,18 +271,18 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
         stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
 
   let id = genId()
-  let outPath = vaultDir(repo) / &"{id}.gpg"
+  let outPath = crypto.blobPath(repo, cfg, id)
 
   banner(&"Adding {storedPath} to vault ...")
   createDir(vaultDir(repo))
-  gpgEncrypt(cfg, absPath, outPath)
+  encryptFile(cfg, absPath, outPath)
   let hash = sha256sum(outPath)
   let contentHash = sha256sum(absPath)
   entries.add((id, storedPath, hash, ekFile, contentHash))
   saveManifest(repo, entries, cfg)
   nvEcho(&"  id:   {id}")
   nvEcho(&"  path: {storedPath}")
-  nvEcho(&"  blob: .vault/{id}.gpg")
+  nvEcho(&"  blob: .vault/{id}{cfg.blobExt}")
 
 proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a directory recursively to the vault.
@@ -319,7 +317,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   createDir(vaultDir(repo))
 
-  var entries = loadManifest(repo)
+  var entries = loadManifest(repo, cfg = cfg)
   for filePath in filesToAdd:
     # Check for duplicates
     for e in entries:
@@ -352,8 +350,8 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
 
     # Encrypt and add to manifest
     let id = genId()
-    let outPath = vaultDir(repo) / &"{id}.gpg"
-    gpgEncrypt(cfg, filePath, outPath)
+    let outPath = crypto.blobPath(repo, cfg, id)
+    encryptFile(cfg, filePath, outPath)
     let hash = sha256sum(outPath)
     let contentHash = sha256sum(filePath)
     entries.add((id, storedPath, hash, ekFile, contentHash))
@@ -372,16 +370,16 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   else:
     expandHome(path)
 
-  var entries = loadManifest(repo)
+  var entries = loadManifest(repo, cfg = cfg)
   var found = false
   var newEntries: seq[VaultEntry] = @[]
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
       found = true
-      let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+      let blobPath = findBlob(repo, cfg, e.id)
       if fileExists(blobPath):
         removeFile(blobPath)
-        nvEcho(&"  Removed .vault/{e.id}.gpg")
+        nvEcho(&"  Removed .vault/{e.id}{cfg.blobExt}")
       nvEcho(&"  Removed manifest entry: {e.path}")
     else:
       newEntries.add(e)
@@ -407,7 +405,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   ## entry has no less need of a path-safety check and an integrity check than
   ## one asking for all of them.
   let requireSig = not allowUnsigned
-  let entries = loadManifest(repo, verifySig = requireSig)
+  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
 
   let absPath = if path.isAbsolute:
     path
@@ -426,7 +424,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       nvRaise("  Possible directory traversal attack.")
 
-    let inPath = vaultDir(repo) / &"{e.id}.gpg"
+    let inPath = findBlob(repo, cfg, e.id)
     if not fileExists(inPath):
       nvRaise(&"FATAL: vault blob missing: {inPath}")
 
@@ -439,7 +437,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
       nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
 
-    return gpgDecryptToString(inPath, verifySig = requireSig)
+    return decryptToString(cfg, inPath, verifySig = requireSig)
 
   nvRaise(&"Not in vault: {path}")
 
@@ -464,7 +462,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
 
   let newStored = storePath(cfg, newAbs, repo)
 
-  var entries = loadManifest(repo)
+  var entries = loadManifest(repo, cfg = cfg)
   var found = false
   for e in entries.mitems:
     if resolvePath(cfg, e.path) == oldAbs:
@@ -488,7 +486,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
 
 proc listReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly list (no terminal styling). Used by CLI and C ABI.
-  let entries = loadManifest(repo)
+  let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     return "vault is empty\n"
   for e in entries:
@@ -593,7 +591,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   # Build set of vault-protected absolute paths (empty when not in a repo).
   var vaulted: HashSet[string]
   if repo.len > 0:
-    for e in loadManifest(repo):
+    for e in loadManifest(repo, cfg = cfg):
       vaulted.incl(resolvePath(cfg, e.path))
 
   let rules = compileRules()
@@ -645,7 +643,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
 
 proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
-  let entries = loadManifest(repo)
+  let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     return "vault is empty\n"
 
@@ -653,7 +651,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
   var needDecrypt: seq[VaultEntry] = @[]
   for e in entries:
     let localPath = resolvePath(cfg, e.path)
-    let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+    let blobPath = findBlob(repo, cfg, e.id)
 
     if not fileExists(localPath):
       result.add &"  [missing]   {e.path}\n"
@@ -686,12 +684,9 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
       let e = needDecrypt[i]
       let localPath = resolvePath(cfg, e.path)
       let localHash = sha256sum(localPath)
-      let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+      let blobPath = findBlob(repo, cfg, e.id)
       let tmpPath = vaultDir(repo) / &".status-tmp-{e.id}"
-      let p = startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-                 "-d", "-o", tmpPath, blobPath],
-        options = {poUsePath})
+      let p = decryptProcess(cfg, blobPath, tmpPath)
       procs.add((e, localHash, tmpPath, p))
     for (e, localHash, tmpPath, p) in procs:
       discard p.outputStream.readAll()
@@ -714,7 +709,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
 
 proc status*(repo: string, cfg: GpgConfig) =
   ## Terminal status (colors). Delegates logic to statusReport for library reuse.
-  let entries = loadManifest(repo)
+  let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     echo "vault is empty"
     return
@@ -723,7 +718,7 @@ proc status*(repo: string, cfg: GpgConfig) =
   var needDecrypt: seq[VaultEntry] = @[]
   for e in entries:
     let localPath = resolvePath(cfg, e.path)
-    let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+    let blobPath = findBlob(repo, cfg, e.id)
 
     if not fileExists(localPath):
       styledEcho fgYellow, &"  [missing]   {e.path}"
@@ -756,12 +751,9 @@ proc status*(repo: string, cfg: GpgConfig) =
       let e = needDecrypt[i]
       let localPath = resolvePath(cfg, e.path)
       let localHash = sha256sum(localPath)
-      let blobPath = vaultDir(repo) / &"{e.id}.gpg"
+      let blobPath = findBlob(repo, cfg, e.id)
       let tmpPath = vaultDir(repo) / &".status-tmp-{e.id}"
-      let p = startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-                 "-d", "-o", tmpPath, blobPath],
-        options = {poUsePath})
+      let p = decryptProcess(cfg, blobPath, tmpPath)
       procs.add((e, localHash, tmpPath, p))
     for (e, localHash, tmpPath, p) in procs:
       discard p.outputStream.readAll()

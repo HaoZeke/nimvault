@@ -96,6 +96,12 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   let p = startProcess(sshKeygenBin,
     args = @["-Y", "sign", "-f", key, "-n", "nimvault", path],
     options = {poUsePath, poStdErrToStdOut})
+  # ssh-keygen reads a passphrase from stdin when it wants one. With a pipe on
+  # the other end and nobody closing it, an unencrypted key still leaves the
+  # process waiting on input that never arrives, and the seal hangs with the
+  # signature half written. Closing it turns that into an immediate, reportable
+  # failure instead.
+  p.inputStream.close()
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
   p.close()
