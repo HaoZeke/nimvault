@@ -35,10 +35,13 @@ proc doSeal(recipient = "") =
     let (repo, cfg) = resolve(recipient)
     commands.seal(repo, cfg)
 
-proc doUnseal(recipient = "", allowUnsigned = false) =
+proc doUnseal(path: seq[string] = @[], recipient = "", allowUnsigned = false) =
+  ## With no path this restores the whole vault, which is the long-standing
+  ## behaviour. Naming paths restores only those, and a directory restores
+  ## everything beneath it.
   cliRun:
     let (repo, cfg) = resolve(recipient)
-    commands.unseal(repo, cfg, allowUnsigned)
+    commands.unseal(repo, cfg, allowUnsigned, path)
 
 proc doAdd(path: seq[string], recipient = "", noGitignore = false) =
   if path.len != 1:
@@ -114,8 +117,10 @@ proc main*(args: seq[string] = commandLineParams()) =
   const rh = "GPG recipient key id (or use .vault/config / NIMVAULT_GPG_RECIPIENT)"
   dispatchMulti(
     [doSeal, cmdName = "seal", help = {"recipient": rh}],
-    [doUnseal, cmdName = "unseal", help = {"recipient": rh,
-      "allowUnsigned": "accept unsigned legacy manifests"}],
+    [doUnseal, cmdName = "unseal", positional = "path",
+     help = {"recipient": rh,
+             "allowUnsigned": "accept unsigned legacy manifests",
+             "path": "restore only these entries (default: all)"}],
     [doAdd, cmdName = "add", positional = "path",
      help = {"recipient": rh, "noGitignore": "do not append path to .gitignore"}],
     [doAddDir, cmdName = "add-dir", positional = "path",

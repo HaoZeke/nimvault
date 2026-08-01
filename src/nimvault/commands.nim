@@ -3,7 +3,7 @@
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
-import std/[os, osproc, strutils, strformat, streams, terminal, re, sets]
+import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils]
 import ./gpg, ./manifest
 # NimvaultError, nvRaise, nvQuiet from gpg
 
@@ -21,14 +21,57 @@ proc nvEcho(msg: string) =
   if nvQuiet: return
   echo msg
 
-proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
+proc toAbs(cfg: GpgConfig, path: string): string =
+  ## Resolve a user-supplied path the way `add`, `rm` and `get` already do, so
+  ## every command accepts the same spellings of the same file.
+  if path.isAbsolute: path
+  elif path.startsWith("~/"): expandHome(path)
+  elif cfg.root.len > 0: cfg.root / path
+  else: expandHome(path)
+
+proc selectEntries(cfg: GpgConfig, entries: seq[VaultEntry],
+                   only: seq[string]): seq[VaultEntry] =
+  ## Narrow the manifest to the entries the caller named. A selector matches a
+  ## single entry by path, or every entry beneath it when it names a directory.
+  ##
+  ## A selector that matches nothing is an error rather than a quiet no-op. The
+  ## caller asked for something specific; unsealing zero files and reporting
+  ## success would look identical to having done the work.
+  for sel in only:
+    let abs = toAbs(cfg, sel)
+    let prefix = abs & "/"
+    var matched = 0
+    for e in entries:
+      let resolved = resolvePath(cfg, e.path)
+      if resolved == abs or resolved.startsWith(prefix):
+        if not result.anyIt(it.id == e.id):
+          result.add(e)
+        inc matched
+    if matched == 0:
+      nvRaise(&"Not in vault: {sel}")
+
+proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
+             only: seq[string] = @[]) =
+  ## Decrypt tracked entries back to their target paths. With no selector this
+  ## restores the whole vault; with one it restores only what was named.
+  ##
+  ## The selective form exists because all-or-nothing forces the caller to
+  ## express any partial restore somewhere else. A machine that should hold a
+  ## subset of the vault otherwise has to model that split in whatever tool
+  ## sits above this one, which is both duplicated and invisible from here.
   let requireSig = not allowUnsigned
-  let entries = loadManifest(repo, verifySig = requireSig)
-  if entries.len == 0:
+  let allEntries = loadManifest(repo, verifySig = requireSig)
+  if allEntries.len == 0:
     nvEcho("vault is empty")
     return
 
-  banner("Unsealing vault ...")
+  let entries = if only.len == 0: allEntries
+                else: selectEntries(cfg, allEntries, only)
+
+  if only.len == 0:
+    banner("Unsealing vault ...")
+  else:
+    banner(&"Unsealing {entries.len} of {allEntries.len} entries ...")
 
   # Verify blob integrity and path safety before any decryption
   for e in entries:
@@ -746,8 +789,9 @@ proc sealReport*(repo: string, cfg: GpgConfig): string =
   seal(repo, cfg)
   "Sealed vault entries.\n"
 
-proc unsealReport*(repo: string, cfg: GpgConfig, allowUnsigned = false): string =
-  unseal(repo, cfg, allowUnsigned)
+proc unsealReport*(repo: string, cfg: GpgConfig, allowUnsigned = false,
+                   only: seq[string] = @[]): string =
+  unseal(repo, cfg, allowUnsigned, only)
   "Unsealed vault entries.\n"
 
 proc addReport*(repo, path: string, cfg: GpgConfig, noGitignore = false): string =

@@ -110,6 +110,52 @@ block getDetectsTamperedBlob:
   writeFile(blobPath, original)
   echo "PASS: get detects a tampered blob"
 
+block unsealSelective:
+  # Selective unseal must restore what was named and nothing else. Seal first
+  # so the plaintext can be removed and its return observed.
+  seal(repo, cfg)
+  let secondPath = secretDir / "other.txt"
+  writeFile(secondPath, "second-secret-value")
+  add(repo, secondPath, cfg)
+  seal(repo, cfg)
+
+  let firstSaved = readFile(secretPath)
+  removeFile(secretPath)
+  removeFile(secondPath)
+
+  unseal(repo, cfg, allowUnsigned = true, only = @[secretPath])
+  doAssert fileExists(secretPath), "named entry should be restored"
+  doAssert readFile(secretPath) == firstSaved
+  doAssert not fileExists(secondPath), "unnamed entry must NOT be restored"
+  echo "PASS: unseal restores only the named entry"
+
+  unseal(repo, cfg, allowUnsigned = true)
+  doAssert fileExists(secondPath), "bare unseal should restore everything"
+  echo "PASS: bare unseal still restores all"
+
+  # Leave the vault as this block found it: later blocks assert on the entry
+  # count, so a fixture that adds an entry has to take it away again.
+  remove(repo, secondPath, cfg)
+  removeFile(secondPath)
+
+block unsealSelectorMustMatch:
+  # A selector matching nothing is an error: unsealing zero files and reporting
+  # success is indistinguishable from having done the work.
+  var raised = false
+  try:
+    unseal(repo, cfg, allowUnsigned = true, only = @[repo / "secrets" / "absent.txt"])
+  except CatchableError:
+    raised = true
+  doAssert raised, "a selector matching nothing should raise"
+  echo "PASS: unseal rejects a selector that matches nothing"
+
+block unsealDirectorySelector:
+  # Naming a directory restores everything beneath it.
+  removeFile(secretPath)
+  unseal(repo, cfg, allowUnsigned = true, only = @[secretDir])
+  doAssert fileExists(secretPath), "directory selector should cover its entries"
+  echo "PASS: unseal accepts a directory selector"
+
 block listEntries:
   list(repo, cfg)
   echo "PASS: list (visual check above)"
