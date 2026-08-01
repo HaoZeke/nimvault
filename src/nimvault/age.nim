@@ -93,6 +93,15 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   let key = expandTilde(cfg.signKey)
   if not fileExists(key):
     nvRaise(&"FATAL: ssh signing key not found: {key}")
+  # Remove any previous signature first. Both `add` and `seal` save the
+  # manifest, and age encryption is non-deterministic, so the second save
+  # produces different ciphertext from the first. A signature left in place
+  # from the earlier save then describes content that no longer exists, and the
+  # vault fails to verify while every individual command reports success.
+  let sigPath = path & ".sig"
+  if fileExists(sigPath):
+    removeFile(sigPath)
+
   let p = startProcess(sshKeygenBin,
     args = @["-Y", "sign", "-f", key, "-n", "nimvault", path],
     options = {poUsePath, poStdErrToStdOut})
@@ -107,6 +116,10 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   p.close()
   if code != 0:
     nvRaise(&"FATAL: ssh-keygen sign failed (exit {code}):\n{output}")
+  # A zero exit with no signature on disk would leave an unverifiable vault
+  # that reported success, which is the failure this whole path exists to prevent.
+  if not fileExists(sigPath):
+    nvRaise(&"FATAL: ssh-keygen reported success but wrote no signature at {sigPath}")
 
 proc sshVerify*(cfg: GpgConfig, path: string) =
   ## Verify `<path>.sig` against the allowed-signers file. A missing signature
