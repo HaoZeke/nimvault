@@ -127,11 +127,15 @@
 
 </ul>
 <ul class="simple nested-toc-section">unseal
-  <li><a class="reference" href="#unseal%2Cstring%2CGpgConfig" title="unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)">unseal(repo: string; cfg: GpgConfig; allowUnsigned = false)</a></li>
+  <li><a class="reference" href="#unseal%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D" title="unseal(repo: string; cfg: GpgConfig; allowUnsigned = false;
+       only: seq[string] = @[])">unseal(repo: string; cfg: GpgConfig; allowUnsigned = false;
+       only: seq[string] = @[])</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">unsealReport
-  <li><a class="reference" href="#unsealReport%2Cstring%2CGpgConfig" title="unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false): string">unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false): string</a></li>
+  <li><a class="reference" href="#unsealReport%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D" title="unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;
+             only: seq[string] = @[]): string">unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;
+             only: seq[string] = @[]): string</a></li>
 
 </ul>
 
@@ -400,22 +404,27 @@
 
 </div>
 <div id="unseal-procs-all">
-  <div id="unseal,string,GpgConfig">
-  <dt><pre><span class="Keyword">proc</span> <a href="#unseal%2Cstring%2CGpgConfig"><span class="Identifier">unseal</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
-    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
-    <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <div id="unseal,string,GpgConfig,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#unseal%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D"><span class="Identifier">unseal</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+            <span class="Identifier">only</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> <span class="Other">=</span> <span class="Operator">@</span><span class="Other">[</span><span class="Other">]</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span>
+    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+                                      <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
+                                      <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span>
+                                       <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    
+    <p>Decrypt tracked entries back to their target paths. With no selector this restores the whole vault; with one it restores only what was named.</p>
+<p>The selective form exists because all-or-nothing forces the caller to express any partial restore somewhere else. A machine that should hold a subset of the vault otherwise has to model that split in whatever tool sits above this one, which is both duplicated and invisible from here.</p>
+
     
   </dd>
 </div>
 
 </div>
 <div id="unsealReport-procs-all">
-  <div id="unsealReport,string,GpgConfig">
-  <dt><pre><span class="Keyword">proc</span> <a href="#unsealReport%2Cstring%2CGpgConfig"><span class="Identifier">unsealReport</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+  <div id="unsealReport,string,GpgConfig,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#unsealReport%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D"><span class="Identifier">unsealReport</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+                  <span class="Identifier">only</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> <span class="Other">=</span> <span class="Operator">@</span><span class="Other">[</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
     <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
     <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
@@ -437,7 +446,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 21:11:05 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 21:47:30 UTC</small>
       </div>
     </div>
   </div>

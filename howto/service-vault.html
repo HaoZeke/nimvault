@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Contributing - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Changelog" href="../changelog.html" /><link rel="prev" title="Manifest Format" href="../reference/manifest.html" />
-      <link rel="canonical" href="nimvault.rgoswami.me/contributing/" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Service Vaults - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="CLI Reference" href="../reference/cli.html" /><link rel="prev" title="chezmoi Integration" href="chezmoi.html" />
+      <link rel="canonical" href="nimvault.rgoswami.me/howto/service-vault.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -19,8 +19,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="nimvault.rgoswami.me/contributing/"/>
-  <meta property="og:title" content="Contributing"/>
+  <meta property="og:url" content="nimvault.rgoswami.me/howto/service-vault.html"/>
+  <meta property="og:title" content="Service Vaults"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -78,10 +78,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/directory-support.html">Encrypting Directories</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
-<ul>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/keybase.html">Keybase GPG Key Management</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/chezmoi.html">chezmoi Integration</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="keybase.html">Keybase GPG Key Management</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="chezmoi.html">chezmoi Integration</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Service Vaults</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul>
@@ -90,8 +90,8 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/manifest.html">Manifest Format</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing</a></li>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing/index.html">Contributing</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html">Changelog</a></li>
 </ul>
         </div>
@@ -104,12 +104,16 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#development-setup">Development setup</a></li>
-<li><a class="reference internal" href="#building-docs">Building docs</a></li>
-<li><a class="reference internal" href="#project-structure">Project structure</a></li>
-<li><a class="reference internal" href="#testing">Testing</a></li>
-<li><a class="reference internal" href="#changelog">Changelog</a></li>
-<li><a class="reference internal" href="#linting">Linting</a></li>
+<li><a class="reference internal" href="#the-problem">The problem</a></li>
+<li><a class="reference internal" href="#the-shape">The shape</a></li>
+<li><a class="reference internal" href="#create-one">Create one</a><ul>
+<li><a class="reference internal" href="#an-unattended-key">An unattended key</a></li>
+<li><a class="reference internal" href="#the-vault">The vault</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#use-one">Use one</a></li>
+<li><a class="reference internal" href="#what-belongs-in-one">What belongs in one</a></li>
+<li><a class="reference internal" href="#why-not-just-widen-the-personal-vault">Why not just widen the personal vault</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -133,7 +137,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/HaoZeke/nimvault/blob/main/docs/source/contributing/index.rst">Edit this page</a>
+  <a href="https://github.com/HaoZeke/nimvault/blob/main/docs/source/howto/service-vault.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -150,7 +154,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Contributing</strong>
+        <strong itemprop="name">Service Vaults</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -167,7 +171,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="nimvault.rgoswami.me/_sources/contributing/index.rst.txt"
+      data-url="nimvault.rgoswami.me/_sources/howto/service-vault.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -181,116 +185,120 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="nimvault.rgoswami.me/_sources/contributing/index.rst.txt">
+          data-url="nimvault.rgoswami.me/_sources/howto/service-vault.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="nimvault.rgoswami.me/_sources/contributing/index.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20nimvault.rgoswami.me/_sources/contributing/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="nimvault.rgoswami.me/_sources/howto/service-vault.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20nimvault.rgoswami.me/_sources/howto/service-vault.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20nimvault.rgoswami.me/_sources/contributing/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20nimvault.rgoswami.me/_sources/howto/service-vault.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="contributing">
-<h1><a class="toc-backref" href="#id1" role="doc-backlink">Contributing</a><a class="headerlink" href="#contributing" title="Link to this heading">¶</a></h1>
+          <section id="service-vaults">
+<h1><a class="toc-backref" href="#id1" role="doc-backlink">Service Vaults</a><a class="headerlink" href="#service-vaults" title="Link to this heading">¶</a></h1>
 <nav class="contents" id="contents">
 <p class="topic-title">Contents</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="#contributing" id="id1">Contributing</a></p>
+<li><p><a class="reference internal" href="#service-vaults" id="id1">Service Vaults</a></p>
 <ul>
-<li><p><a class="reference internal" href="#development-setup" id="id2">Development setup</a></p></li>
-<li><p><a class="reference internal" href="#building-docs" id="id3">Building docs</a></p></li>
-<li><p><a class="reference internal" href="#project-structure" id="id4">Project structure</a></p></li>
-<li><p><a class="reference internal" href="#testing" id="id5">Testing</a></p></li>
-<li><p><a class="reference internal" href="#changelog" id="id6">Changelog</a></p></li>
-<li><p><a class="reference internal" href="#linting" id="id7">Linting</a></p></li>
+<li><p><a class="reference internal" href="#the-problem" id="id2">The problem</a></p></li>
+<li><p><a class="reference internal" href="#the-shape" id="id3">The shape</a></p></li>
+<li><p><a class="reference internal" href="#create-one" id="id4">Create one</a></p>
+<ul>
+<li><p><a class="reference internal" href="#an-unattended-key" id="id5">An unattended key</a></p></li>
+<li><p><a class="reference internal" href="#the-vault" id="id6">The vault</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#use-one" id="id7">Use one</a></p></li>
+<li><p><a class="reference internal" href="#what-belongs-in-one" id="id8">What belongs in one</a></p></li>
+<li><p><a class="reference internal" href="#why-not-just-widen-the-personal-vault" id="id9">Why not just widen the personal vault</a></p></li>
 </ul>
 </li>
 </ul>
 </nav>
-<section id="development-setup">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">Development setup</a><a class="headerlink" href="#development-setup" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">git<span class="w"> </span>clone<span class="w"> </span>https://github.com/HaoZeke/nimvault.git
-</span><span data-line="2"><span class="nb">cd</span><span class="w"> </span>nimvault
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1"># Build</span>
-</span><span data-line="5">nimble<span class="w"> </span>build<span class="w"> </span>-y
-</span><span data-line="6">
-</span><span data-line="7"><span class="c1"># Run tests (requires GPG)</span>
-</span><span data-line="8">nimble<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-y
+<p>Give an unattended machine the secrets it needs without giving it your whole
+vault, and without a person present to type a passphrase.</p>
+<p>A service vault is an ordinary vault. It differs only in what it holds, who it
+is encrypted to, and the fact that nothing about it expects a human.</p>
+<section id="the-problem">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">The problem</a><a class="headerlink" href="#the-problem" title="Link to this heading">¶</a></h2>
+<p>The personal vault is encrypted to a key with a passphrase, which is correct:
+it holds everything, and everything should cost a deliberate act to open. That
+same property makes it unusable from a service.</p>
+<p>A backup timer that fires at 04:00 cannot answer a pinentry prompt. Priming an
+agent works until the cache expires or the host reboots, and then the timer
+fails quietly at 04:00 on some later morning. A backup that stops silently is
+worse than one that was never configured, because it still looks configured.</p>
+</section>
+<section id="the-shape">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">The shape</a><a class="headerlink" href="#the-shape" title="Link to this heading">¶</a></h2>
+<img alt="../_images/service_vault.svg" src="../_images/service_vault.svg" />
+<p>Two vaults, two recipients, two blast radii. The service vault holds only what
+its services need, so a key that can open it unattended can open nothing else.</p>
+</section>
+<section id="create-one">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Create one</a><a class="headerlink" href="#create-one" title="Link to this heading">¶</a></h2>
+<p>nimvault resolves its vault from the working directory, so a second vault is a
+second directory. No flag, no mode, no new concept.</p>
+<section id="an-unattended-key">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">An unattended key</a><a class="headerlink" href="#an-unattended-key" title="Link to this heading">¶</a></h3>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span><span data-line="1">gpg<span class="w"> </span>--batch<span class="w"> </span>--pinentry-mode<span class="w"> </span>loopback<span class="w"> </span>--passphrase<span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span data-line="2"><span class="w">    </span>--quick-generate-key<span class="w"> </span><span class="s2">&quot;services on </span><span class="k">$(</span>hostname<span class="k">)</span><span class="s2"> &lt;noreply@localhost&gt;&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span data-line="3"><span class="w">    </span>default<span class="w"> </span>default<span class="w"> </span>never
 </span></pre></div>
 </div>
-<p>Using pixi (manages Nim version):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">pixi<span class="w"> </span>run<span class="w"> </span>build
-</span><span data-line="2">pixi<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span>
+<p>The empty passphrase is the point. A key that needs no interaction is the only
+kind that survives a reboot at 04:00, and confining it to a handful of entries
+is what makes that acceptable.</p>
+</section>
+<section id="the-vault">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">The vault</a><a class="headerlink" href="#the-vault" title="Link to this heading">¶</a></h3>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span><span data-line="1">mkdir<span class="w"> </span>-p<span class="w"> </span>~/svc<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>~/svc<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>init
+</span><span data-line="2">mkdir<span class="w"> </span>-p<span class="w"> </span>.vault
+</span><span data-line="3"><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;recipient = &lt;fingerprint of the unattended key&gt;&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.vault/config
+</span><span data-line="4">
+</span><span data-line="5">nimvault<span class="w"> </span>add<span class="w"> </span>~/.config/some-service/token
+</span><span data-line="6">nimvault<span class="w"> </span>seal
 </span></pre></div>
 </div>
 </section>
-<section id="building-docs">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">Building docs</a><a class="headerlink" href="#building-docs" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Install docs dependencies</span>
-</span><span data-line="2">pixi<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>docs
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1"># Build Sphinx site + Nim API docs</span>
-</span><span data-line="5">pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>docbld
-</span><span data-line="6">
-</span><span data-line="7"><span class="c1"># Output: docs/build/</span>
+</section>
+<section id="use-one">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">Use one</a><a class="headerlink" href="#use-one" title="Link to this heading">¶</a></h2>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>~/svc<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>nimvault<span class="w"> </span>get<span class="w"> </span>~/.config/some-service/token
 </span></pre></div>
 </div>
-<p>The doc pipeline converts orgmode files to RST via <code class="docutils literal notranslate"><span class="pre">ox-rst</span></code> (Emacs batch mode),
-then builds with Sphinx. Nim API docs are generated separately via <code class="docutils literal notranslate"><span class="pre">nim</span> <span class="pre">doc</span> <span class="pre">--project</span></code>.</p>
-</section>
-<section id="project-structure">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">Project structure</a><a class="headerlink" href="#project-structure" title="Link to this heading">¶</a></h2>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">src/nimvault/
-</span><span data-line="2">  gpg.nim        -- GPG operations, recipient resolution
-</span><span data-line="3">  manifest.nim   -- VaultEntry type, manifest load/save
-</span><span data-line="4">  commands.nim   -- seal, unseal, add, rm, mv, list, status
-</span><span data-line="5">  cli.nim        -- cligen-based dispatch
-</span><span data-line="6">src/nimvault.nim -- library root (re-exports + isMainModule)
-</span><span data-line="7">tests/
-</span><span data-line="8">  tmanifest.nim  -- manifest unit tests
-</span><span data-line="9">  tgpg.nim       -- GPG unit tests (throwaway key)
-</span><span data-line="10">  tcommands.nim  -- integration tests (temp git repo)
-</span></pre></div>
-</div>
-<p>Tests require a working GPG installation. Test suites create throwaway GPG keys
-in temporary directories and clean up after themselves.</p>
-</section>
-<section id="testing">
-<h2><a class="toc-backref" href="#id5" role="doc-backlink">Testing</a><a class="headerlink" href="#testing" title="Link to this heading">¶</a></h2>
-<p>The test suite uses throwaway GPG keys created in temp directories with
-restricted permissions (700) to avoid GPG warnings about unsafe home directories.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Run all tests</span>
-</span><span data-line="2">nimble<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-y
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1"># Run a specific test</span>
-</span><span data-line="5">nim<span class="w"> </span>c<span class="w"> </span>-r<span class="w"> </span>-p:src<span class="w"> </span>tests/tmanifest.nim
-</span></pre></div>
-</div>
-<p>The integration test (<code class="docutils literal notranslate"><span class="pre">tcommands.nim</span></code>) creates a temporary git repository and
-exercises the full workflow: add, seal, status, unseal, move, remove.</p>
-</section>
-<section id="changelog">
-<h2><a class="toc-backref" href="#id6" role="doc-backlink">Changelog</a><a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h2>
-<p>Use towncrier fragments in <code class="docutils literal notranslate"><span class="pre">docs/newsfragments/</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Create a fragment (types: added, changed, fixed, removed, security, dev, misc)</span>
-</span><span data-line="2"><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Added seal command parallelism&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>docs/newsfragments/42.added
+<p><code class="docutils literal notranslate"><span class="pre">get</span></code> writes the plaintext to stdout and nothing else, so a service reads its
+credential without the secret ever reaching disk. Use it in preference to
+<code class="docutils literal notranslate"><span class="pre">unseal</span></code>: a service that needs one entry should not materialise the rest.</p>
+<p>Where a file genuinely has to exist, name it:</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault<span class="w"> </span>unseal<span class="w"> </span>~/.config/some-service/token
 </span></pre></div>
 </div>
 </section>
-<section id="linting">
-<h2><a class="toc-backref" href="#id7" role="doc-backlink">Linting</a><a class="headerlink" href="#linting" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">uvx<span class="w"> </span>prek<span class="w"> </span>run<span class="w"> </span>-a<span class="w"> </span>-vvv
-</span></pre></div>
-</div>
+<section id="what-belongs-in-one">
+<h2><a class="toc-backref" href="#id8" role="doc-backlink">What belongs in one</a><a class="headerlink" href="#what-belongs-in-one" title="Link to this heading">¶</a></h2>
+<p>Only what an unattended process actually reads. An IMAP password a sync timer
+needs, a token a backup ships with. Nothing a person uses interactively, and
+nothing whose loss would matter more than the convenience is worth.</p>
+<p>Keep the repository passphrase of a backup <strong>out</strong> of the vault that backup
+writes to. Storing the key to an archive inside that archive, and then shipping
+both to third-party storage, leaves the encryption doing no work.</p>
+</section>
+<section id="why-not-just-widen-the-personal-vault">
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">Why not just widen the personal vault</a><a class="headerlink" href="#why-not-just-widen-the-personal-vault" title="Link to this heading">¶</a></h2>
+<p>Because the recipient is the boundary. Adding an unattended key as a second
+recipient on the personal vault would let a passphraseless key on one machine
+decrypt every secret you own. The split exists so that compromise of the
+unattended key costs exactly the entries that key was given.</p>
 </section>
 </section>
 
@@ -300,16 +308,16 @@ exercises the full workflow: add, seal, status, unseal, move, remove.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../reference/manifest.html">
+    <a href="chezmoi.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Manifest Format</div></div>
+        <span>Previous</span><div class="title">chezmoi Integration</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="../changelog.html">
+    <a href="../reference/cli.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Changelog</div>
+        <div class="title">CLI Reference</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>
