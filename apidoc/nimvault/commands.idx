@@ -1,20 +1,20 @@
 nimTitle	commands	nimvault/commands.html	module nimvault/commands		0
 nim	unseal	nimvault/commands.html#unseal,string,GpgConfig,seq[string]	proc unseal(repo: string; cfg: GpgConfig; allowUnsigned = false;\n       only: seq[string] = @[])		53
-nim	seal	nimvault/commands.html#seal,string,GpgConfig	proc seal(repo: string; cfg: GpgConfig)		177
-nim	add	nimvault/commands.html#add,string,string,GpgConfig	proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)		229
-nim	addDir	nimvault/commands.html#addDir,string,string,GpgConfig	proc addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)		289
-nim	remove	nimvault/commands.html#remove,string,string,GpgConfig	proc remove(repo, path: string; cfg: GpgConfig)		365
-nim	get	nimvault/commands.html#get,string,string,GpgConfig	proc get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string		395
-nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		446
-nim	listReport	nimvault/commands.html#listReport,string,GpgConfig	proc listReport(repo: string; cfg: GpgConfig): string		489
-nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		497
-nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		582
-nim	statusReport	nimvault/commands.html#statusReport,string,GpgConfig	proc statusReport(repo: string; cfg: GpgConfig): string		646
-nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		715
-nim	sealReport	nimvault/commands.html#sealReport,string,GpgConfig	proc sealReport(repo: string; cfg: GpgConfig): string		788
-nim	unsealReport	nimvault/commands.html#unsealReport,string,GpgConfig,seq[string]	proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;\n             only: seq[string] = @[]): string		792
-nim	addReport	nimvault/commands.html#addReport,string,string,GpgConfig	proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string		797
-nim	addDirReport	nimvault/commands.html#addDirReport,string,string,GpgConfig	proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string		801
-nim	removeReport	nimvault/commands.html#removeReport,string,string,GpgConfig	proc removeReport(repo, path: string; cfg: GpgConfig): string		805
-nim	moveReport	nimvault/commands.html#moveReport,string,string,string,GpgConfig	proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string		809
-nim	scanReport	nimvault/commands.html#scanReport,string,string,GpgConfig	proc scanReport(repo, target: string; cfg: GpgConfig): string		813
+nim	seal	nimvault/commands.html#seal,string,GpgConfig	proc seal(repo: string; cfg: GpgConfig)		179
+nim	add	nimvault/commands.html#add,string,string,GpgConfig	proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)		227
+nim	addDir	nimvault/commands.html#addDir,string,string,GpgConfig	proc addDir(repo, dirPath: string; cfg: GpgConfig; noGitignore = false)		287
+nim	remove	nimvault/commands.html#remove,string,string,GpgConfig	proc remove(repo, path: string; cfg: GpgConfig)		363
+nim	get	nimvault/commands.html#get,string,string,GpgConfig	proc get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string		393
+nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		444
+nim	listReport	nimvault/commands.html#listReport,string,GpgConfig	proc listReport(repo: string; cfg: GpgConfig): string		487
+nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		495
+nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		580
+nim	statusReport	nimvault/commands.html#statusReport,string,GpgConfig	proc statusReport(repo: string; cfg: GpgConfig): string		644
+nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		710
+nim	sealReport	nimvault/commands.html#sealReport,string,GpgConfig	proc sealReport(repo: string; cfg: GpgConfig): string		780
+nim	unsealReport	nimvault/commands.html#unsealReport,string,GpgConfig,seq[string]	proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;\n             only: seq[string] = @[]): string		784
+nim	addReport	nimvault/commands.html#addReport,string,string,GpgConfig	proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string		789
+nim	addDirReport	nimvault/commands.html#addDirReport,string,string,GpgConfig	proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string		793
+nim	removeReport	nimvault/commands.html#removeReport,string,string,GpgConfig	proc removeReport(repo, path: string; cfg: GpgConfig): string		797
+nim	moveReport	nimvault/commands.html#moveReport,string,string,string,GpgConfig	proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string		801
+nim	scanReport	nimvault/commands.html#scanReport,string,string,GpgConfig	proc scanReport(repo, target: string; cfg: GpgConfig): string		805

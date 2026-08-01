@@ -66,9 +66,17 @@
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc blobExt(cfg: GpgConfig): string" href="nimvault/crypto.html#blobExt%2CGpgConfig">crypto: proc blobExt(cfg: GpgConfig): string</a></li>
           </ul></dd>
+<dt><a name="blobPath" href="#blobPath"><span>blobPath:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc blobPath(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/crypto.html#blobPath%2Cstring%2CGpgConfig%2Cstring">crypto: proc blobPath(repo: string; cfg: GpgConfig; id: string): string</a></li>
+          </ul></dd>
 <dt><a name="decryptFile" href="#decryptFile"><span>decryptFile:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)" href="nimvault/crypto.html#decryptFile%2CGpgConfig%2Cstring%2Cstring">crypto: proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)</a></li>
+          </ul></dd>
+<dt><a name="decryptProcess" href="#decryptProcess"><span>decryptProcess:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process" href="nimvault/crypto.html#decryptProcess%2CGpgConfig%2Cstring%2Cstring">crypto: proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
           </ul></dd>
 <dt><a name="decryptToString" href="#decryptToString"><span>decryptToString:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -90,6 +98,10 @@
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/crypto.html#encryptFile%2CGpgConfig%2Cstring%2Cstring">crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)</a></li>
           </ul></dd>
+<dt><a name="encryptProcess" href="#encryptProcess"><span>encryptProcess:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process" href="nimvault/crypto.html#encryptProcess%2CGpgConfig%2Cstring%2Cstring">crypto: proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
+          </ul></dd>
 <dt><a name="EntryKind" href="#EntryKind"><span>EntryKind:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: enum EntryKind" href="nimvault/manifest.html#EntryKind">manifest: enum EntryKind</a></li>
@@ -97,6 +109,10 @@
 <dt><a name="expandHome" href="#expandHome"><span>expandHome:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc expandHome(p: string): string" href="nimvault/manifest.html#expandHome%2Cstring">manifest: proc expandHome(p: string): string</a></li>
+          </ul></dd>
+<dt><a name="findBlob" href="#findBlob"><span>findBlob:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/crypto.html#findBlob%2Cstring%2CGpgConfig%2Cstring">crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string</a></li>
           </ul></dd>
 <dt><a name="findManifest" href="#findManifest"><span>findManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -222,6 +238,10 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc sha256sumBytes(data: string): string" href="nimvault/gpg.html#sha256sumBytes%2Cstring">gpg: proc sha256sumBytes(data: string): string</a></li>
           </ul></dd>
+<dt><a name="signaturesInBand" href="#signaturesInBand"><span>signaturesInBand:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc signaturesInBand(cfg: GpgConfig): bool" href="nimvault/crypto.html#signaturesInBand%2CGpgConfig">crypto: proc signaturesInBand(cfg: GpgConfig): bool</a></li>
+          </ul></dd>
 <dt><a name="signManifest" href="#signManifest"><span>signManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc signManifest(cfg: GpgConfig; path: string)" href="nimvault/crypto.html#signManifest%2CGpgConfig%2Cstring">crypto: proc signManifest(cfg: GpgConfig; path: string)</a></li>
@@ -286,7 +306,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:03:28 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:34:54 UTC</small>
       </div>
     </div>
   </div>
