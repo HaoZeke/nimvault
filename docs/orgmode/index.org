@@ -157,6 +157,7 @@ digraph G {
 
      howto/keybase
      howto/chezmoi
+     howto/private-vault-repo
      howto/service-vault
 #+end_export
 

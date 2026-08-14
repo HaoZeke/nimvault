@@ -241,6 +241,19 @@ against decrypted blobs:
 Directory entries: When you ~add-dir~ a directory, each file appears individually
 in ~list~ and ~status~ output. The directory structure is implicit in the paths.
 
+* Where the vault lives
+
+Every command accepts ~--vault DIR~. The vault repository need not be the one
+you are standing in, which is what lets ~.vault/~ sit in a private repository
+while the dotfiles it protects stay public. Resolution order:
+
+1. ~--vault DIR~
+2. ~NIMVAULT_VAULT_REPO~
+3. a ~.nimvault~ pointer file in the current repository, naming the vault one
+4. the current git repository
+
+See the [[file:../howto/private-vault-repo.org][private vault repository how-to]].
+
 * Global options
 
 - ~--recipient KEY~ :: GPG recipient key ID. Overrides env var and config file.

@@ -5,7 +5,7 @@
 ## Also tests blob hash integrity and path safety.
 
 import std/[os, osproc, strutils, strformat, tempfiles, posix, tables]
-import nimvault/[gpg, manifest, commands, lock, crypto, dek]
+import nimvault/[gpg, manifest, commands, lock, crypto, dek, vaultrepo]
 
 proc setupTestGpgHome(): string =
   result = createTempDir("nimvault_int_", "_gpg")
@@ -735,6 +735,94 @@ block gcRemovesOrphanBlobsOnly:
   doAssert readFile(liveBlob) == liveBefore, "live blobs must survive"
   doAssert checkVault(incRepo, incCfg).problems.len == 0
   echo "PASS: gc removes orphan blobs and nothing else"
+
+
+# --- vault in its own repository ---
+block vaultRepoResolution:
+  ## The vault need not live in the repository you are standing in. That is the
+  ## point: a public dotfiles repo archives ciphertext forever, and moving the
+  ## vault into a private one is worth more than any feature.
+  let contentRepo = setupTestRepo()
+  let vaultRepo = setupTestRepo()
+
+  # Explicit flag wins over everything.
+  doAssert resolveVaultRepo(vaultRepo) == vaultRepo.absolutePath
+
+  # Env is next.
+  delEnv("NIMVAULT_VAULT_REPO")
+  putEnv("NIMVAULT_VAULT_REPO", vaultRepo)
+  doAssert resolveVaultRepo() == vaultRepo.absolutePath
+  delEnv("NIMVAULT_VAULT_REPO")
+
+  # A pointer file in the content repo names the vault repo.
+  writeFile(contentRepo / PointerFile, "# where the vault lives\n" & vaultRepo & "\n")
+  doAssert readPointer(contentRepo) == vaultRepo
+
+  # A missing directory is refused rather than silently created.
+  var raised = false
+  try:
+    discard resolveVaultRepo(vaultRepo / "nope")
+  except CatchableError:
+    raised = true
+  doAssert raised, "a vault repo that does not exist must be refused"
+
+  removeDir(contentRepo)
+  removeDir(vaultRepo)
+  echo "PASS: vault repository resolves from flag, env and pointer"
+
+block vaultInSeparateRepoRoundTrips:
+  ## The blobs live in one repository and the plaintext somewhere else
+  ## entirely, which is exactly the private-vault layout.
+  let vaultRepo = setupTestRepo()
+  let contentDir = createTempDir("nimvault_content_", "_dir")
+  let secret = contentDir / "api_key.txt"
+  writeFile(secret, "separate-repo-secret")
+
+  let sepCfg = GpgConfig(recipient: keyId)
+  add(vaultRepo, secret, sepCfg)
+  seal(vaultRepo, sepCfg)
+
+  # Blobs are in the vault repo, and nothing was written beside the plaintext.
+  doAssert dirExists(vaultRepo / ".vault")
+  doAssert not dirExists(contentDir / ".vault")
+  doAssert checkVault(vaultRepo, sepCfg).problems.len == 0
+
+  doAssert get(vaultRepo, secret, sepCfg, allowUnsigned = true) ==
+           "separate-repo-secret"
+  removeFile(secret)
+  unseal(vaultRepo, sepCfg, allowUnsigned = true)
+  doAssert readFile(secret) == "separate-repo-secret",
+    "unseal must restore to the original path, not into the vault repo"
+
+  removeDir(vaultRepo)
+  removeDir(contentDir)
+  echo "PASS: a vault in its own repository round-trips"
+
+block ambiguousRootIsRefused:
+  ## `root = repo` with a separated vault would resolve every relative path
+  ## against the wrong tree, so it is refused rather than guessed. Needs a real
+  ## content repository to stand in, or there is no ambiguity to detect.
+  let vaultRepo = setupTestRepo()
+  let contentRepo = setupTestRepo()
+  let prev = getCurrentDir()
+  setCurrentDir(contentRepo)
+  doAssert gitRoot().len > 0, "content repo should be a git repo"
+
+  var raised = false
+  try:
+    warnIfRootIsAmbiguous(vaultRepo, "repo")
+  except CatchableError:
+    raised = true
+  doAssert raised, "a set root with the vault elsewhere must be refused"
+
+  # Unset root is never ambiguous, and neither is a vault in this same repo.
+  warnIfRootIsAmbiguous(vaultRepo, "")
+  warnIfRootIsAmbiguous(gitRoot(), "repo")
+
+  setCurrentDir(prev)
+  removeDir(vaultRepo)
+  removeDir(contentRepo)
+  echo "PASS: an ambiguous root is refused, not guessed"
 
 removeDir(incRepo)
 
