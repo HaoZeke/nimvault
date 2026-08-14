@@ -111,7 +111,7 @@
 
 </ul>
 <ul class="simple nested-toc-section">seal
-  <li><a class="reference" href="#seal%2Cstring%2CGpgConfig" title="seal(repo: string; cfg: GpgConfig)">seal(repo: string; cfg: GpgConfig)</a></li>
+  <li><a class="reference" href="#seal%2Cstring%2CGpgConfig" title="seal(repo: string; cfg: GpgConfig; force = false)">seal(repo: string; cfg: GpgConfig; force = false)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">sealReport
@@ -349,13 +349,15 @@
 </div>
 <div id="seal-procs-all">
   <div id="seal,string,GpgConfig">
-  <dt><pre><span class="Keyword">proc</span> <a href="#seal%2Cstring%2CGpgConfig"><span class="Identifier">seal</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span> {.
+  <dt><pre><span class="Keyword">proc</span> <a href="#seal%2Cstring%2CGpgConfig"><span class="Identifier">seal</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">force</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
     <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    
+    <p>Encrypt every tracked file whose plaintext changed since the last seal.</p>
+<p>Encryption output is not deterministic: GPG and age both draw a fresh session key per run, so re-encrypting a file nobody edited still produces a different blob. Sealing unconditionally therefore rewrote every blob in the repo on every run, and a one-file change arrived as a diff touching the whole vault. Files are skipped when the plaintext hash, the blob and the blob's own hash all still agree with the manifest. <tt class="docutils literal"><span class="pre"><span class="Identifier">force</span></span></tt> re-encrypts regardless, as does any change to the seal key.</p>
+
     
   </dd>
 </div>
@@ -445,7 +447,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:57:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 12:59:47 UTC</small>
       </div>
     </div>
   </div>

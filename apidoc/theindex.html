@@ -166,6 +166,12 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]" href="nimvault/manifest.html#loadManifest%2Cstring">manifest: proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]</a></li>
           </ul></dd>
+<dt><a name="loadManifestMeta" href="#loadManifestMeta"><span>loadManifestMeta:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
+    entries: seq[VaultEntry], sealKey: string]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
+    entries: seq[VaultEntry], sealKey: string]</a></li>
+          </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="cli: proc main(args: seq[string] = commandLineParams())" href="nimvault/cli.html#main%2Cseq%5Bstring%5D">cli: proc main(args: seq[string] = commandLineParams())</a></li>
@@ -212,7 +218,9 @@
           </ul></dd>
 <dt><a name="saveManifest" href="#saveManifest"><span>saveManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             sealKey = &quot;&quot;)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             sealKey = &quot;&quot;)</a></li>
           </ul></dd>
 <dt><a name="scan" href="#scan"><span>scan:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -224,7 +232,15 @@
           </ul></dd>
 <dt><a name="seal" href="#seal"><span>seal:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc seal(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#seal%2Cstring%2CGpgConfig">commands: proc seal(repo: string; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="commands: proc seal(repo: string; cfg: GpgConfig; force = false)" href="nimvault/commands.html#seal%2Cstring%2CGpgConfig">commands: proc seal(repo: string; cfg: GpgConfig; force = false)</a></li>
+          </ul></dd>
+<dt><a name="sealKey" href="#sealKey"><span>sealKey:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc sealKey(cfg: GpgConfig): string" href="nimvault/manifest.html#sealKey%2CGpgConfig">manifest: proc sealKey(cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="SealKeyHeader" href="#SealKeyHeader"><span>SealKeyHeader:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const SealKeyHeader" href="nimvault/manifest.html#SealKeyHeader">manifest: const SealKeyHeader</a></li>
           </ul></dd>
 <dt><a name="sealReport" href="#sealReport"><span>sealReport:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -306,7 +322,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-01 22:57:53 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 12:59:48 UTC</small>
       </div>
     </div>
   </div>

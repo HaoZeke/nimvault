@@ -3,11 +3,14 @@ nim	ekFile	nimvault/manifest.html#ekFile	EntryKind.ekFile		8
 nim	ekDir	nimvault/manifest.html#ekDir	EntryKind.ekDir		8
 nim	EntryKind	nimvault/manifest.html#EntryKind	enum EntryKind		8
 nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		12
-nim	genId	nimvault/manifest.html#genId	proc genId(): string		14
-nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		21
-nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		28
-nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		37
-nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		48
-nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		61
-nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		65
-nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig)		99
+nim	SealKeyHeader	nimvault/manifest.html#SealKeyHeader	const SealKeyHeader		14
+nim	genId	nimvault/manifest.html#genId	proc genId(): string		17
+nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		24
+nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		31
+nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		40
+nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		51
+nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		64
+nim	sealKey	nimvault/manifest.html#sealKey,GpgConfig	proc sealKey(cfg: GpgConfig): string		68
+nim	loadManifestMeta	nimvault/manifest.html#loadManifestMeta,string	proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[\n    entries: seq[VaultEntry], sealKey: string]		81
+nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		121
+nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig,string	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n             sealKey = "")		126
