@@ -95,6 +95,10 @@
   <li><a class="reference" href="#checkVault%2Cstring%2CGpgConfig" title="checkVault(repo: string; cfg: GpgConfig): CheckResult">checkVault(repo: string; cfg: GpgConfig): CheckResult</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gc
+  <li><a class="reference" href="#gc%2Cstring%2CGpgConfig" title="gc(repo: string; cfg: GpgConfig; dryRun = false)">gc(repo: string; cfg: GpgConfig; dryRun = false)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">get
   <li><a class="reference" href="#get%2Cstring%2Cstring%2CGpgConfig" title="get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string">get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string</a></li>
 
@@ -113,6 +117,10 @@
 </ul>
 <ul class="simple nested-toc-section">moveReport
   <li><a class="reference" href="#moveReport%2Cstring%2Cstring%2Cstring%2CGpgConfig" title="moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string">moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">orphans
+  <li><a class="reference" href="#orphans%2Cstring%2CGpgConfig" title="orphans(repo: string; cfg: GpgConfig): seq[string]">orphans(repo: string; cfg: GpgConfig): seq[string]</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">remove
@@ -302,6 +310,20 @@
 </div>
 
 </div>
+<div id="gc-procs-all">
+  <div id="gc,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gc%2Cstring%2CGpgConfig"><span class="Identifier">gc</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">dryRun</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Remove blobs no manifest entry points at.
+    
+  </dd>
+</div>
+
+</div>
 <div id="get-procs-all">
   <div id="get,string,string,GpgConfig">
   <dt><pre><span class="Keyword">proc</span> <a href="#get%2Cstring%2Cstring%2CGpgConfig"><span class="Identifier">get</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span>
@@ -371,6 +393,22 @@
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="orphans-procs-all">
+  <div id="orphans,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#orphans%2Cstring%2CGpgConfig"><span class="Identifier">orphans</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Blob files in <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span></span></tt> that no manifest entry points at.</p>
+<p>Reachable when a mutation is interrupted between writing a blob and writing the manifest that names it, which the lock makes rarer but does not remove. An orphan is not merely clutter: it is a readable copy of a secret that nothing tracks, so nothing will ever rotate or remove it.</p>
+
     
   </dd>
 </div>
@@ -550,7 +588,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:47:53 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:49:40 UTC</small>
       </div>
     </div>
   </div>

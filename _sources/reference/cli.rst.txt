@@ -203,8 +203,29 @@ whether the blobs still match; a blob committed without the manifest that
 vouches for it looks healthy there right up until an ``unseal`` somewhere else.
 Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.
 
-2.9 rotate
-~~~~~~~~~~
+2.9 gc
+~~~~~~
+
+.. code:: text
+
+    nimvault gc [--recipient KEY] [--dry-run]
+
+Remove blobs in ``.vault/`` that no manifest entry points at.
+
+Orphans are reachable when a mutation is interrupted between writing a blob and
+writing the manifest that names it. The vault lock makes that rarer but does not
+remove the case. An orphan is not only clutter: it is a readable copy of a
+secret that nothing tracks, so nothing will ever rotate or remove it.
+
+Never touches the manifest, the data-key files, or any blob a live entry names.
+
+2.9.1 ``--dry-run``
+^^^^^^^^^^^^^^^^^^^
+
+List what would be removed and remove nothing.
+
+2.10 rotate
+~~~~~~~~~~~
 
 .. code:: text
 
@@ -218,14 +239,14 @@ That rotates the **wrapping** only: a recipient key that should no longer open t
 vault stops being able to. It does nothing about a data key that has already
 leaked, because the old ciphertext is unchanged and the old key still opens it.
 
-2.9.1 ``--rekey``
-^^^^^^^^^^^^^^^^^
+2.10.1 ``--rekey``
+^^^^^^^^^^^^^^^^^^
 
 Re-encrypt every payload under a fresh data key. This is the form that answers a
 suspected compromise of a data key or of the plaintext, and the only one that
 does. Churn is the intent, so it bypasses the incremental skip.
 
-2.10 scan
+2.11 scan
 ~~~~~~~~~
 
 .. code:: text
@@ -234,7 +255,7 @@ does. Churn is the intent, so it bypasses the incremental skip.
 
 Look for plaintext secrets that are not in the vault.
 
-2.11 list
+2.12 list
 ~~~~~~~~~
 
 .. code:: text
@@ -243,7 +264,7 @@ Look for plaintext secrets that are not in the vault.
 
 List all vault entries showing their ID and target path.
 
-2.12 status
+2.13 status
 ~~~~~~~~~~~
 
 .. code:: text
