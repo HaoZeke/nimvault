@@ -5,7 +5,7 @@
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
             tables]
-import ./gpg, ./manifest, ./crypto
+import ./gpg, ./manifest, ./crypto, ./lock
 # NimvaultError, nvRaise, nvQuiet from gpg
 
 proc banner(msg: string) =
@@ -187,6 +187,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   ## the whole vault. Files are skipped when the plaintext hash, the blob and
   ## the blob's own hash all still agree with the manifest. `force` re-encrypts
   ## regardless, as does any change to the seal key.
+  # Mutating command: hold the vault lock so a concurrent nimvault
+  # cannot read this manifest, write its own, and drop these entries.
+  let lk {.used.} = acquire(repo)
   let meta = loadManifestMeta(repo, cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
@@ -259,6 +262,14 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind,
                          plainHashes.getOrDefault(e.id)))
 
+  # The manifest is encrypted and signed, so writing it is itself a rewrite:
+  # a seal that changed nothing would still leave one modified file behind and
+  # a fresh signature over identical content. Leave it alone when it already
+  # says exactly this.
+  if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
+    nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
+    return
+
   saveManifest(repo, hashedEntries, cfg, currentKey)
   if keptIds.len > 0:
     nvEcho(&"\nSealed {todo.len} file(s), {keptIds.len} unchanged.")
@@ -267,6 +278,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
 
 proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a file by its target path.
+  # Mutating command: hold the vault lock so a concurrent nimvault
+  # cannot read this manifest, write its own, and drop these entries.
+  let lk {.used.} = acquire(repo)
   let absPath = if path.isAbsolute:
     path
   elif path.startsWith("~/"):
@@ -327,6 +341,9 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
 
 proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a directory recursively to the vault.
+  # Mutating command: hold the vault lock so a concurrent nimvault
+  # cannot read this manifest, write its own, and drop these entries.
+  let lk {.used.} = acquire(repo)
   let absDirPath = if dirPath.isAbsolute:
     dirPath
   elif dirPath.startsWith("~/"):
@@ -402,6 +419,9 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   nvEcho(&"\nAdded {filesToAdd.len} file(s) from directory.")
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
+  # Mutating command: hold the vault lock so a concurrent nimvault
+  # cannot read this manifest, write its own, and drop these entries.
+  let lk {.used.} = acquire(repo)
   let absPath = if path.isAbsolute:
     path
   elif path.startsWith("~/"):
@@ -483,6 +503,9 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   nvRaise(&"Not in vault: {path}")
 
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
+  # Mutating command: hold the vault lock so a concurrent nimvault
+  # cannot read this manifest, write its own, and drop these entries.
+  let lk {.used.} = acquire(repo)
   let oldAbs = if oldPath.isAbsolute:
     oldPath
   elif oldPath.startsWith("~/"):

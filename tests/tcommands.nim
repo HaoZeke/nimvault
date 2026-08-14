@@ -4,8 +4,8 @@
 ## add -> list -> seal -> status -> unseal -> rm
 ## Also tests blob hash integrity and path safety.
 
-import std/[os, osproc, strutils, strformat, tempfiles]
-import nimvault/[gpg, manifest, commands]
+import std/[os, osproc, strutils, strformat, tempfiles, posix]
+import nimvault/[gpg, manifest, commands, lock, crypto]
 
 proc setupTestGpgHome(): string =
   result = createTempDir("nimvault_int_", "_gpg")
@@ -423,6 +423,49 @@ block sealKeyChangeForcesFullReseal:
     doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") != blob,
       &"a changed seal key must re-encrypt {id}"
   echo "PASS: a seal-key change re-encrypts everything"
+
+
+block sealLeavesManifestAloneWhenNothingChanged:
+  ## The manifest is encrypted and signed, so rewriting it is a change in its
+  ## own right: a no-op seal would still leave a modified file in git.
+  seal(incRepo, incCfg)
+  let mpath = manifestPath(incRepo, incCfg)
+  let before = readFile(mpath)
+  seal(incRepo, incCfg)
+  doAssert readFile(mpath) == before,
+    "a seal that changed nothing must not rewrite the manifest"
+
+  writeFile(incB, "beta-secret-value-CHANGED")
+  seal(incRepo, incCfg)
+  doAssert readFile(mpath) != before,
+    "a real change must still be recorded"
+  echo "PASS: no-op seal leaves the manifest untouched"
+
+block vaultLockExcludesAnotherProcess:
+  ## fcntl records are per process, so this has to fork to mean anything.
+  let pid = fork()
+  if pid == 0:
+    var held = acquire(incRepo)
+    sleep(1500)
+    release(held)
+    quit(0)
+  doAssert pid > 0, "fork failed"
+  sleep(400)          # let the child take the lock first
+
+  var raised = false
+  try:
+    var mine = acquire(incRepo, timeoutMs = 300)
+    release(mine)
+  except CatchableError:
+    raised = true
+  var status: cint
+  discard waitpid(pid, status, 0)
+  doAssert raised, "a second process must not get the lock while it is held"
+
+  # Once the holder is gone the lock is free again, with nothing to clean up.
+  var after = acquire(incRepo, timeoutMs = 1000)
+  release(after)
+  echo "PASS: vault lock excludes another process"
 
 removeDir(incRepo)
 

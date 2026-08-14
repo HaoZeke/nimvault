@@ -137,8 +137,14 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   for e in entries:
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
-  encryptFile(cfg, plainPath, encPath)
+  # Encrypt beside the real manifest and rename over it. Writing encPath in
+  # place leaves a window where it is half a file, and a reader that lands in
+  # that window sees the trust root for every blob truncated. Rename within one
+  # directory is atomic, so a reader sees either the old manifest or the new.
+  let tmpEnc = encPath & ".tmp"
+  encryptFile(cfg, plainPath, tmpEnc)
   removeFile(plainPath)
+  moveFile(tmpEnc, encPath)
   # The manifest is the trust root: its hashes are what vouch for every blob,
   # so it is the one thing that has to be signed when the backend cannot.
   signManifest(cfg, encPath)
