@@ -47,6 +47,13 @@ git add .vault/ && git commit -m "vault: add secrets"
 # Restore on another machine
 nimvault unseal
 nimvault status
+
+# Verify every blob still matches the manifest (no decryption, no key needed)
+nimvault check
+
+# Let another machine read: rewraps the data keys, payloads untouched.
+# --rekey re-encrypts everything instead, which is what a key compromise needs.
+nimvault rotate
 #+END_SRC
 
 * Documentation

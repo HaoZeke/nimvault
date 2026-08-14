@@ -26,33 +26,38 @@ digraph G {
 
 * Format
 
-** v2 (current, since 0.2.0)
+** v5 (current)
 
 #+begin_src text
-# vault-manifest-v2
-a1b2c3d4e5f67890	~/.secret/api_key.txt	e3b0c44298fc1c14...
-fedcba9876543210	~/.config/app/credentials.json	a7ffc6f8bf1ed766...
+# vault-manifest-v5
+# vault-seal-key 9f2b...  (sha256 over backend, recipient, identity, signer)
+a1b2c3d4e5f67890	~/.secret/api_key.txt	e3b0c442...	file	7d865e95...
+fedcba9876543210	~/.config/app/credentials.json	a7ffc6f8...	file	2c26b46b...
 #+end_src
 
-- First line: version header (~# vault-manifest-v2~)
-- Subsequent lines: ~<id>\t<path>\t<sha256>~
+- First line: version header
+- ~# vault-seal-key <sha256>~ records what the blobs were encrypted *to*
+- Entry lines: ~<id>\t<path>\t<blob-sha256>\t<kind>\t<plaintext-sha256>~
 - Blank lines and lines starting with ~#~ are ignored
 
-The ~sha256~ field contains the SHA-256 hex digest of the corresponding
-~.vault/<id>.gpg~ blob. On ~unseal~, each blob hash is verified before
-decryption.
+The seal key exists so ~seal~ can skip a file whose plaintext is unchanged
+without going stale. Comparing content alone would be wrong the moment the
+recipient, backend or signer moves: unchanged plaintext still owes a fresh blob
+under a new key. Any change to the recorded key re-encrypts everything, and a
+manifest with no recorded key (v4 and earlier) seals in full once to establish
+one.
 
-** v1 (legacy, pre-0.2.0)
+** Earlier versions
 
-#+begin_src text
-# vault-manifest-v1
-a1b2c3d4e5f67890	~/.secret/api_key.txt
-fedcba9876543210	~/.config/app/credentials.json
-#+end_src
+| Version | Line shape | Added |
+| v1 | ~id\tpath~ | unsigned, no hashes |
+| v2 | ~id\tpath\thash~ | blob digest |
+| v3 | ~id\tpath\thash\tkind~ | file vs directory entry |
+| v4 | ~+ contentHash~ | plaintext digest, so ~status~ needs no decryption |
+| v5 | ~+ seal-key header~ | incremental seal that survives key rotation |
 
-v1 manifests lack blob hashes and are unsigned. ~unseal~ rejects v1 manifests by
-default. Pass ~--allow-unsigned~ to accept them, then run ~seal~ to upgrade to
-v2.
+All are still readable. ~unseal~ rejects v1 by default because it carries no
+blob hashes; pass ~--allow-unsigned~, then ~seal~ to upgrade.
 
 ** Fields
 
@@ -62,16 +67,41 @@ v2.
   for portability across machines. In root-relative mode, paths are stored
   relative to the configured root. Absolute paths outside ~$HOME~ are stored
   as-is.
-- ~hash~ :: (v2 only) SHA-256 hex digest of the encrypted ~.gpg~ blob. Used for
-  integrity verification on ~unseal~.
+- ~hash~ :: (v2+) SHA-256 hex digest of the encrypted blob. Verified on
+  ~unseal~, ~get~ and ~check~.
+- ~kind~ :: (v3+) ~file~ or ~dir~.
+- ~contentHash~ :: (v4+) SHA-256 of the *plaintext*. Lets ~status~ and the
+  incremental ~seal~ decide what changed without decrypting anything.
 
 * Blob files
 
-Each manifest entry has a corresponding ~.vault/<id>.gpg~ file containing the
-GPG-encrypted and signed file contents. The ~--set-filename ""~ flag is used
-during encryption to avoid leaking the original filename in GPG metadata.
+Each manifest entry has a corresponding ~.vault/<id>.gpg~ (or ~.age~) file
+holding the encrypted contents. ~--set-filename ""~ keeps the original filename
+out of GPG metadata.
 
-All blobs are signed with the user's default GPG key during ~seal~ and ~add~.
+** Envelope keys (v6)
+
+Blobs are encrypted under a *per-file data key*, and the data keys live together
+in ~.vault/keys.gpg~ (or ~.age~), itself encrypted to the recipients.
+
+Before v6 each blob was encrypted straight to the recipient. Both backends do
+envelope encryption internally, but that wrapping lives inside the blob, so the
+recipient was baked into every payload and adding one re-encrypted the whole
+vault. Hoisting the key means ~rotate~ rewrites one small file and leaves every
+payload alone.
+
+| Backend | Data key | Payload |
+| gpg | 256-bit passphrase | ~gpg --symmetric~ |
+| age | x25519 identity | ~age -r <recipient>~ |
+
+A vault may hold both formats while a migration drains. The key file is the
+discriminator: an entry with a data key is v6, one without is encrypted to the
+recipient directly. The two cannot disagree, because a key is only ever written
+by the encryption that used it.
+
+A v6 payload carries no in-band signature, since it is symmetric. Authenticity
+comes from the signed manifest and the per-blob digest, which is the same model
+the age backend has always used.
 
 * Integrity model
 
@@ -80,8 +110,12 @@ The signed manifest is the integrity anchor. On ~unseal~:
 1. The manifest is decrypted and its GPG signature is verified
 2. Each blob's SHA-256 hash is compared against the manifest
 3. Blobs are decrypted to temporary files
-4. Each blob's GPG signature is verified
+4. Each blob's GPG signature is verified, where one exists in band: v5 gpg
+   blobs carry one, age blobs and v6 enveloped blobs do not
 5. Only after all checks pass are files moved to their final paths
+
+~nimvault check~ runs step 2 on its own, over every entry, without decrypting
+and without key material.
 
 This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
@@ -93,6 +127,7 @@ substitutes a v1 unsigned manifest).
 .vault/
   config            # recipient configuration (plaintext)
   manifest.gpg      # signed + encrypted manifest
+  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
   a1b2c3d4e5f67890.gpg  # signed + encrypted blob
   fedcba9876543210.gpg  # signed + encrypted blob
 #+end_src
