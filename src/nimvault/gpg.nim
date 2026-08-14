@@ -19,6 +19,7 @@ type
     signKey*: string        ## ssh private key used to sign the manifest
     allowedSigners*: string ## ssh allowed-signers file used to verify it
     signerIdentity*: string ## principal to match within allowed_signers
+    wraps*: seq[string]     ## `<glob>:<recipient>[,...]` rules, in file order
 
 proc nvRaise*(msg: string) =
   ## Library-safe failure (no process exit). CLI catches and quits.
@@ -27,7 +28,11 @@ proc nvRaise*(msg: string) =
 var nvQuiet* {.threadvar.}: bool  ## When true, suppress banners/echo (C ABI / MCP in-process)
 
 type VaultConfigFile* = tuple[recipient, root, backend, identity, signer,
-                              signKey, allowedSigners, signerIdentity: string]
+                              signKey, allowedSigners, signerIdentity: string,
+                              wraps: seq[string]]
+  ## `wraps` keeps `wrap = <glob>:<recipient>[,<recipient>...]` lines in file
+  ## order, because the rule that matches first decides and order is therefore
+  ## meaning, not formatting.
 
 proc parseVaultConfig(configFile: string): VaultConfigFile =
   ## Parse .vault/config. Unknown keys are ignored so an older binary reading a
@@ -53,6 +58,7 @@ proc parseVaultConfig(configFile: string): VaultConfigFile =
         of "sign_key": result.signKey = val
         of "allowed_signers": result.allowedSigners = val
         of "signer_identity": result.signerIdentity = val
+        of "wrap": result.wraps.add(val)
         else: discard
 
 proc resolveRecipient*(cli, env, configRecipient: string): string =
@@ -110,6 +116,7 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
     signKey: c.signKey,
     allowedSigners: c.allowedSigners,
     signerIdentity: c.signerIdentity,
+    wraps: c.wraps,
   )
 
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =

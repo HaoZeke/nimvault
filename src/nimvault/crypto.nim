@@ -3,7 +3,7 @@
 ## Kept in its own module so neither backend has to know the other exists, and
 ## so the choice is made in exactly one place rather than at each call site.
 
-import std/[os, osproc, strformat, posix]
+import std/[os, osproc, streams, strformat, posix]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
@@ -141,6 +141,52 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
                "-d", "-o", outPath, inPath],
       options = {poUsePath})
+
+proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
+                    inPath, outPath: string, sign = true) =
+  ## Encrypt to several recipients at once. Both backends take repeated
+  ## recipient flags and wrap the payload key to each, which is what lets one
+  ## key file be readable by exactly the machines a group names.
+  ##
+  ## `sign = false` for material every recipient must be able to read on its
+  ## own. gpg exits non-zero when it cannot *verify* a signature, even though
+  ## it decrypted the content perfectly well, so a signed file is unreadable to
+  ## any machine that does not also hold the signer's public key. Demanding
+  ## that every machine import every other machine's key in order to read is
+  ## the wrong coupling, and it buys nothing here: the manifest is the trust
+  ## root, it is signed, and it records the digest of every blob. A tampered
+  ## key file yields a decryption failure, not a forged plaintext.
+  if recipients.len == 0:
+    nvRaise("FATAL: no recipients to encrypt to")
+  var args: seq[string] = @[]
+  if cfg.usesAge:
+    for r in recipients:
+      args.add("-r")
+      args.add(r)
+    args.add(@["-o", outPath, inPath])
+    let p = startProcess(ageBinary(), args = args,
+                         options = {poUsePath, poStdErrToStdOut})
+    let output = p.outputStream.readAll()
+    let code = p.waitForExit()
+    p.close()
+    if code != 0:
+      nvRaise(&"FATAL: age encrypt failed (exit {code}):\n{output}")
+  else:
+    args.add(@["--batch", "--yes", "--quiet", "--trust-model", "always"])
+    if sign:
+      args.add("--sign")
+    args.add("-e")
+    for r in recipients:
+      args.add("-r")
+      args.add(r)
+    args.add(@["--set-filename", "", "-o", outPath, inPath])
+    let p = startProcess("gpg", args = args,
+                         options = {poUsePath, poStdErrToStdOut})
+    let output = p.outputStream.readAll()
+    let code = p.waitForExit()
+    p.close()
+    if code != 0:
+      nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
 
 proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   if cfg.usesAge:

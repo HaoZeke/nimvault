@@ -509,8 +509,8 @@ block v6SealWrapsPayloadsUnderDataKeys:
   ## re-encrypting the whole vault. v6 puts a per-file data key in one small
   ## file encrypted to the recipients instead.
   seal(incRepo, incCfg)
-  let keys = findKeysFile(incRepo, incCfg)
-  doAssert keys.len > 0 and fileExists(keys), "seal should write a data-key file"
+  let keys = keyFiles(incRepo, incCfg)
+  doAssert keys.len > 0, "seal should write a data-key file"
 
   let deks = loadDeks(incRepo, incCfg)
   let entries = loadManifest(incRepo)
@@ -558,7 +558,7 @@ block rotateRewrapsKeysAndLeavesPayloadsAlone:
   var before: seq[(string, string)] = @[]
   for e in entries:
     before.add((e.id, readFile(vaultDir(incRepo) / &"{e.id}.gpg")))
-  let keysBefore = readFile(findKeysFile(incRepo, incCfg))
+  let keysBefore = readFile(keyFiles(incRepo, incCfg)[0])
   let deksBefore = loadDeks(incRepo, incCfg)
 
   rotate(incRepo, incCfg)
@@ -566,7 +566,7 @@ block rotateRewrapsKeysAndLeavesPayloadsAlone:
   for (id, blob) in before:
     doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") == blob,
       &"rewrapping must not touch payload {id}"
-  doAssert readFile(findKeysFile(incRepo, incCfg)) != keysBefore,
+  doAssert readFile(keyFiles(incRepo, incCfg)[0]) != keysBefore,
     "the key file itself should have been rewritten"
   let deksAfter = loadDeks(incRepo, incCfg)
   for id, k in deksBefore:
@@ -607,6 +607,104 @@ block staleDataKeysAreDropped:
   doAssert loadDeks(incRepo, incCfg).len == 2,
     "seal should drop the data key for a removed entry"
   echo "PASS: data keys for removed entries are dropped"
+
+
+# --- per-path recipient groups ---
+block wrapRulesSelectRecipients:
+  ## First matching rule wins and order is precedence, so a specific rule has
+  ## to be able to sit above the general one.
+  var c = GpgConfig(recipient: "DEFAULT")
+  c.wraps = @["~/.ssh/**:LAPTOP", "**:LAPTOP,TERRA"]
+  doAssert recipientsFor(c, "~/.ssh/id_ed25519") == @["LAPTOP"]
+  doAssert recipientsFor(c, "~/.config/app.toml") == @["LAPTOP", "TERRA"]
+
+  # A trailing slash means everything beneath.
+  var c2 = GpgConfig(recipient: "DEFAULT")
+  c2.wraps = @["~/.claude/:LAPTOP"]
+  doAssert recipientsFor(c2, "~/.claude/settings.json") == @["LAPTOP"]
+  doAssert recipientsFor(c2, "~/.other/settings.json") == @["DEFAULT"]
+
+  # `*` does not span separators; `**` does.
+  var c3 = GpgConfig(recipient: "DEFAULT")
+  c3.wraps = @["~/x/*:A"]
+  doAssert recipientsFor(c3, "~/x/one") == @["A"]
+  doAssert recipientsFor(c3, "~/x/deep/one") == @["DEFAULT"]
+
+  # No rules at all is the pre-groups behaviour.
+  let plain = GpgConfig(recipient: "ONLY")
+  doAssert recipientsFor(plain, "anything") == @["ONLY"]
+  echo "PASS: wrap rules select recipients by path"
+
+block groupIdDependsOnTheSetNotTheSpelling:
+  doAssert groupId(@["B", "A"]) == groupId(@["A", "B"])
+  doAssert groupId(@["A", "A", "B"]) == groupId(@["A", "B"])
+  doAssert groupId(@["A"]) != groupId(@["A", "B"])
+  echo "PASS: group id depends on the recipient set alone"
+
+block groupsSplitKeyFilesAndGateReadability:
+  ## The property the whole feature exists for: a machine holding only some
+  ## recipients decrypts only the entries meant for it. Modelled here with a
+  ## second GPG key, since that is what a second machine is.
+  let otherHome = setupTestGpgHome()   # switches GNUPGHOME
+  let otherKey = getTestKeyId()
+  # Encrypting to another machine needs its public key here, which is the
+  # real-world step too: exchange public keys, keep the private ones apart.
+  let otherPub = otherHome / "other.pub"
+  let (_, expCode) = execCmdEx(&"gpg --batch --yes --export --armor -o {otherPub.quoteShell} {otherKey}")
+  doAssert expCode == 0, "exporting the other public key failed"
+  putEnv("GNUPGHOME", gpgHome)
+  let (impOut, impCode) = execCmdEx(&"gpg --batch --import {otherPub.quoteShell}")
+  doAssert impCode == 0, "importing the other public key failed:\n" & impOut
+  # Trust is not the point of this test; --trust-model always is already used.
+
+  let gRepo = setupTestRepo()
+  var gCfg = GpgConfig(recipient: keyId)
+  let gDir = gRepo / "secrets"
+  createDir(gDir)
+  let mine = gDir / "mine.txt"
+  let shared = gDir / "shared.txt"
+  writeFile(mine, "laptop-only-secret")
+  writeFile(shared, "shared-secret")
+  add(gRepo, mine, gCfg)
+  add(gRepo, shared, gCfg)
+
+  # mine.txt to this key only; everything else to both.
+  gCfg.wraps = @[&"**/mine.txt:{keyId}", &"**:{keyId},{otherKey}"]
+  seal(gRepo, gCfg)
+
+  # Two groups, so two key files.
+  var keyFiles = 0
+  for kind, path in walkDir(gRepo / ".vault"):
+    if kind == pcFile and path.extractFilename.startsWith("keys."):
+      keyFiles.inc
+  doAssert keyFiles == 2, &"expected one key file per group, got {keyFiles}"
+
+  # This machine holds keyId, so it reads both.
+  doAssert loadDeks(gRepo, gCfg).len == 2
+  doAssert get(gRepo, mine, gCfg, allowUnsigned = true) == "laptop-only-secret"
+
+  # A machine holding only otherKey reads the shared entry and not the other.
+  putEnv("GNUPGHOME", otherHome)
+  let asOther = loadDeks(gRepo, gCfg)
+  doAssert asOther.len == 1,
+    &"the other machine should open exactly the shared group, got {asOther.len}"
+  let sharedId = block:
+    var found = ""
+    putEnv("GNUPGHOME", gpgHome)
+    for e in loadManifest(gRepo):
+      if resolvePath(gCfg, e.path) == shared:
+        found = e.id
+    putEnv("GNUPGHOME", otherHome)
+    found
+  doAssert asOther.hasKey(sharedId), "the shared entry must be readable"
+
+  # check needs no key at all, so it still works from the other machine.
+  putEnv("GNUPGHOME", gpgHome)
+  doAssert checkVault(gRepo, gCfg).problems.len == 0
+
+  removeDir(gRepo)
+  removeDir(otherHome)
+  echo "PASS: groups split key files and gate what each machine can open"
 
 removeDir(incRepo)
 

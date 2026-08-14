@@ -266,6 +266,17 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # small, and a key that never outlives the bytes it protects is the cheaper
   # thing to reason about.
   var deks = loadDeks(repo, cfg)
+  # Which recipients may open each entry. With no `wrap` rules every entry
+  # lands in one group holding the configured recipient, which is byte for
+  # byte the behaviour before groups existed.
+  var groupOf = initTable[string, string]()
+  var recipsOf = initTable[string, seq[string]]()
+  for e in entries:
+    let recips = recipientsFor(cfg, e.path)
+    let gid = groupId(recips)
+    groupOf[e.id] = gid
+    recipsOf[gid] = recips
+
   for e in todo:
     let inPath = resolvePath(cfg, e.path)
     let outPath = crypto.blobPath(repo, cfg, e.id)
@@ -287,7 +298,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     deks.del(id)
 
   if todo.len > 0 or stale.len > 0:
-    saveDeks(repo, cfg, deks)
+    saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
 
   # Flush new blobs before the manifest that vouches for them. The manifest
   # records each blob's hash, so a crash that persisted the manifest but not
@@ -867,7 +878,18 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   if deks.len == 0:
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
-  saveDeks(repo, cfg, deks)
+  # Recompute groups from the current rules, so rotate is also how a changed
+  # `wrap` rule takes effect: an entry that moved group gets its key written to
+  # the new group's file and dropped from the old one.
+  var groupOf = initTable[string, string]()
+  var recipsOf = initTable[string, seq[string]]()
+  for e in entries:
+    let recips = recipientsFor(cfg, e.path)
+    let gid = groupId(recips)
+    groupOf[e.id] = gid
+    recipsOf[gid] = recips
+  saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
+
   var enveloped = 0
   for e in entries:
     if deks.hasKey(e.id):

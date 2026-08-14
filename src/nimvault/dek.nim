@@ -31,7 +31,8 @@
 ## Both are ordinary documented modes of the backend already in use, so v6 adds
 ## no new dependency and no hand-rolled primitive.
 
-import std/[os, osproc, streams, strutils, strformat, sysrand, tables]
+import std/[os, osproc, streams, strutils, strformat, sysrand, tables,
+            algorithm, sets, re]
 import ./gpg
 from ./age import ageKeygenBinary, ageRecipientForIdentity, ageBinary
 import ./crypto
@@ -41,6 +42,82 @@ const
   DekBytes = 32
 
 type DekTable* = Table[string, string]   ## entry id -> data key
+
+# --- recipient groups -------------------------------------------------------
+#
+# One key file per distinct recipient set rather than one for the whole vault,
+# so a machine holding only some of the keys decrypts only the entries meant
+# for it. Without this, splitting paths between machines would be decoration:
+# every machine that can read the single key file can read every payload.
+#
+# The group is named by a digest of its recipient set, not by a label, so two
+# rules naming the same recipients share one file and renaming a rule does not
+# orphan a key file.
+
+proc normalizedRecipients*(recips: seq[string]): seq[string] =
+  ## Sorted and deduplicated, so the name of a group depends on the set and not
+  ## on how it was written.
+  var seen = initHashSet[string]()
+  for r in recips:
+    let s = r.strip()
+    if s.len > 0 and s notin seen:
+      seen.incl(s)
+      result.add(s)
+  result.sort()
+
+proc groupId*(recips: seq[string]): string =
+  let norm = normalizedRecipients(recips)
+  if norm.len == 0:
+    return "default"
+  sha256sumBytes(norm.join("\n"))[0 ..< 16]
+
+proc matchesGlob(pattern, path: string): bool =
+  ## `**` spans separators, `*` does not, and a pattern ending in `/` or `/**`
+  ## matches everything beneath it. Deliberately small: a rule that is hard to
+  ## predict is a rule that silently sends a secret to the wrong machine.
+  var pat = pattern.strip()
+  if pat.len == 0:
+    return false
+  if pat.endsWith("/"):
+    pat.add("**")
+  # Anchored at both ends: an unanchored pattern matches a prefix, so `~/x/*`
+  # would quietly cover `~/x/deep/one` and send it to the wrong machine.
+  let rx = "^" & pat.replace(".", "\\.")
+                    .replace("**", "\u0001")
+                    .replace("*", "[^/]*")
+                    .replace("\u0001", ".*") & "$"
+  return path.match(re(rx))
+
+proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
+  ## Recipients for one entry: the first matching `wrap` rule wins, and the
+  ## configured recipient is the fallback. Order in the file is the precedence,
+  ## so the specific rules go above the general one.
+  for rule in cfg.wraps:
+    let idx = rule.rfind(':')
+    if idx <= 0:
+      continue
+    let pat = rule[0 ..< idx].strip()
+    let recips = rule[idx + 1 .. ^1].split(',')
+    if matchesGlob(pat, path):
+      return normalizedRecipients(recips)
+  return normalizedRecipients(@[cfg.recipient])
+
+proc groupKeysPath*(repo: string, cfg: GpgConfig, gid: string): string =
+  repo / ".vault" / (KeysFileStem & "." & gid & cfg.blobExt)
+
+proc keyFiles*(repo: string, cfg: GpgConfig): seq[string] =
+  ## Every data-key file present, grouped or legacy flat, either backend.
+  let dir = repo / ".vault"
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.startsWith(KeysFileStem & ".") and
+       (name.endsWith(".gpg") or name.endsWith(".age")):
+      result.add(path)
+
 
 proc keysPath*(repo: string, cfg: GpgConfig): string =
   repo / ".vault" / (KeysFileStem & cfg.blobExt)
@@ -80,36 +157,84 @@ proc newDek*(cfg: GpgConfig): string =
       result.add(b.toHex(2).toLowerAscii())
 
 proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
-  ## Decrypt the data-key file. An absent file is an empty table, which is what
-  ## a v5 vault looks like and is not an error.
-  let path = findKeysFile(repo, cfg)
-  if path.len == 0:
+  ## Merge every data-key file this machine can actually open.
+  ##
+  ## A file that will not decrypt is not an error: it belongs to a group whose
+  ## recipients do not include this machine, which is the feature working. The
+  ## caller finds out per entry, when it looks for a key and there is none.
+  let dir = repo / ".vault"
+  if not dirExists(dir):
     return
-  let plain = decryptToString(cfg, path, false)
-  for line in plain.splitLines:
-    let s = line.strip()
-    if s.len == 0 or s.startsWith("#"):
+  var candidates: seq[string] = @[]
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
       continue
-    let parts = s.split('\t')
-    if parts.len >= 2:
-      result[parts[0]] = parts[1]
+    let name = path.extractFilename
+    if name.startsWith(KeysFileStem & ".") or
+       name == KeysFileStem & ".gpg" or name == KeysFileStem & ".age":
+      candidates.add(path)
+  for path in candidates:
+    var plain = ""
+    try:
+      plain = decryptToString(cfg, path, false)
+    except CatchableError:
+      continue        # not ours to read
+    for line in plain.splitLines:
+      let s = line.strip()
+      if s.len == 0 or s.startsWith("#"):
+        continue
+      let parts = s.split('\t')
+      if parts.len >= 2:
+        result[parts[0]] = parts[1]
 
-proc saveDeks*(repo: string, cfg: GpgConfig, deks: DekTable) =
-  ## Encrypt the data-key file to the recipients, atomically and durably: it is
-  ## as load bearing as the manifest, and losing it loses every payload.
-  let path = keysPath(repo, cfg)
-  let plainPath = repo / ".vault" / (".keys.plain")
-  var content = "# vault-keys-v6\n"
+proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
+                      groupOf: Table[string, string],
+                      recipsOf: Table[string, seq[string]]) =
+  ## One key file per recipient group, each encrypted to that group only.
+  ##
+  ## Written atomically and flushed, because a key file is as load bearing as
+  ## the manifest: losing it loses every payload it names. Groups that no
+  ## longer hold any entry have their file removed rather than left behind
+  ## still able to open blobs.
+  let dir = repo / ".vault"
+  var byGroup: Table[string, seq[string]]
   for id, dek in deks:
-    content.add(&"{id}\t{dek}\n")
-  writeFile(plainPath, content)
-  setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
-  let tmp = path & ".tmp"
-  encryptFile(cfg, plainPath, tmp)
-  removeFile(plainPath)
-  syncPath(tmp)
-  moveFile(tmp, path)
-  syncParentDir(path)
+    let gid = groupOf.getOrDefault(id, "default")
+    byGroup.mgetOrPut(gid, @[]).add(&"{id}\t{dek}")
+
+  for gid, lines in byGroup:
+    let path = groupKeysPath(repo, cfg, gid)
+    let plainPath = dir / (".keys." & gid & ".plain")
+    var content = "# vault-keys-v6\n"
+    for l in lines:
+      content.add(l & "\n")
+    writeFile(plainPath, content)
+    setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
+    let tmp = path & ".tmp"
+    encryptFileTo(cfg, recipsOf.getOrDefault(gid, @[cfg.recipient]),
+                  plainPath, tmp, sign = false)
+    removeFile(plainPath)
+    syncPath(tmp)
+    moveFile(tmp, path)
+    syncParentDir(path)
+
+  # Drop key files for groups that no longer have entries.
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if not name.startsWith(KeysFileStem & "."):
+      continue
+    let stem = name.rsplit('.', maxsplit = 1)[0]      # keys.<gid>
+    let gid = if '.' in stem: stem.rsplit('.', maxsplit = 1)[1] else: ""
+    if gid.len == 0:
+      # The pre-groups flat file. Its keys have just been written into the
+      # group files, so keeping it would leave a second copy of every key
+      # readable by the default recipient alone.
+      if byGroup.len > 0:
+        removeFile(path)
+    elif gid notin byGroup:
+      removeFile(path)
 
 proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   ## Encrypt a payload under its data key. No recipient is involved, which is
