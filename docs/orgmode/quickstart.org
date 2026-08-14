@@ -87,14 +87,24 @@ git add .vault/
 git commit -m "vault: add myapp secrets"
 #+end_src
 
-Only encrypted blobs and the encrypted manifest are committed. The original
-filename (~secrets.env~) never appears in git history.
+Only encrypted material is committed: the blobs, the signed manifest, and the
+data-key file that lets a second machine be added without re-encrypting
+everything. The original filename (~secrets.env~) never appears in git history.
 
 * Check status
 
 #+begin_src bash
 nimvault status
 # [in-sync]   ~/.config/myapp/secrets.env
+#+end_src
+
+~status~ compares the plaintext on this machine against the manifest. To check
+the vault itself is intact -- every blob still matching the digest recorded for
+it -- use ~check~, which decrypts nothing and needs no key:
+
+#+begin_src bash
+nimvault check
+# 1 entries consistent with the manifest.
 #+end_src
 
 * Simulate a fresh checkout
