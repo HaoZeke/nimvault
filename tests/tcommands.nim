@@ -4,8 +4,8 @@
 ## add -> list -> seal -> status -> unseal -> rm
 ## Also tests blob hash integrity and path safety.
 
-import std/[os, osproc, strutils, strformat, tempfiles, posix]
-import nimvault/[gpg, manifest, commands, lock, crypto]
+import std/[os, osproc, strutils, strformat, tempfiles, posix, tables]
+import nimvault/[gpg, manifest, commands, lock, crypto, dek]
 
 proc setupTestGpgHome(): string =
   result = createTempDir("nimvault_int_", "_gpg")
@@ -501,6 +501,112 @@ block checkCatchesBlobManifestDesync:
   doAssert checkVault(incRepo, incCfg).problems.len == 0,
     "seal should have rebuilt the missing blob"
   echo "PASS: check catches blob/manifest desync that status cannot"
+
+
+# --- v6 envelope keys ---
+block v6SealWrapsPayloadsUnderDataKeys:
+  ## The recipient used to be baked into every blob, so adding a machine meant
+  ## re-encrypting the whole vault. v6 puts a per-file data key in one small
+  ## file encrypted to the recipients instead.
+  seal(incRepo, incCfg)
+  let keys = findKeysFile(incRepo, incCfg)
+  doAssert keys.len > 0 and fileExists(keys), "seal should write a data-key file"
+
+  let deks = loadDeks(incRepo, incCfg)
+  let entries = loadManifest(incRepo)
+  doAssert deks.len == entries.len, "every entry should have a data key"
+  for e in entries:
+    doAssert deks.hasKey(e.id), &"no data key for {e.path}"
+    doAssert deks[e.id].len > 0
+
+  # Distinct keys per file: a leak of one opens one.
+  var seen: seq[string] = @[]
+  for _, k in deks:
+    doAssert k notin seen, "data keys must not be shared between entries"
+    seen.add(k)
+  echo "PASS: v6 seal wraps each payload under its own data key"
+
+block v6RoundTrips:
+  writeFile(incA, "alpha-v6-value")
+  writeFile(incB, "beta-v6-value")
+  seal(incRepo, incCfg)
+  doAssert get(incRepo, incA, incCfg, allowUnsigned = true) == "alpha-v6-value"
+
+  removeFile(incA)
+  removeFile(incB)
+  unseal(incRepo, incCfg, allowUnsigned = true)
+  doAssert readFile(incA) == "alpha-v6-value"
+  doAssert readFile(incB) == "beta-v6-value"
+  echo "PASS: v6 payloads round-trip through get and unseal"
+
+block v6CheckStillVerifiesBlobs:
+  doAssert checkVault(incRepo, incCfg).problems.len == 0
+  let entries = loadManifest(incRepo)
+  let blob = vaultDir(incRepo) / &"{entries[0].id}.gpg"
+  let good = readFile(blob)
+  writeFile(blob, good & "drift")
+  doAssert checkVault(incRepo, incCfg).problems.len == 1,
+    "check must still catch a drifted v6 blob"
+  writeFile(blob, good)
+  echo "PASS: check works on enveloped blobs"
+
+block rotateRewrapsKeysAndLeavesPayloadsAlone:
+  ## The point of the format change: adding or rotating a recipient must not
+  ## rewrite payloads.
+  seal(incRepo, incCfg)
+  let entries = loadManifest(incRepo)
+  var before: seq[(string, string)] = @[]
+  for e in entries:
+    before.add((e.id, readFile(vaultDir(incRepo) / &"{e.id}.gpg")))
+  let keysBefore = readFile(findKeysFile(incRepo, incCfg))
+  let deksBefore = loadDeks(incRepo, incCfg)
+
+  rotate(incRepo, incCfg)
+
+  for (id, blob) in before:
+    doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") == blob,
+      &"rewrapping must not touch payload {id}"
+  doAssert readFile(findKeysFile(incRepo, incCfg)) != keysBefore,
+    "the key file itself should have been rewritten"
+  let deksAfter = loadDeks(incRepo, incCfg)
+  for id, k in deksBefore:
+    doAssert deksAfter[id] == k, "rewrapping must preserve the data keys"
+  doAssert get(incRepo, incA, incCfg, allowUnsigned = true) == "alpha-v6-value"
+  echo "PASS: rotate rewraps keys and leaves every payload alone"
+
+block rekeyReencryptsEverything:
+  let entries = loadManifest(incRepo)
+  var before: seq[(string, string)] = @[]
+  for e in entries:
+    before.add((e.id, readFile(vaultDir(incRepo) / &"{e.id}.gpg")))
+  let deksBefore = loadDeks(incRepo, incCfg)
+
+  rotate(incRepo, incCfg, rekey = true)
+
+  for (id, blob) in before:
+    doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") != blob,
+      &"rekey must re-encrypt payload {id}"
+  let deksAfter = loadDeks(incRepo, incCfg)
+  for id, k in deksBefore:
+    doAssert deksAfter[id] != k, "rekey must mint fresh data keys"
+  doAssert get(incRepo, incA, incCfg, allowUnsigned = true) == "alpha-v6-value"
+  doAssert checkVault(incRepo, incCfg).problems.len == 0
+  echo "PASS: rekey re-encrypts every payload under fresh keys"
+
+block staleDataKeysAreDropped:
+  ## A key that outlives its entry is the means to read a blob nobody kept.
+  let extra = incDir / "gamma.txt"
+  writeFile(extra, "gamma-secret")
+  add(incRepo, extra, incCfg)
+  seal(incRepo, incCfg)
+  let withGamma = loadDeks(incRepo, incCfg)
+  doAssert withGamma.len == 3
+
+  remove(incRepo, extra, incCfg)
+  seal(incRepo, incCfg)
+  doAssert loadDeks(incRepo, incCfg).len == 2,
+    "seal should drop the data key for a removed entry"
+  echo "PASS: data keys for removed entries are dropped"
 
 removeDir(incRepo)
 

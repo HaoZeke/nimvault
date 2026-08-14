@@ -97,6 +97,13 @@ proc doStatus(recipient = "") =
     let (repo, cfg) = resolve(recipient)
     commands.status(repo, cfg)
 
+proc doRotate(recipient = "", rekey = false) =
+  ## Rewrap the data keys to the current recipients. `--rekey` re-encrypts every
+  ## payload instead, which is the only form that answers a key compromise.
+  cliRun:
+    let (repo, cfg) = resolve(recipient)
+    commands.rotate(repo, cfg, rekey)
+
 proc doCheck(recipient = "") =
   ## Blob-vs-manifest consistency. Exits non-zero when anything is off, so a
   ## pre-push hook or a continuous-integration job can gate on it.
@@ -143,6 +150,9 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
     [doCheck, cmdName = "check", help = {"recipient": rh}],
+    [doRotate, cmdName = "rotate",
+     help = {"recipient": rh,
+             "rekey": "re-encrypt every payload, not just the key wrapping"}],
     [doScan, cmdName = "scan", positional = "path",
      help = {"recipient": rh, "vault": "vault repo override"}],
     [doVersion, cmdName = "version"],

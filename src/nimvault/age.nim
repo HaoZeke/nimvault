@@ -32,6 +32,32 @@ proc ageBinary*(): string =
       return b
   nvRaise("FATAL: no age binary found (looked for: " & ageBins.join(", ") & ")")
 
+proc ageKeygenBinary*(): string =
+  ## `age-keygen` ships beside `age`, `rage-keygen` beside `rage`.
+  for b in ["age-keygen", "rage-keygen"]:
+    if findExe(b).len > 0:
+      return b
+  nvRaise("FATAL: no age-keygen binary found (needed to mint a data key)")
+
+proc ageRecipientForIdentity*(identity: string): string =
+  ## Public recipient for an `AGE-SECRET-KEY-...` identity, so a payload can be
+  ## encrypted under a data key the vault holds privately. The identity goes in
+  ## on a pipe rather than a file so it never lands on disk unencrypted.
+  let p = startProcess(ageKeygenBinary(), args = @["-y"],
+                       options = {poUsePath, poStdErrToStdOut})
+  p.inputStream.write(identity & "\n")
+  p.inputStream.close()
+  let output = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if code != 0:
+    nvRaise(&"FATAL: age-keygen -y failed (exit {code}):\n{output}")
+  for line in output.splitLines:
+    let s = line.strip()
+    if s.startsWith("age1"):
+      return s
+  nvRaise("FATAL: age-keygen -y produced no recipient")
+
 proc expandTilde(p: string): string =
   if p.startsWith("~/"): getHomeDir() / p[2 .. ^1] else: p
 

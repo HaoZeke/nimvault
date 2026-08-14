@@ -5,7 +5,7 @@
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
             tables]
-import ./gpg, ./manifest, ./crypto, ./lock
+import ./gpg, ./manifest, ./crypto, ./lock, ./dek
 # NimvaultError, nvRaise, nvQuiet from gpg
 
 proc banner(msg: string) =
@@ -103,13 +103,39 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # Process in batches to avoid GPG memory exhaustion (NIMVAULT_GPG_PARALLEL).
   let batchSize = gpgParallelism()
   var tmpPaths: seq[string] = @[]
-  type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string, code: int]
+  type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string,
+                             code: int, enveloped: bool]
   var results: seq[DecryptResult] = @[]
-  for batchStart in countup(0, entries.high, batchSize):
-    let batchEnd = min(batchStart + batchSize - 1, entries.high)
+
+  # A vault may hold both formats while a migration drains: an entry with a
+  # data key is v6, one without is encrypted straight to the recipient. The
+  # key file is the discriminator, and it cannot disagree with the blob because
+  # a key is only ever written by the encryption that used it.
+  let deks = loadDeks(repo, cfg)
+
+  var direct: seq[VaultEntry] = @[]
+  for e in entries:
+    let outPath = resolvePath(cfg, e.path)
+    let tmpPath = outPath & ".nimvault-tmp"
+    createDir(outPath.parentDir)
+    if deks.hasKey(e.id):
+      tmpPaths.add(tmpPath)
+      var status = ""
+      var code = 0
+      try:
+        decryptWithDek(cfg, deks[e.id], findBlob(repo, cfg, e.id), tmpPath)
+      except CatchableError as err:
+        status = err.msg
+        code = 1
+      results.add((e, tmpPath, status, code, true))
+    else:
+      direct.add(e)
+
+  for batchStart in countup(0, direct.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, direct.high)
     var procs: seq[(VaultEntry, string, Process)] = @[]
     for i in batchStart .. batchEnd:
-      let e = entries[i]
+      let e = direct[i]
       let inPath = findBlob(repo, cfg, e.id)
       let outPath = resolvePath(cfg, e.path)
       let tmpPath = outPath & ".nimvault-tmp"
@@ -124,7 +150,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       let status = p.errorStream.readAll()
       let code = p.waitForExit()
       p.close()
-      results.add((e, tmpPath, status, code))
+      results.add((e, tmpPath, status, code, false))
 
   # Abort helper: remove all temp files before exiting
   template abortUnseal(msgs: varargs[string]) =
@@ -145,11 +171,13 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     # all, and their authenticity comes from the signed manifest plus the blob
     # digest already checked above; demanding GOODSIG here would reject every
     # one of them.
-    if cfg.signaturesInBand and ("BADSIG" in r.status or "ERRSIG" in r.status):
+    if cfg.signaturesInBand and not r.enveloped and
+       ("BADSIG" in r.status or "ERRSIG" in r.status):
       abortUnseal(&"FATAL: bad signature on blob for {r.entry.path}",
         "  The vault may have been tampered with.")
     # Missing signatures: fatal unless --allow-unsigned
-    if cfg.signaturesInBand and requireSig and "GOODSIG" notin r.status:
+    if cfg.signaturesInBand and not r.enveloped and requireSig and
+       "GOODSIG" notin r.status:
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
 
@@ -229,28 +257,37 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     else:
       keptIds.incl(e.id)
 
-  # Launch GPG encrypts in batches (NIMVAULT_GPG_PARALLEL, default 8).
-  # GPG sign+encrypt is memory-intensive; launching all at once can trigger
-  # "Cannot allocate memory" on systems with many vault entries.
-  let batchSize = gpgParallelism()
-  for batchStart in countup(0, todo.high, batchSize):
-    let batchEnd = min(batchStart + batchSize - 1, todo.high)
-    var procs: seq[(VaultEntry, Process)] = @[]
-    for i in batchStart .. batchEnd:
-      let e = todo[i]
-      let inPath = resolvePath(cfg, e.path)
-      let outPath = crypto.blobPath(repo, cfg, e.id)
-      let p = encryptProcess(cfg, inPath, outPath)
-      procs.add((e, p))
+  # Format v6: each payload is encrypted under its own data key, and the data
+  # keys live in one small file encrypted to the recipients. Adding a machine
+  # or rotating a recipient key then rewrites that file and leaves every
+  # payload alone, instead of re-encrypting the whole vault.
+  #
+  # A fresh key per re-encryption rather than a reused one: the key file is
+  # small, and a key that never outlives the bytes it protects is the cheaper
+  # thing to reason about.
+  var deks = loadDeks(repo, cfg)
+  for e in todo:
+    let inPath = resolvePath(cfg, e.path)
+    let outPath = crypto.blobPath(repo, cfg, e.id)
+    let key = newDek(cfg)
+    encryptWithDek(cfg, key, inPath, outPath)
+    deks[e.id] = key
+    nvEcho(&"  {e.path}")
 
-    # Collect results for this batch
-    for (e, p) in procs:
-      let output = p.outputStream.readAll()
-      let code = p.waitForExit()
-      p.close()
-      if code != 0:
-        nvRaise(&"FATAL: failed to seal {e.path}\n{output}")
-      nvEcho(&"  {e.path}")
+  # Drop keys for entries that are gone, so the file does not accumulate the
+  # means to read blobs nobody kept.
+  var live = initHashSet[string]()
+  for e in entries:
+    live.incl(e.id)
+  var stale: seq[string] = @[]
+  for id in deks.keys:
+    if id notin live:
+      stale.add(id)
+  for id in stale:
+    deks.del(id)
+
+  if todo.len > 0 or stale.len > 0:
+    saveDeks(repo, cfg, deks)
 
   # Flush new blobs before the manifest that vouches for them. The manifest
   # records each blob's hash, so a crash that persisted the manifest but not
@@ -510,6 +547,17 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
       nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
 
+    let deks = loadDeks(repo, cfg)
+    if deks.hasKey(e.id):
+      # v6: no in-band signature to verify, exactly as for age. Authenticity
+      # came from the signed manifest and the blob digest checked just above.
+      let tmp = getTempDir() / &"nimvault-get-{getCurrentProcessId()}-{e.id}"
+      try:
+        decryptWithDek(cfg, deks[e.id], inPath, tmp)
+        result = readFile(tmp)
+      finally:
+        if fileExists(tmp): removeFile(tmp)
+      return result
     return decryptToString(cfg, inPath, verifySig = requireSig)
 
   nvRaise(&"Not in vault: {path}")
@@ -782,6 +830,53 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
       result.add &"  [in-sync]   {r.entry.path}\n"
     else:
       result.add &"  [modified]  {r.entry.path}\n"
+
+proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
+  ## Re-wrap the data keys to the current recipients, or re-encrypt everything.
+  ##
+  ## These are different operations, and the difference is the reason v6 exists,
+  ## so they are separate flags rather than one command that guesses.
+  ##
+  ## Default: the data-key file is decrypted and written back to whoever
+  ## `.vault/config` now names. Every payload is untouched, so adding a machine
+  ## costs one small file instead of the whole vault. What that gives is
+  ## rotation of the *wrapping*: a recipient key that should no longer open the
+  ## vault stops being able to.
+  ##
+  ## `rekey`: every payload is re-encrypted under a fresh data key. Only that
+  ## answers a suspected compromise of a data key or of the plaintext, because
+  ## rewrapping leaves the old ciphertext openable by whoever already holds the
+  ## old key (Everspaugh et al., CRYPTO 2017,
+  ## doi:10.1007/978-3-319-63697-9_4). Churn is the intent, so it deliberately
+  ## bypasses the incremental skip.
+  let meta = loadManifestMeta(repo, cfg = cfg)
+  let entries = meta.entries
+  if entries.len == 0:
+    nvEcho("vault is empty")
+    return
+
+  if rekey:
+    banner("Rekeying vault ...")
+    seal(repo, cfg, force = true)
+    nvEcho("Every payload re-encrypted under a fresh data key.")
+    return
+
+  banner("Rewrapping data keys ...")
+  let lk {.used.} = acquire(repo)
+  let deks = loadDeks(repo, cfg)
+  if deks.len == 0:
+    nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
+            "  Run 'nimvault seal --force' once to move it to v6.")
+  saveDeks(repo, cfg, deks)
+  var enveloped = 0
+  for e in entries:
+    if deks.hasKey(e.id):
+      enveloped.inc
+  nvEcho(&"\nRewrapped {deks.len} data key(s); {enveloped} of {entries.len} " &
+         "entries are enveloped.")
+  if enveloped < entries.len:
+    nvEcho("Entries without a data key still carry the recipient inside the " &
+           "blob;\n  'nimvault seal --force' migrates them.")
 
 type CheckResult* = tuple[problems: seq[string], checked: int]
 
