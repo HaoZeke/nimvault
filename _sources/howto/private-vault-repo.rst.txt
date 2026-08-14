@@ -1,0 +1,92 @@
+============================================
+Keep the vault in its own private repository
+============================================
+
+
+.. contents::
+
+Dotfiles repositories are usually public. A vault inside one archives its
+ciphertext forever: anyone who clones or forks keeps a copy, and on GitHub the
+objects stay fetchable through the fork network even after a history rewrite.
+Rotating a key does not reach that, and neither does ``rotate --rekey``, because
+both act on the working tree.
+
+Keeping ``.vault/`` in a separate private repository removes the exposure for
+everything stored from then on. Nothing about reading changes: the manifest
+already stores target paths as ``~/...``, so entries do not care which repository
+the blobs came from.
+
+1 Telling nimvault where the vault is
+-------------------------------------
+
+Most explicit first:
+
+1. ``--vault DIR`` on any command
+
+2. ``NIMVAULT_VAULT_REPO``
+
+3. a ``.nimvault`` file in the repository you are standing in, naming the vault
+   repository
+
+4. the current git repository, which is the behaviour that predates this
+
+The pointer file is the one to reach for day to day, because it makes
+``nimvault status`` work from the content repository with nothing else set up:
+
+.. code:: bash
+
+    cd ~/.local/share/chezmoi
+    printf '# vault lives here\n~/Git/private/dotfiles-vault\n' > .nimvault
+    nimvault status        # reads the vault in the other repository
+
+Commit ``.nimvault``. It names a path, not a secret.
+
+2 Moving an existing vault
+--------------------------
+
+The vault is self-contained: ``.vault/`` holds the manifest, the blobs and the
+data keys. Moving it is a directory move plus a pointer.
+
+.. code:: bash
+
+    # 1. A private repository for it
+    gh repo create dotfiles-vault --private
+    git clone git@github.com:<you>/dotfiles-vault.git ~/Git/private/dotfiles-vault
+
+    # 2. Move the vault across, history and all if you want it
+    cd ~/.local/share/chezmoi
+    git mv .vault /tmp/vault-move            # or cp -a for a copy first
+    mv /tmp/vault-move ~/Git/private/dotfiles-vault/.vault
+
+    # 3. Point the content repository at it
+    printf '~/Git/private/dotfiles-vault\n' > .nimvault
+    git add .nimvault && git commit -m "vault: move to a private repository"
+
+    # 4. Verify before committing the removal anywhere
+    cd ~/Git/private/dotfiles-vault
+    nimvault check                   # every blob still matches the manifest
+    nimvault get ~/.ssh/config >/dev/null && echo readable
+    git add .vault .gitignore && git commit -m "vault: initial import"
+
+2.1 The old copies do not go away
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Removing ``.vault/`` from the public repository stops adding to the problem; it
+does not remove what is already in that history. Treat anything the vault held
+while it was public as exposed ciphertext, and rotate what is still live. A
+history rewrite reduces the surface but does not reach existing clones, forks,
+or GitHub's fork-network object store.
+
+3 One thing to check first
+--------------------------
+
+If ``.vault/config`` sets ``root``, relative paths resolve against "the
+repository", which becomes ambiguous once there are two. nimvault refuses this
+rather than guessing:
+
+::
+
+    FATAL: `root` is set while the vault lives in another repository.
+
+Set ``root`` to an absolute path, or unset it so entries store a ``~/`` prefix,
+which is what makes a vault portable between machines anyway.

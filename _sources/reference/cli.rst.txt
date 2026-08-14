@@ -289,7 +289,24 @@ against decrypted blobs:
 Directory entries: When you ``add-dir`` a directory, each file appears individually
 in ``list`` and ``status`` output. The directory structure is implicit in the paths.
 
-3 Global options
+3 Where the vault lives
+-----------------------
+
+Every command accepts ``--vault DIR``. The vault repository need not be the one
+you are standing in, which is what lets ``.vault/`` sit in a private repository
+while the dotfiles it protects stay public. Resolution order:
+
+1. ``--vault DIR``
+
+2. ``NIMVAULT_VAULT_REPO``
+
+3. a ``.nimvault`` pointer file in the current repository, naming the vault one
+
+4. the current git repository
+
+See the `private vault repository how-to <../howto/private-vault-repo.rst>`_.
+
+4 Global options
 ----------------
 
 ``--recipient KEY``
@@ -302,7 +319,7 @@ in ``list`` and ``status`` output. The directory structure is implicit in the pa
 ``--version``
     Show nimvault version.
 
-4 Exit codes
+5 Exit codes
 ------------
 
 .. table::
@@ -315,7 +332,7 @@ in ``list`` and ``status`` output. The directory structure is implicit in the pa
     |    1 | Error (missing file, GPG failure, integrity check, traversal, etc) |
     +------+--------------------------------------------------------------------+
 
-5 Security model
+6 Security model
 ----------------
 
 All encryption operations also GPG-sign the payload. On ``unseal``, signatures and
@@ -339,12 +356,12 @@ blob hashes are verified before any plaintext is written to disk:
 This design prevents forgery, ciphertext swapping, path traversal, and release
 of unverified plaintext.
 
-5.1 Known limitations
+6.1 Known limitations
 ~~~~~~~~~~~~~~~~~~~~~
 
 These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.
 
-5.1.1 Metadata leakage
+6.1.1 Metadata leakage
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Because the tool encrypts files individually, an observer analyzing the Git
@@ -354,7 +371,7 @@ sizes are visible. Wrapping the entire payload in an archive before encryption
 would conceal this metadata but sacrifice Git delta efficiency. For most personal
 vault use cases this trade-off is acceptable.
 
-5.1.2 No forward secrecy
+6.1.2 No forward secrecy
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 An adversary who archives the public Git history today and obtains a key later

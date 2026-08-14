@@ -25,7 +25,7 @@
   <div class="document" id="documentId">
     <div class="container">
       <h1 class="title">Index</h1>
-      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/dek.html">nimvault/dek</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/lock.html">nimvault/lock</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>.<br/><p /><h2>API symbols</h2>
+      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/dek.html">nimvault/dek</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/lock.html">nimvault/lock</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>, <a href="nimvault/vaultrepo.html">nimvault/vaultrepo</a>.<br/><p /><h2>API symbols</h2>
 <dl><dt><a name="acquire" href="#acquire"><span>acquire:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock" href="nimvault/lock.html#acquire%2Cstring%2Cint">lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock</a></li>
@@ -180,6 +180,10 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string" href="nimvault/commands.html#get%2Cstring%2Cstring%2CGpgConfig">commands: proc get(repo, path: string; cfg: GpgConfig; allowUnsigned = false): string</a></li>
           </ul></dd>
+<dt><a name="gitRoot" href="#gitRoot"><span>gitRoot:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="vaultrepo: proc gitRoot(): string" href="nimvault/vaultrepo.html#gitRoot">vaultrepo: proc gitRoot(): string</a></li>
+          </ul></dd>
 <dt><a name="GpgConfig" href="#GpgConfig"><span>GpgConfig:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: object GpgConfig" href="nimvault/gpg.html#GpgConfig">gpg: object GpgConfig</a></li>
@@ -294,6 +298,14 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc orphans(repo: string; cfg: GpgConfig): seq[string]" href="nimvault/commands.html#orphans%2Cstring%2CGpgConfig">commands: proc orphans(repo: string; cfg: GpgConfig): seq[string]</a></li>
           </ul></dd>
+<dt><a name="PointerFile" href="#PointerFile"><span>PointerFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="vaultrepo: const PointerFile" href="nimvault/vaultrepo.html#PointerFile">vaultrepo: const PointerFile</a></li>
+          </ul></dd>
+<dt><a name="readPointer" href="#readPointer"><span>readPointer:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="vaultrepo: proc readPointer(dir: string): string" href="nimvault/vaultrepo.html#readPointer%2Cstring">vaultrepo: proc readPointer(dir: string): string</a></li>
+          </ul></dd>
 <dt><a name="recipientsFor" href="#recipientsFor"><span>recipientsFor:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="dek: proc recipientsFor(cfg: GpgConfig; path: string): seq[string]" href="nimvault/dek.html#recipientsFor%2CGpgConfig%2Cstring">dek: proc recipientsFor(cfg: GpgConfig; path: string): seq[string]</a></li>
@@ -317,6 +329,10 @@
 <dt><a name="resolveRecipient" href="#resolveRecipient"><span>resolveRecipient:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc resolveRecipient(cli, env, configRecipient: string): string" href="nimvault/gpg.html#resolveRecipient%2Cstring%2Cstring%2Cstring">gpg: proc resolveRecipient(cli, env, configRecipient: string): string</a></li>
+          </ul></dd>
+<dt><a name="resolveVaultRepo" href="#resolveVaultRepo"><span>resolveVaultRepo:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="vaultrepo: proc resolveVaultRepo(cliVault = &quot;&quot;): string" href="nimvault/vaultrepo.html#resolveVaultRepo%2Cstring">vaultrepo: proc resolveVaultRepo(cliVault = &quot;&quot;): string</a></li>
           </ul></dd>
 <dt><a name="rotate" href="#rotate"><span>rotate:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -444,6 +460,10 @@
 <li><a class="reference external"
           data-doc-search-tag="cli: const Version" href="nimvault/cli.html#Version">cli: const Version</a></li>
           </ul></dd>
+<dt><a name="warnIfRootIsAmbiguous" href="#warnIfRootIsAmbiguous"><span>warnIfRootIsAmbiguous:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="vaultrepo: proc warnIfRootIsAmbiguous(vaultRepo, configuredRoot: string)" href="nimvault/vaultrepo.html#warnIfRootIsAmbiguous%2Cstring%2Cstring">vaultrepo: proc warnIfRootIsAmbiguous(vaultRepo, configuredRoot: string)</a></li>
+          </ul></dd>
 <dt><a name="withVaultLock" href="#withVaultLock"><span>withVaultLock:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="lock: template withVaultLock(repo: string; body: untyped)" href="nimvault/lock.html#withVaultLock.t%2Cstring%2Cuntyped">lock: template withVaultLock(repo: string; body: untyped)</a></li>
@@ -452,7 +472,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:49:41 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 16:00:59 UTC</small>
       </div>
     </div>
   </div>

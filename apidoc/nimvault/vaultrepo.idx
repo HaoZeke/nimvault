@@ -1,0 +1,6 @@
+nimTitle	vaultrepo	nimvault/vaultrepo.html	module nimvault/vaultrepo		0
+nim	PointerFile	nimvault/vaultrepo.html#PointerFile	const PointerFile		25
+nim	gitRoot	nimvault/vaultrepo.html#gitRoot	proc gitRoot(): string		27
+nim	readPointer	nimvault/vaultrepo.html#readPointer,string	proc readPointer(dir: string): string		36
+nim	resolveVaultRepo	nimvault/vaultrepo.html#resolveVaultRepo,string	proc resolveVaultRepo(cliVault = ""): string		51
+nim	warnIfRootIsAmbiguous	nimvault/vaultrepo.html#warnIfRootIsAmbiguous,string,string	proc warnIfRootIsAmbiguous(vaultRepo, configuredRoot: string)		76

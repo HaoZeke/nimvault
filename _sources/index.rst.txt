@@ -107,6 +107,7 @@ Guides
 
      howto/keybase
      howto/chezmoi
+     howto/private-vault-repo
      howto/service-vault
 
 Reference
