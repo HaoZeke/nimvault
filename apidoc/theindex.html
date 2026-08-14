@@ -25,8 +25,12 @@
   <div class="document" id="documentId">
     <div class="container">
       <h1 class="title">Index</h1>
-      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>.<br/><p /><h2>API symbols</h2>
-<dl><dt><a name="add" href="#add"><span>add:</span></a></dt><dd><ul class="simple">
+      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/lock.html">nimvault/lock</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>.<br/><p /><h2>API symbols</h2>
+<dl><dt><a name="acquire" href="#acquire"><span>acquire:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock" href="nimvault/lock.html#acquire%2Cstring%2Cint">lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock</a></li>
+          </ul></dd>
+<dt><a name="add" href="#add"><span>add:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)" href="nimvault/commands.html#add%2Cstring%2Cstring%2CGpgConfig">commands: proc add(repo, path: string; cfg: GpgConfig; noGitignore = false)</a></li>
           </ul></dd>
@@ -172,6 +176,10 @@
     entries: seq[VaultEntry], sealKey: string]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
     entries: seq[VaultEntry], sealKey: string]</a></li>
           </ul></dd>
+<dt><a name="lockPath" href="#lockPath"><span>lockPath:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="lock: proc lockPath(repo: string): string" href="nimvault/lock.html#lockPath%2Cstring">lock: proc lockPath(repo: string): string</a></li>
+          </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="cli: proc main(args: seq[string] = commandLineParams())" href="nimvault/cli.html#main%2Cseq%5Bstring%5D">cli: proc main(args: seq[string] = commandLineParams())</a></li>
@@ -199,6 +207,10 @@
 <dt><a name="nvRaise" href="#nvRaise"><span>nvRaise:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc nvRaise(msg: string)" href="nimvault/gpg.html#nvRaise%2Cstring">gpg: proc nvRaise(msg: string)</a></li>
+          </ul></dd>
+<dt><a name="release" href="#release"><span>release:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="lock: proc release(l: var VaultLock)" href="nimvault/lock.html#release%2CVaultLock">lock: proc release(l: var VaultLock)</a></li>
           </ul></dd>
 <dt><a name="remove" href="#remove"><span>remove:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -310,6 +322,10 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: tuple VaultEntry" href="nimvault/manifest.html#VaultEntry">manifest: tuple VaultEntry</a></li>
           </ul></dd>
+<dt><a name="VaultLock" href="#VaultLock"><span>VaultLock:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="lock: object VaultLock" href="nimvault/lock.html#VaultLock">lock: object VaultLock</a></li>
+          </ul></dd>
 <dt><a name="verifyManifest" href="#verifyManifest"><span>verifyManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)" href="nimvault/crypto.html#verifyManifest%2CGpgConfig%2Cstring%2Cbool">crypto: proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)</a></li>
@@ -318,11 +334,15 @@
 <li><a class="reference external"
           data-doc-search-tag="cli: const Version" href="nimvault/cli.html#Version">cli: const Version</a></li>
           </ul></dd>
+<dt><a name="withVaultLock" href="#withVaultLock"><span>withVaultLock:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="lock: template withVaultLock(repo: string; body: untyped)" href="nimvault/lock.html#withVaultLock.t%2Cstring%2Cuntyped">lock: template withVaultLock(repo: string; body: untyped)</a></li>
+          </ul></dd>
 </dl>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 12:59:48 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 13:10:52 UTC</small>
       </div>
     </div>
   </div>

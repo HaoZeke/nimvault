@@ -1,0 +1,6 @@
+nimTitle	lock	nimvault/lock.html	module nimvault/lock		0
+nim	VaultLock	nimvault/lock.html#VaultLock	object VaultLock		27
+nim	lockPath	nimvault/lock.html#lockPath,string	proc lockPath(repo: string): string		38
+nim	release	nimvault/lock.html#release,VaultLock	proc release(l: var VaultLock)		44
+nim	acquire	nimvault/lock.html#acquire,string,int	proc acquire(repo: string; timeoutMs = 30000): VaultLock		67
+nim	withVaultLock	nimvault/lock.html#withVaultLock.t,string,untyped	template withVaultLock(repo: string; body: untyped)		93
