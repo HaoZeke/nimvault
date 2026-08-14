@@ -78,6 +78,14 @@
   <li><a class="reference" href="#ageIdentityPath%2CGpgConfig" title="ageIdentityPath(cfg: GpgConfig): string">ageIdentityPath(cfg: GpgConfig): string</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">ageKeygenBinary
+  <li><a class="reference" href="#ageKeygenBinary" title="ageKeygenBinary(): string">ageKeygenBinary(): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">ageRecipientForIdentity
+  <li><a class="reference" href="#ageRecipientForIdentity%2Cstring" title="ageRecipientForIdentity(identity: string): string">ageRecipientForIdentity(identity: string): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">sshSign
   <li><a class="reference" href="#sshSign%2CGpgConfig%2Cstring" title="sshSign(cfg: GpgConfig; path: string)">sshSign(cfg: GpgConfig; path: string)</a></li>
 
@@ -179,6 +187,32 @@
 </div>
 
 </div>
+<div id="ageKeygenBinary-procs-all">
+  <div id="ageKeygenBinary">
+  <dt><pre><span class="Keyword">proc</span> <a href="#ageKeygenBinary"><span class="Identifier">ageKeygenBinary</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <tt class="docutils literal"><span class="pre"><span class="Identifier">age</span><span class="Operator">-</span><span class="Identifier">keygen</span></span></tt> ships beside <tt class="docutils literal"><span class="pre"><span class="Identifier">age</span></span></tt>, <tt class="docutils literal"><span class="pre"><span class="Identifier">rage</span><span class="Operator">-</span><span class="Identifier">keygen</span></span></tt> beside <tt class="docutils literal"><span class="pre"><span class="Identifier">rage</span></span></tt>.
+    
+  </dd>
+</div>
+
+</div>
+<div id="ageRecipientForIdentity-procs-all">
+  <div id="ageRecipientForIdentity,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#ageRecipientForIdentity%2Cstring"><span class="Identifier">ageRecipientForIdentity</span></a><span class="Other">(</span><span class="Identifier">identity</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Public recipient for an <tt class="docutils literal"><span class="pre"><span class="Identifier">AGE</span><span class="Operator">-</span><span class="Identifier">SECRET</span><span class="Operator">-</span><span class="Identifier">KEY</span><span class="Operator">-...</span></span></tt> identity, so a payload can be encrypted under a data key the vault holds privately. The identity goes in on a pipe rather than a file so it never lands on disk unencrypted.
+    
+  </dd>
+</div>
+
+</div>
 <div id="sshSign-procs-all">
   <div id="sshSign,GpgConfig,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#sshSign%2CGpgConfig%2Cstring"><span class="Identifier">sshSign</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.
@@ -217,7 +251,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 13:40:28 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:05:43 UTC</small>
       </div>
     </div>
   </div>

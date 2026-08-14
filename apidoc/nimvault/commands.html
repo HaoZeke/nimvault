@@ -123,6 +123,10 @@
   <li><a class="reference" href="#removeReport%2Cstring%2Cstring%2CGpgConfig" title="removeReport(repo, path: string; cfg: GpgConfig): string">removeReport(repo, path: string; cfg: GpgConfig): string</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">rotate
+  <li><a class="reference" href="#rotate%2Cstring%2CGpgConfig" title="rotate(repo: string; cfg: GpgConfig; rekey = false)">rotate(repo: string; cfg: GpgConfig; rekey = false)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">scan
   <li><a class="reference" href="#scan%2Cstring%2Cstring%2CGpgConfig" title="scan(repo: string; target: string; cfg: GpgConfig)">scan(repo: string; target: string; cfg: GpgConfig)</a></li>
 
@@ -177,7 +181,7 @@
     <div class="section" id="6">
   <h1><a class="toc-backref" href="#6">Imports</a></h1>
   <dl class="item">
-    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="manifest.html">manifest</a>, <a class="reference external" href="crypto.html">crypto</a>, <a class="reference external" href="lock.html">lock</a>
+    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="manifest.html">manifest</a>, <a class="reference external" href="crypto.html">crypto</a>, <a class="reference external" href="lock.html">lock</a>, <a class="reference external" href="dek.html">dek</a>
   </dl>
 </div>
 <div class="section" id="7">
@@ -300,10 +304,11 @@
 </div>
 <div id="get-procs-all">
   <div id="get,string,string,GpgConfig">
-  <dt><pre><span class="Keyword">proc</span> <a href="#get%2Cstring%2Cstring%2CGpgConfig"><span class="Identifier">get</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
-    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#get%2Cstring%2Cstring%2CGpgConfig"><span class="Identifier">get</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">allowUnsigned</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span>
+    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     <p>Decrypt one tracked entry and return its plaintext. Nothing is written to disk and nothing else in the vault is touched.</p>
@@ -394,6 +399,24 @@
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="rotate-procs-all">
+  <div id="rotate,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#rotate%2Cstring%2CGpgConfig"><span class="Identifier">rotate</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">rekey</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Re-wrap the data keys to the current recipients, or re-encrypt everything.</p>
+<p>These are different operations, and the difference is the reason v6 exists, so they are separate flags rather than one command that guesses.</p>
+<p>Default: the data-key file is decrypted and written back to whoever <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span><span class="Identifier">config</span></span></tt> now names. Every payload is untouched, so adding a machine costs one small file instead of the whole vault. What that gives is rotation of the <em>wrapping</em>: a recipient key that should no longer open the vault stops being able to.</p>
+<p><tt class="docutils literal"><span class="pre"><span class="Identifier">rekey</span></span></tt>: every payload is re-encrypted under a fresh data key. Only that answers a suspected compromise of a data key or of the plaintext, because rewrapping leaves the old ciphertext openable by whoever already holds the old key (Everspaugh et al., CRYPTO 2017, doi:10.1007/978-3-319-63697-9_4). Churn is the intent, so it deliberately bypasses the incremental skip.</p>
+
     
   </dd>
 </div>
@@ -527,7 +550,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 13:40:28 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:05:43 UTC</small>
       </div>
     </div>
   </div>

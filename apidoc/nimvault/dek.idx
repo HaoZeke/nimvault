@@ -1,0 +1,10 @@
+nimTitle	dek	nimvault/dek.html	module nimvault/dek		0
+nim	KeysFileStem	nimvault/dek.html#KeysFileStem	const KeysFileStem		40
+nim	DekTable	nimvault/dek.html#DekTable	type DekTable		43
+nim	keysPath	nimvault/dek.html#keysPath,string,GpgConfig	proc keysPath(repo: string; cfg: GpgConfig): string		45
+nim	findKeysFile	nimvault/dek.html#findKeysFile,string,GpgConfig	proc findKeysFile(repo: string; cfg: GpgConfig): string		48
+nim	newDek	nimvault/dek.html#newDek,GpgConfig	proc newDek(cfg: GpgConfig): string		59
+nim	loadDeks	nimvault/dek.html#loadDeks,string,GpgConfig	proc loadDeks(repo: string; cfg: GpgConfig): DekTable		82
+nim	saveDeks	nimvault/dek.html#saveDeks,string,GpgConfig,DekTable	proc saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)		97
+nim	encryptWithDek	nimvault/dek.html#encryptWithDek,GpgConfig,string,string,string	proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		114
+nim	decryptWithDek	nimvault/dek.html#decryptWithDek,GpgConfig,string,string,string	proc decryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		143
