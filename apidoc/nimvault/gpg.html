@@ -68,10 +68,12 @@
   signer*: string            ## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;
   signKey*: string           ## ssh private key used to sign the manifest
   allowedSigners*: string    ## ssh allowed-signers file used to verify it
-  signerIdentity*: string    ## principal to match within allowed_signers">GpgConfig</a></li>
+  signerIdentity*: string    ## principal to match within allowed_signers
+  wraps*: seq[string]        ## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order">GpgConfig</a></li>
 <li><a class="reference" href="#NimvaultError" title="NimvaultError = object of CatchableError">NimvaultError</a></li>
 <li><a class="reference" href="#VaultConfigFile" title="VaultConfigFile = tuple[recipient, root, backend, identity, signer, signKey,
-                        allowedSigners, signerIdentity: string]">VaultConfigFile</a></li>
+                        allowedSigners, signerIdentity: string,
+                        wraps: seq[string]]">VaultConfigFile</a></li>
 
     </ul>
   </details>
@@ -155,7 +157,8 @@
   <span class="Identifier">signer</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>            <span class="Comment">## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;</span>
   <span class="Identifier">signKey</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>           <span class="Comment">## ssh private key used to sign the manifest</span>
   <span class="Identifier">allowedSigners</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## ssh allowed-signers file used to verify it</span>
-  <span class="Identifier">signerIdentity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## principal to match within allowed_signers</span></pre></dt>
+  <span class="Identifier">signerIdentity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## principal to match within allowed_signers</span>
+  <span class="Identifier">wraps</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span>        <span class="Comment">## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order</span></pre></dt>
   <dd>
     
     
@@ -172,10 +175,11 @@
 </div>
 <div id="VaultConfigFile">
   <dt><pre><a href="gpg.html#VaultConfigFile"><span class="Identifier">VaultConfigFile</span></a> <span class="Other">=</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">recipient</span><span class="Other">,</span> <span class="Identifier">root</span><span class="Other">,</span> <span class="Identifier">backend</span><span class="Other">,</span> <span class="Identifier">identity</span><span class="Other">,</span> <span class="Identifier">signer</span><span class="Other">,</span> <span class="Identifier">signKey</span><span class="Other">,</span>
-                        <span class="Identifier">allowedSigners</span><span class="Other">,</span> <span class="Identifier">signerIdentity</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span></pre></dt>
+                        <span class="Identifier">allowedSigners</span><span class="Other">,</span> <span class="Identifier">signerIdentity</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">,</span>
+                        <span class="Identifier">wraps</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">]</span></pre></dt>
   <dd>
     
-    
+    <tt class="docutils literal"><span class="pre"><span class="Identifier">wraps</span></span></tt> keeps <tt class="docutils literal"><span class="pre"><span class="Identifier">wrap</span> <span class="Operator">=</span> <span class="Operator">&lt;</span><span class="Identifier">glob</span><span class="Operator">&gt;:&lt;</span><span class="Identifier">recipient</span><span class="Operator">&gt;</span><span class="Punctuation">[</span><span class="Punctuation">,</span><span class="Operator">&lt;</span><span class="Identifier">recipient</span><span class="Operator">&gt;...</span><span class="Punctuation">]</span></span></tt> lines in file order, because the rule that matches first decides and order is therefore meaning, not formatting.
     
   </dd>
 </div>
@@ -325,7 +329,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:16:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:47:53 UTC</small>
       </div>
     </div>
   </div>

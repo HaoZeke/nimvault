@@ -86,6 +86,12 @@
   <li><a class="reference" href="#encryptFile%2CGpgConfig%2Cstring%2Cstring" title="encryptFile(cfg: GpgConfig; inPath, outPath: string)">encryptFile(cfg: GpgConfig; inPath, outPath: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">encryptFileTo
+  <li><a class="reference" href="#encryptFileTo%2CGpgConfig%2Cseq%5Bstring%5D%2Cstring%2Cstring" title="encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;
+              sign = true)">encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;
+              sign = true)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">encryptProcess
   <li><a class="reference" href="#encryptProcess%2CGpgConfig%2Cstring%2Cstring" title="encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process">encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
 
@@ -239,6 +245,23 @@
 </div>
 
 </div>
+<div id="encryptFileTo-procs-all">
+  <div id="encryptFileTo,GpgConfig,seq[string],string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#encryptFileTo%2CGpgConfig%2Cseq%5Bstring%5D%2Cstring%2Cstring"><span class="Identifier">encryptFileTo</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">recipients</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span>
+                   <span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">sign</span> <span class="Other">=</span> <span class="Identifier">true</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Encrypt to several recipients at once. Both backends take repeated recipient flags and wrap the payload key to each, which is what lets one key file be readable by exactly the machines a group names.</p>
+<p><tt class="docutils literal"><span class="pre"><span class="Identifier">sign</span> <span class="Operator">=</span> <span class="Identifier">false</span></span></tt> for material every recipient must be able to read on its own. gpg exits non-zero when it cannot <em>verify</em> a signature, even though it decrypted the content perfectly well, so a signed file is unreadable to any machine that does not also hold the signer's public key. Demanding that every machine import every other machine's key in order to read is the wrong coupling, and it buys nothing here: the manifest is the trust root, it is signed, and it records the digest of every blob. A tampered key file yields a decryption failure, not a forged plaintext.</p>
+
+    
+  </dd>
+</div>
+
+</div>
 <div id="encryptProcess-procs-all">
   <div id="encryptProcess,GpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#encryptProcess%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">encryptProcess</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Process</span> {.
@@ -374,7 +397,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:16:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:47:53 UTC</small>
       </div>
     </div>
   </div>

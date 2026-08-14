@@ -106,8 +106,15 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#recipient-resolution">1 Recipient resolution</a></li>
 <li><a class="reference internal" href="#config-file-format">2 Config file format</a></li>
-<li><a class="reference internal" href="#gpg-key-id">3 GPG key ID</a><ul>
-<li><a class="reference internal" href="#finding-your-key-id">3.1 Finding your key ID</a></li>
+<li><a class="reference internal" href="#per-path-recipients">3 Per-path recipients</a><ul>
+<li><a class="reference internal" href="#how-it-works">3.1 How it works</a></li>
+<li><a class="reference internal" href="#changing-the-rules">3.2 Changing the rules</a></li>
+<li><a class="reference internal" href="#a-prerequisite-worth-stating">3.3 A prerequisite worth stating</a></li>
+<li><a class="reference internal" href="#break-glass-recovery">3.4 Break-glass recovery</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#gpg-key-id">4 GPG key ID</a><ul>
+<li><a class="reference internal" href="#finding-your-key-id">4.1 Finding your key ID</a></li>
 </ul>
 </li>
 </ul>
@@ -207,9 +214,17 @@ data-aria-dark="Switch to auto color mode">
 <ul>
 <li><p><a class="reference internal" href="#recipient-resolution" id="id2">1 Recipient resolution</a></p></li>
 <li><p><a class="reference internal" href="#config-file-format" id="id3">2 Config file format</a></p></li>
-<li><p><a class="reference internal" href="#gpg-key-id" id="id4">3 GPG key ID</a></p>
+<li><p><a class="reference internal" href="#per-path-recipients" id="id4">3 Per-path recipients</a></p>
 <ul>
-<li><p><a class="reference internal" href="#finding-your-key-id" id="id5">3.1 Finding your key ID</a></p></li>
+<li><p><a class="reference internal" href="#how-it-works" id="id5">3.1 How it works</a></p></li>
+<li><p><a class="reference internal" href="#changing-the-rules" id="id6">3.2 Changing the rules</a></p></li>
+<li><p><a class="reference internal" href="#a-prerequisite-worth-stating" id="id7">3.3 A prerequisite worth stating</a></p></li>
+<li><p><a class="reference internal" href="#break-glass-recovery" id="id8">3.4 Break-glass recovery</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#gpg-key-id" id="id9">4 GPG key ID</a></p>
+<ul>
+<li><p><a class="reference internal" href="#finding-your-key-id" id="id10">4.1 Finding your key ID</a></p></li>
 </ul>
 </li>
 </ul>
@@ -245,10 +260,63 @@ stored relative to the repository root. When set to a relative path, it is
 resolved against the repository root. When absent, paths use <code class="docutils literal notranslate"><span class="pre">~/</span></code> prefix for
 portability.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">wrap</span></code></dt><dd><p>Repeatable. <code class="docutils literal notranslate"><span class="pre">&lt;glob&gt;:&lt;recipient&gt;[,&lt;recipient&gt;...]</span></code> – which
+recipients may open the entries matching a path pattern. See below.</p>
+</dd>
 </dl>
 </section>
+<section id="per-path-recipients">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">3 Per-path recipients</a><a class="headerlink" href="#per-path-recipients" title="Link to this heading">¶</a></h2>
+<p>Not every machine should read every secret. A <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule maps a path pattern
+to the recipients allowed to open those entries:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="na">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">LAPTOPKEY</span>
+</span><span data-line="2">
+</span><span data-line="3"><span class="c1"># Specific rules first: the first match decides.</span>
+</span><span data-line="4"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.ssh/**:LAPTOPKEY</span>
+</span><span data-line="5"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.gnupg/**:LAPTOPKEY</span>
+</span><span data-line="6"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">**:LAPTOPKEY,BUILDBOXKEY</span>
+</span></pre></div>
+</div>
+<p>Order in the file is precedence, so the narrow rules go above the general one.
+An entry matching no rule uses <code class="docutils literal notranslate"><span class="pre">recipient</span></code>, which is why a config with no
+<code class="docutils literal notranslate"><span class="pre">wrap</span></code> lines behaves exactly as it did before rules existed.</p>
+<section id="how-it-works">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">3.1 How it works</a><a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h3>
+<p>Each entry’s payload is encrypted under its own data key (see the manifest
+reference). The data keys are grouped by recipient set, and each group is
+written to its own <code class="docutils literal notranslate"><span class="pre">.vault/keys.&lt;group&gt;.gpg</span></code> encrypted to that group alone. A
+machine decrypts the group files its key opens and no others, so it can read
+exactly the entries meant for it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> on such a machine restores what it can read. <code class="docutils literal notranslate"><span class="pre">check</span></code> needs no key at
+all, so vault integrity is verifiable from anywhere.</p>
+<p>Patterns: <code class="docutils literal notranslate"><span class="pre">\*</span></code> matches within one path segment, <code class="docutils literal notranslate"><span class="pre">\*\*</span></code> spans separators, and a
+pattern ending in <code class="docutils literal notranslate"><span class="pre">/</span></code> covers everything beneath it. Patterns are anchored at
+both ends, so <code class="docutils literal notranslate"><span class="pre">~/x/*</span></code> does not match <code class="docutils literal notranslate"><span class="pre">~/x/deep/one</span></code>.</p>
+</section>
+<section id="changing-the-rules">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">3.2 Changing the rules</a><a class="headerlink" href="#changing-the-rules" title="Link to this heading">¶</a></h3>
+<p>Editing <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rules does not move anything by itself. Run <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">rotate</span></code>:
+it recomputes each entry’s group and rewrites the key files, leaving payloads
+untouched. An entry that moved group has its key written to the new group’s
+file and dropped from the old one.</p>
+</section>
+<section id="a-prerequisite-worth-stating">
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">3.3 A prerequisite worth stating</a><a class="headerlink" href="#a-prerequisite-worth-stating" title="Link to this heading">¶</a></h3>
+<p>Groups are only worth anything when the machines hold <strong>different</strong> keys. If
+every machine shares one private key, every machine can open every group and
+the split is decoration. Give each machine its own key and exchange public
+keys before relying on this.</p>
+</section>
+<section id="break-glass-recovery">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">3.4 Break-glass recovery</a><a class="headerlink" href="#break-glass-recovery" title="Link to this heading">¶</a></h3>
+<p>Because a group takes several recipients, an offline key – generated once,
+printed or kept on removable media, never on any machine – can be added to
+the general rule. It then opens the vault if every machine is lost, without a
+threshold scheme or any additional machinery.</p>
+</section>
+</section>
 <section id="gpg-key-id">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">3 GPG key ID</a><a class="headerlink" href="#gpg-key-id" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">4 GPG key ID</a><a class="headerlink" href="#gpg-key-id" title="Link to this heading">¶</a></h2>
 <p>The recipient value is any string GPG accepts as a recipient identifier:</p>
 <ul class="simple">
 <li><p>Long key ID: <code class="docutils literal notranslate"><span class="pre">9CCCE36402CB49A6</span></code></p></li>
@@ -257,7 +325,7 @@ portability.</p>
 </ul>
 <p>Long key IDs are recommended for unambiguous matching.</p>
 <section id="finding-your-key-id">
-<h3><a class="toc-backref" href="#id5" role="doc-backlink">3.1 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">4.1 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">gpg<span class="w"> </span>--list-keys<span class="w"> </span>--keyid-format<span class="w"> </span>long
 </span><span data-line="2"><span class="c1"># pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]</span>
 </span><span data-line="3"><span class="c1">#                ^^^^^^^^^^^^^^^^ this is the key ID</span>

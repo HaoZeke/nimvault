@@ -1,10 +1,15 @@
 nimTitle	dek	nimvault/dek.html	module nimvault/dek		0
-nim	KeysFileStem	nimvault/dek.html#KeysFileStem	const KeysFileStem		40
-nim	DekTable	nimvault/dek.html#DekTable	type DekTable		43
-nim	keysPath	nimvault/dek.html#keysPath,string,GpgConfig	proc keysPath(repo: string; cfg: GpgConfig): string		45
-nim	findKeysFile	nimvault/dek.html#findKeysFile,string,GpgConfig	proc findKeysFile(repo: string; cfg: GpgConfig): string		48
-nim	newDek	nimvault/dek.html#newDek,GpgConfig	proc newDek(cfg: GpgConfig): string		59
-nim	loadDeks	nimvault/dek.html#loadDeks,string,GpgConfig	proc loadDeks(repo: string; cfg: GpgConfig): DekTable		82
-nim	saveDeks	nimvault/dek.html#saveDeks,string,GpgConfig,DekTable	proc saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)		97
-nim	encryptWithDek	nimvault/dek.html#encryptWithDek,GpgConfig,string,string,string	proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		114
-nim	decryptWithDek	nimvault/dek.html#decryptWithDek,GpgConfig,string,string,string	proc decryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		143
+nim	KeysFileStem	nimvault/dek.html#KeysFileStem	const KeysFileStem		41
+nim	DekTable	nimvault/dek.html#DekTable	type DekTable		44
+nim	normalizedRecipients	nimvault/dek.html#normalizedRecipients,seq[string]	proc normalizedRecipients(recips: seq[string]): seq[string]		57
+nim	groupId	nimvault/dek.html#groupId,seq[string]	proc groupId(recips: seq[string]): string		68
+nim	recipientsFor	nimvault/dek.html#recipientsFor,GpgConfig,string	proc recipientsFor(cfg: GpgConfig; path: string): seq[string]		91
+nim	groupKeysPath	nimvault/dek.html#groupKeysPath,string,GpgConfig,string	proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string		105
+nim	keyFiles	nimvault/dek.html#keyFiles,string,GpgConfig	proc keyFiles(repo: string; cfg: GpgConfig): seq[string]		108
+nim	keysPath	nimvault/dek.html#keysPath,string,GpgConfig	proc keysPath(repo: string; cfg: GpgConfig): string		122
+nim	findKeysFile	nimvault/dek.html#findKeysFile,string,GpgConfig	proc findKeysFile(repo: string; cfg: GpgConfig): string		125
+nim	newDek	nimvault/dek.html#newDek,GpgConfig	proc newDek(cfg: GpgConfig): string		136
+nim	loadDeks	nimvault/dek.html#loadDeks,string,GpgConfig	proc loadDeks(repo: string; cfg: GpgConfig): DekTable		159
+nim	saveDeksGrouped	nimvault/dek.html#saveDeksGrouped,string,GpgConfig,DekTable,Table[string,string],Table[string,seq[string]]	proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;\n                groupOf: Table[string, string];\n                recipsOf: Table[string, seq[string]])		190
+nim	encryptWithDek	nimvault/dek.html#encryptWithDek,GpgConfig,string,string,string	proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		239
+nim	decryptWithDek	nimvault/dek.html#decryptWithDek,GpgConfig,string,string,string	proc decryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		268

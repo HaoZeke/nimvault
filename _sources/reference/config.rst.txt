@@ -44,7 +44,70 @@ Whitespace around the ``=`` is ignored. Recognized keys:
     resolved against the repository root. When absent, paths use ``~/`` prefix for
     portability.
 
-3 GPG key ID
+``wrap``
+    Repeatable. ``<glob>:<recipient>[,<recipient>...]`` -- which
+    recipients may open the entries matching a path pattern. See below.
+
+3 Per-path recipients
+---------------------
+
+Not every machine should read every secret. A ``wrap`` rule maps a path pattern
+to the recipients allowed to open those entries:
+
+.. code:: ini
+
+    recipient = LAPTOPKEY
+
+    # Specific rules first: the first match decides.
+    wrap = ~/.ssh/**:LAPTOPKEY
+    wrap = ~/.gnupg/**:LAPTOPKEY
+    wrap = **:LAPTOPKEY,BUILDBOXKEY
+
+Order in the file is precedence, so the narrow rules go above the general one.
+An entry matching no rule uses ``recipient``, which is why a config with no
+``wrap`` lines behaves exactly as it did before rules existed.
+
+3.1 How it works
+~~~~~~~~~~~~~~~~
+
+Each entry's payload is encrypted under its own data key (see the manifest
+reference). The data keys are grouped by recipient set, and each group is
+written to its own ``.vault/keys.<group>.gpg`` encrypted to that group alone. A
+machine decrypts the group files its key opens and no others, so it can read
+exactly the entries meant for it.
+
+``unseal`` on such a machine restores what it can read. ``check`` needs no key at
+all, so vault integrity is verifiable from anywhere.
+
+Patterns: ``\*`` matches within one path segment, ``\*\*`` spans separators, and a
+pattern ending in ``/`` covers everything beneath it. Patterns are anchored at
+both ends, so ``~/x/*`` does not match ``~/x/deep/one``.
+
+3.2 Changing the rules
+~~~~~~~~~~~~~~~~~~~~~~
+
+Editing ``wrap`` rules does not move anything by itself. Run ``nimvault rotate``:
+it recomputes each entry's group and rewrites the key files, leaving payloads
+untouched. An entry that moved group has its key written to the new group's
+file and dropped from the old one.
+
+3.3 A prerequisite worth stating
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Groups are only worth anything when the machines hold **different** keys. If
+every machine shares one private key, every machine can open every group and
+the split is decoration. Give each machine its own key and exchange public
+keys before relying on this.
+
+3.4 Break-glass recovery
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because a group takes several recipients, an offline key -- generated once,
+printed or kept on removable media, never on any machine -- can be added to
+the general rule. It then opens the vault if every machine is lost, without a
+threshold scheme or any additional machinery.
+
+4 GPG key ID
 ------------
 
 The recipient value is any string GPG accepts as a recipient identifier:
@@ -57,7 +120,7 @@ The recipient value is any string GPG accepts as a recipient identifier:
 
 Long key IDs are recommended for unambiguous matching.
 
-3.1 Finding your key ID
+4.1 Finding your key ID
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: bash

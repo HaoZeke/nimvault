@@ -88,6 +88,18 @@
   <li><a class="reference" href="#findKeysFile%2Cstring%2CGpgConfig" title="findKeysFile(repo: string; cfg: GpgConfig): string">findKeysFile(repo: string; cfg: GpgConfig): string</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">groupId
+  <li><a class="reference" href="#groupId%2Cseq%5Bstring%5D" title="groupId(recips: seq[string]): string">groupId(recips: seq[string]): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">groupKeysPath
+  <li><a class="reference" href="#groupKeysPath%2Cstring%2CGpgConfig%2Cstring" title="groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string">groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">keyFiles
+  <li><a class="reference" href="#keyFiles%2Cstring%2CGpgConfig" title="keyFiles(repo: string; cfg: GpgConfig): seq[string]">keyFiles(repo: string; cfg: GpgConfig): seq[string]</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">keysPath
   <li><a class="reference" href="#keysPath%2Cstring%2CGpgConfig" title="keysPath(repo: string; cfg: GpgConfig): string">keysPath(repo: string; cfg: GpgConfig): string</a></li>
 
@@ -100,8 +112,20 @@
   <li><a class="reference" href="#newDek%2CGpgConfig" title="newDek(cfg: GpgConfig): string">newDek(cfg: GpgConfig): string</a></li>
 
 </ul>
-<ul class="simple nested-toc-section">saveDeks
-  <li><a class="reference" href="#saveDeks%2Cstring%2CGpgConfig%2CDekTable" title="saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)">saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)</a></li>
+<ul class="simple nested-toc-section">normalizedRecipients
+  <li><a class="reference" href="#normalizedRecipients%2Cseq%5Bstring%5D" title="normalizedRecipients(recips: seq[string]): seq[string]">normalizedRecipients(recips: seq[string]): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">recipientsFor
+  <li><a class="reference" href="#recipientsFor%2CGpgConfig%2Cstring" title="recipientsFor(cfg: GpgConfig; path: string): seq[string]">recipientsFor(cfg: GpgConfig; path: string): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">saveDeksGrouped
+  <li><a class="reference" href="#saveDeksGrouped%2Cstring%2CGpgConfig%2CDekTable%2CTable%5Bstring%2Cstring%5D%2CTable%5Bstring%2Cseq%5Bstring%5D%5D" title="saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
+                groupOf: Table[string, string];
+                recipsOf: Table[string, seq[string]])">saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
+                groupOf: Table[string, string];
+                recipsOf: Table[string, seq[string]])</a></li>
 
 </ul>
 
@@ -226,6 +250,41 @@ no new dependency and no hand-rolled primitive.</pre>
 </div>
 
 </div>
+<div id="groupId-procs-all">
+  <div id="groupId,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#groupId%2Cseq%5Bstring%5D"><span class="Identifier">groupId</span></a><span class="Other">(</span><span class="Identifier">recips</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="groupKeysPath-procs-all">
+  <div id="groupKeysPath,string,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#groupKeysPath%2Cstring%2CGpgConfig%2Cstring"><span class="Identifier">groupKeysPath</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">gid</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="keyFiles-procs-all">
+  <div id="keyFiles,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#keyFiles%2Cstring%2CGpgConfig"><span class="Identifier">keyFiles</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Every data-key file present, grouped or legacy flat, either backend.
+    
+  </dd>
+</div>
+
+</div>
 <div id="keysPath-procs-all">
   <div id="keysPath,string,GpgConfig">
   <dt><pre><span class="Keyword">proc</span> <a href="#keysPath%2Cstring%2CGpgConfig"><span class="Identifier">keysPath</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
@@ -240,13 +299,14 @@ no new dependency and no hand-rolled primitive.</pre>
 </div>
 <div id="loadDeks-procs-all">
   <div id="loadDeks,string,GpgConfig">
-  <dt><pre><span class="Keyword">proc</span> <a href="#loadDeks%2Cstring%2CGpgConfig"><span class="Identifier">loadDeks</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
-    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#loadDeks%2Cstring%2CGpgConfig"><span class="Identifier">loadDeks</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Decrypt the data-key file. An absent file is an empty table, which is what a v5 vault looks like and is not an error.
+    <p>Merge every data-key file this machine can actually open.</p>
+<p>A file that will not decrypt is not an error: it belongs to a group whose recipients do not include this machine, which is the feature working. The caller finds out per entry, when it looks for a key and there is none.</p>
+
     
   </dd>
 </div>
@@ -265,15 +325,43 @@ no new dependency and no hand-rolled primitive.</pre>
 </div>
 
 </div>
-<div id="saveDeks-procs-all">
-  <div id="saveDeks,string,GpgConfig,DekTable">
-  <dt><pre><span class="Keyword">proc</span> <a href="#saveDeks%2Cstring%2CGpgConfig%2CDekTable"><span class="Identifier">saveDeks</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">)</span> {.
+<div id="normalizedRecipients-procs-all">
+  <div id="normalizedRecipients,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#normalizedRecipients%2Cseq%5Bstring%5D"><span class="Identifier">normalizedRecipients</span></a><span class="Other">(</span><span class="Identifier">recips</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Sorted and deduplicated, so the name of a group depends on the set and not on how it was written.
+    
+  </dd>
+</div>
+
+</div>
+<div id="recipientsFor-procs-all">
+  <div id="recipientsFor,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#recipientsFor%2CGpgConfig%2Cstring"><span class="Identifier">recipientsFor</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RegexError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Recipients for one entry: the first matching <tt class="docutils literal"><span class="pre"><span class="Identifier">wrap</span></span></tt> rule wins, and the configured recipient is the fallback. Order in the file is the precedence, so the specific rules go above the general one.
+    
+  </dd>
+</div>
+
+</div>
+<div id="saveDeksGrouped-procs-all">
+  <div id="saveDeksGrouped,string,GpgConfig,DekTable,Table[string,string],Table[string,seq[string]]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#saveDeksGrouped%2Cstring%2CGpgConfig%2CDekTable%2CTable%5Bstring%2Cstring%5D%2CTable%5Bstring%2Cseq%5Bstring%5D%5D"><span class="Identifier">saveDeksGrouped</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">;</span>
+                     <span class="Identifier">groupOf</span><span class="Other">:</span> <span class="Identifier">Table</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">,</span> <span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span>
+                     <span class="Identifier">recipsOf</span><span class="Other">:</span> <span class="Identifier">Table</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">,</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">]</span><span class="Other">)</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
     <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
     <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Encrypt the data-key file to the recipients, atomically and durably: it is as load bearing as the manifest, and losing it loses every payload.
+    <p>One key file per recipient group, each encrypted to that group only.</p>
+<p>Written atomically and flushed, because a key file is as load bearing as the manifest: losing it loses every payload it names. Groups that no longer hold any entry have their file removed rather than left behind still able to open blobs.</p>
+
     
   </dd>
 </div>
@@ -289,7 +377,7 @@ no new dependency and no hand-rolled primitive.</pre>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:16:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:47:53 UTC</small>
       </div>
     </div>
   </div>

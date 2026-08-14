@@ -134,6 +134,12 @@
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/crypto.html#encryptFile%2CGpgConfig%2Cstring%2Cstring">crypto: proc encryptFile(cfg: GpgConfig; inPath, outPath: string)</a></li>
           </ul></dd>
+<dt><a name="encryptFileTo" href="#encryptFileTo"><span>encryptFileTo:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;
+              sign = true)" href="nimvault/crypto.html#encryptFileTo%2CGpgConfig%2Cseq%5Bstring%5D%2Cstring%2Cstring">crypto: proc encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;
+              sign = true)</a></li>
+          </ul></dd>
 <dt><a name="encryptProcess" href="#encryptProcess"><span>encryptProcess:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process" href="nimvault/crypto.html#encryptProcess%2CGpgConfig%2Cstring%2Cstring">crypto: proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
@@ -190,6 +196,14 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc gpgParallelism(): int" href="nimvault/gpg.html#gpgParallelism">gpg: proc gpgParallelism(): int</a></li>
           </ul></dd>
+<dt><a name="groupId" href="#groupId"><span>groupId:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc groupId(recips: seq[string]): string" href="nimvault/dek.html#groupId%2Cseq%5Bstring%5D">dek: proc groupId(recips: seq[string]): string</a></li>
+          </ul></dd>
+<dt><a name="groupKeysPath" href="#groupKeysPath"><span>groupKeysPath:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string" href="nimvault/dek.html#groupKeysPath%2Cstring%2CGpgConfig%2Cstring">dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string</a></li>
+          </ul></dd>
 <dt><a name="initGpgConfig" href="#initGpgConfig"><span>initGpgConfig:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig" href="nimvault/gpg.html#initGpgConfig%2Cstring%2Cstring">gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig</a></li>
@@ -197,6 +211,10 @@
 <dt><a name="isPathSafe" href="#isPathSafe"><span>isPathSafe:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool" href="nimvault/manifest.html#isPathSafe%2CGpgConfig%2Cstring">manifest: proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool</a></li>
+          </ul></dd>
+<dt><a name="keyFiles" href="#keyFiles"><span>keyFiles:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc keyFiles(repo: string; cfg: GpgConfig): seq[string]" href="nimvault/dek.html#keyFiles%2Cstring%2CGpgConfig">dek: proc keyFiles(repo: string; cfg: GpgConfig): seq[string]</a></li>
           </ul></dd>
 <dt><a name="KeysFileStem" href="#KeysFileStem"><span>KeysFileStem:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -256,6 +274,10 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: object NimvaultError" href="nimvault/gpg.html#NimvaultError">gpg: object NimvaultError</a></li>
           </ul></dd>
+<dt><a name="normalizedRecipients" href="#normalizedRecipients"><span>normalizedRecipients:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc normalizedRecipients(recips: seq[string]): seq[string]" href="nimvault/dek.html#normalizedRecipients%2Cseq%5Bstring%5D">dek: proc normalizedRecipients(recips: seq[string]): seq[string]</a></li>
+          </ul></dd>
 <dt><a name="nvQuiet" href="#nvQuiet"><span>nvQuiet:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: var nvQuiet" href="nimvault/gpg.html#nvQuiet">gpg: var nvQuiet</a></li>
@@ -263,6 +285,10 @@
 <dt><a name="nvRaise" href="#nvRaise"><span>nvRaise:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc nvRaise(msg: string)" href="nimvault/gpg.html#nvRaise%2Cstring">gpg: proc nvRaise(msg: string)</a></li>
+          </ul></dd>
+<dt><a name="recipientsFor" href="#recipientsFor"><span>recipientsFor:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc recipientsFor(cfg: GpgConfig; path: string): seq[string]" href="nimvault/dek.html#recipientsFor%2CGpgConfig%2Cstring">dek: proc recipientsFor(cfg: GpgConfig; path: string): seq[string]</a></li>
           </ul></dd>
 <dt><a name="release" href="#release"><span>release:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -288,9 +314,13 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false)" href="nimvault/commands.html#rotate%2Cstring%2CGpgConfig">commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false)</a></li>
           </ul></dd>
-<dt><a name="saveDeks" href="#saveDeks"><span>saveDeks:</span></a></dt><dd><ul class="simple">
+<dt><a name="saveDeksGrouped" href="#saveDeksGrouped"><span>saveDeksGrouped:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="dek: proc saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)" href="nimvault/dek.html#saveDeks%2Cstring%2CGpgConfig%2CDekTable">dek: proc saveDeks(repo: string; cfg: GpgConfig; deks: DekTable)</a></li>
+          data-doc-search-tag="dek: proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
+                groupOf: Table[string, string];
+                recipsOf: Table[string, seq[string]])" href="nimvault/dek.html#saveDeksGrouped%2Cstring%2CGpgConfig%2CDekTable%2CTable%5Bstring%2Cstring%5D%2CTable%5Bstring%2Cseq%5Bstring%5D%5D">dek: proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
+                groupOf: Table[string, string];
+                recipsOf: Table[string, seq[string]])</a></li>
           </ul></dd>
 <dt><a name="saveManifest" href="#saveManifest"><span>saveManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -414,7 +444,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:16:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 14:47:53 UTC</small>
       </div>
     </div>
   </div>
