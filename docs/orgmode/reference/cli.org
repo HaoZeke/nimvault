@@ -169,6 +169,25 @@ whether the blobs still match; a blob committed without the manifest that
 vouches for it looks healthy there right up until an ~unseal~ somewhere else.
 Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.
 
+** gc
+
+#+begin_src text
+nimvault gc [--recipient KEY] [--dry-run]
+#+end_src
+
+Remove blobs in ~.vault/~ that no manifest entry points at.
+
+Orphans are reachable when a mutation is interrupted between writing a blob and
+writing the manifest that names it. The vault lock makes that rarer but does not
+remove the case. An orphan is not only clutter: it is a readable copy of a
+secret that nothing tracks, so nothing will ever rotate or remove it.
+
+Never touches the manifest, the data-key files, or any blob a live entry names.
+
+*** ~--dry-run~
+
+List what would be removed and remove nothing.
+
 ** rotate
 
 #+begin_src text

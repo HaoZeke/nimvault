@@ -900,6 +900,52 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
     nvEcho("Entries without a data key still carry the recipient inside the " &
            "blob;\n  'nimvault seal --force' migrates them.")
 
+proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
+  ## Blob files in `.vault/` that no manifest entry points at.
+  ##
+  ## Reachable when a mutation is interrupted between writing a blob and
+  ## writing the manifest that names it, which the lock makes rarer but does
+  ## not remove. An orphan is not merely clutter: it is a readable copy of a
+  ## secret that nothing tracks, so nothing will ever rotate or remove it.
+  let entries = loadManifest(repo, cfg = cfg)
+  var live = initHashSet[string]()
+  for e in entries:
+    live.incl(e.id)
+  let dir = repo / ".vault"
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+      continue
+    let stem = name.rsplit('.', maxsplit = 1)[0]
+    # Everything that is not a blob: the manifest, the key files, signatures.
+    if stem == "manifest" or stem == KeysFileStem or
+       stem.startsWith(KeysFileStem & "."):
+      continue
+    if stem notin live:
+      result.add(path)
+
+proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =
+  ## Remove blobs no manifest entry points at.
+  let lk {.used.} = acquire(repo)
+  let found = orphans(repo, cfg)
+  if found.len == 0:
+    nvEcho("no orphan blobs")
+    return
+  banner(&"{found.len} orphan blob(s)")
+  for path in found:
+    nvEcho(&"  {path.extractFilename}")
+    if not dryRun:
+      removeFile(path)
+  if dryRun:
+    nvEcho("\ndry run; nothing removed")
+  else:
+    syncParentDir(repo / ".vault" / "x")
+    nvEcho(&"\nRemoved {found.len} orphan blob(s).")
+
 type CheckResult* = tuple[problems: seq[string], checked: int]
 
 proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =

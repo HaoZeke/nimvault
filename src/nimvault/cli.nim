@@ -104,6 +104,12 @@ proc doRotate(recipient = "", rekey = false) =
     let (repo, cfg) = resolve(recipient)
     commands.rotate(repo, cfg, rekey)
 
+proc doGc(recipient = "", dryRun = false) =
+  ## Remove blobs no manifest entry points at.
+  cliRun:
+    let (repo, cfg) = resolve(recipient)
+    commands.gc(repo, cfg, dryRun)
+
 proc doCheck(recipient = "") =
   ## Blob-vs-manifest consistency. Exits non-zero when anything is off, so a
   ## pre-push hook or a continuous-integration job can gate on it.
@@ -150,6 +156,8 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
     [doCheck, cmdName = "check", help = {"recipient": rh}],
+    [doGc, cmdName = "gc",
+     help = {"recipient": rh, "dryRun": "list orphans without removing them"}],
     [doRotate, cmdName = "rotate",
      help = {"recipient": rh,
              "rekey": "re-encrypt every payload, not just the key wrapping"}],

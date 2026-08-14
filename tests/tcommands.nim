@@ -706,6 +706,36 @@ block groupsSplitKeyFilesAndGateReadability:
   removeDir(otherHome)
   echo "PASS: groups split key files and gate what each machine can open"
 
+
+block gcRemovesOrphanBlobsOnly:
+  ## An orphan is a readable copy of a secret that nothing tracks, so nothing
+  ## will ever rotate or remove it.
+  seal(incRepo, incCfg)
+  doAssert orphans(incRepo, incCfg).len == 0, "a sealed vault has no orphans"
+
+  # A blob left behind by an interrupted mutation.
+  let stray = vaultDir(incRepo) / "deadbeefdeadbeef.gpg"
+  writeFile(stray, "not a real blob")
+  let found = orphans(incRepo, incCfg)
+  doAssert found.len == 1 and found[0] == stray, "the stray should be found"
+
+  # The manifest, the key files and live blobs must never be touched.
+  let entries = loadManifest(incRepo)
+  let liveBlob = vaultDir(incRepo) / &"{entries[0].id}.gpg"
+  let liveBefore = readFile(liveBlob)
+  let keyCount = keyFiles(incRepo, incCfg).len
+
+  gc(incRepo, incCfg, dryRun = true)
+  doAssert fileExists(stray), "a dry run must not remove anything"
+
+  gc(incRepo, incCfg)
+  doAssert not fileExists(stray), "gc should remove the orphan"
+  doAssert fileExists(manifestPath(incRepo, incCfg)), "manifest must survive"
+  doAssert keyFiles(incRepo, incCfg).len == keyCount, "key files must survive"
+  doAssert readFile(liveBlob) == liveBefore, "live blobs must survive"
+  doAssert checkVault(incRepo, incCfg).problems.len == 0
+  echo "PASS: gc removes orphan blobs and nothing else"
+
 removeDir(incRepo)
 
 # Cleanup
