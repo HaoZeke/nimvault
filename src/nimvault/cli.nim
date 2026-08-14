@@ -97,6 +97,13 @@ proc doStatus(recipient = "") =
     let (repo, cfg) = resolve(recipient)
     commands.status(repo, cfg)
 
+proc doCheck(recipient = "") =
+  ## Blob-vs-manifest consistency. Exits non-zero when anything is off, so a
+  ## pre-push hook or a continuous-integration job can gate on it.
+  cliRun:
+    let (repo, cfg) = resolve(recipient)
+    commands.check(repo, cfg)
+
 proc doScan(path: seq[string], recipient = "", vault = "") =
   let targetArg = if path.len == 0: "." else: path[0]
   cliRun:
@@ -135,6 +142,7 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doMv, cmdName = "mv", positional = "paths", help = {"recipient": rh}],
     [doList, cmdName = "list", help = {"recipient": rh}],
     [doStatus, cmdName = "status", help = {"recipient": rh}],
+    [doCheck, cmdName = "check", help = {"recipient": rh}],
     [doScan, cmdName = "scan", positional = "path",
      help = {"recipient": rh, "vault": "vault repo override"}],
     [doVersion, cmdName = "version"],

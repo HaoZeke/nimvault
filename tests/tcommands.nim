@@ -467,6 +467,41 @@ block vaultLockExcludesAnotherProcess:
   release(after)
   echo "PASS: vault lock excludes another process"
 
+
+block checkCatchesBlobManifestDesync:
+  ## The failure this reproduces actually happened: a blob was committed
+  ## without the manifest recording its hash. `status` compares plaintext and
+  ## saw nothing wrong; the entry would only have failed at unseal time, on a
+  ## machine where the plaintext no longer exists.
+  seal(incRepo, incCfg)
+  let clean = checkVault(incRepo, incCfg)
+  doAssert clean.problems.len == 0, "a freshly sealed vault should be consistent"
+  doAssert clean.checked == 2
+
+  let entries = loadManifest(incRepo)
+  let blob = vaultDir(incRepo) / &"{entries[0].id}.gpg"
+  let good = readFile(blob)
+  writeFile(blob, good & "drift")
+
+  let drifted = checkVault(incRepo, incCfg)
+  doAssert drifted.problems.len == 1, "check should flag the drifted blob"
+  doAssert "does not match" in drifted.problems[0]
+
+  # status is deliberately unchanged here: it answers a different question.
+  doAssert "[in-sync]" in statusReport(incRepo, incCfg),
+    "status compares plaintext and should still call this in-sync"
+
+  writeFile(blob, good)
+  doAssert checkVault(incRepo, incCfg).problems.len == 0
+
+  removeFile(blob)
+  let missing = checkVault(incRepo, incCfg)
+  doAssert missing.problems.len == 1 and "no blob" in missing.problems[0]
+  seal(incRepo, incCfg)
+  doAssert checkVault(incRepo, incCfg).problems.len == 0,
+    "seal should have rebuilt the missing blob"
+  echo "PASS: check catches blob/manifest desync that status cannot"
+
 removeDir(incRepo)
 
 # Cleanup

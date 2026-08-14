@@ -783,6 +783,64 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
     else:
       result.add &"  [modified]  {r.entry.path}\n"
 
+type CheckResult* = tuple[problems: seq[string], checked: int]
+
+proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
+  ## Verify the vault is internally consistent, without decrypting anything.
+  ##
+  ## `status` answers a different question: it compares the *plaintext* on this
+  ## machine against the manifest's `contentHash`, so it says nothing about
+  ## whether each blob still matches the hash the manifest records for it. A
+  ## blob committed without the manifest that vouches for it therefore looks
+  ## perfectly healthy right up until an `unseal` on some other machine, where
+  ## the plaintext is gone and the failure is unrecoverable rather than
+  ## inconvenient.
+  ##
+  ## The manifest is a signed list of per-blob digests, which is a one-level
+  ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32):
+  ## checking each leaf against it is enough to detect a blob that has drifted,
+  ## and needs no key material.
+  let entries = loadManifest(repo, cfg = cfg)
+  for e in entries:
+    result.checked.inc
+    let blob = findBlob(repo, cfg, e.id)
+    if blob.len == 0 or not fileExists(blob):
+      result.problems.add(&"no blob for {e.path}")
+      continue
+    if e.hash.len == 0:
+      result.problems.add(&"no recorded hash for {e.path} (v1 manifest)")
+      continue
+    let actual = sha256sum(blob)
+    if actual != e.hash:
+      result.problems.add(&"blob does not match the manifest for {e.path}")
+
+proc checkReport*(repo: string, cfg: GpgConfig): string =
+  ## Library-friendly check (no colors, no exit).
+  let r = checkVault(repo, cfg)
+  if r.checked == 0:
+    return "vault is empty\n"
+  for p in r.problems:
+    result.add &"  {p}\n"
+  if r.problems.len == 0:
+    result.add &"{r.checked} entries consistent with the manifest.\n"
+  else:
+    result.add &"{r.problems.len} of {r.checked} entries are inconsistent.\n"
+
+proc check*(repo: string, cfg: GpgConfig) =
+  ## Terminal check. Raises when anything is inconsistent so a hook or a
+  ## continuous-integration job fails rather than reporting and passing.
+  let r = checkVault(repo, cfg)
+  if r.checked == 0:
+    nvEcho("vault is empty")
+    return
+  banner("Checking vault ...")
+  for p in r.problems:
+    stderr.writeLine &"  {p}"
+  if r.problems.len > 0:
+    nvRaise(&"{r.problems.len} of {r.checked} entries are inconsistent " &
+            "(seal, or restore the missing blob)")
+  nvEcho(&"\n{r.checked} entries consistent with the manifest.")
+
 proc status*(repo: string, cfg: GpgConfig) =
   ## Terminal status (colors). Delegates logic to statusReport for library reuse.
   let entries = loadManifest(repo, cfg = cfg)
