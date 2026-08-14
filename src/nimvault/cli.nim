@@ -30,10 +30,11 @@ proc resolve(recipient: string): (string, GpgConfig) =
   let cfg = initGpgConfig(recipient, repo)
   (repo, cfg)
 
-proc doSeal(recipient = "") =
+proc doSeal(recipient = "", force = false) =
+  ## Unchanged files keep their existing blob; `--force` re-encrypts every one.
   cliRun:
     let (repo, cfg) = resolve(recipient)
-    commands.seal(repo, cfg)
+    commands.seal(repo, cfg, force)
 
 proc doUnseal(path: seq[string] = @[], recipient = "", allowUnsigned = false) =
   ## With no path this restores the whole vault, which is the long-standing
@@ -116,7 +117,9 @@ proc main*(args: seq[string] = commandLineParams()) =
       return
   const rh = "GPG recipient key id (or use .vault/config / NIMVAULT_GPG_RECIPIENT)"
   dispatchMulti(
-    [doSeal, cmdName = "seal", help = {"recipient": rh}],
+    [doSeal, cmdName = "seal",
+     help = {"recipient": rh,
+             "force": "re-encrypt every file, not only changed ones"}],
     [doUnseal, cmdName = "unseal", positional = "path",
      help = {"recipient": rh,
              "allowUnsigned": "accept unsigned legacy manifests",

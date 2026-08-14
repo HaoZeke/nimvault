@@ -39,7 +39,8 @@ nimvault add ~/.secret/api_key.txt
 # Add a directory recursively (e.g., .beads, .env)
 nimvault add-dir .secrets
 
-# Seal, commit
+# Seal, commit. Only files whose plaintext changed are re-encrypted, so the
+# diff names what you edited. --force re-encrypts every blob.
 nimvault seal
 git add .vault/ && git commit -m "vault: add secrets"
 

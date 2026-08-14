@@ -322,6 +322,110 @@ block pathSafetyInUnseal:
   doAssert not isPathSafe(safeCfg, "../outside/file"), "Parent escape should fail"
   echo "PASS: path safety validation"
 
+# --- Incremental seal ---
+# These blocks own their fixture: the shared `repo` above is emptied by the
+# directory teardown, and an incremental seal only means anything with entries.
+let incRepo = setupTestRepo()
+let incCfg = GpgConfig(recipient: keyId)
+let incDir = incRepo / "secrets"
+createDir(incDir)
+let incA = incDir / "alpha.txt"
+let incB = incDir / "beta.txt"
+writeFile(incA, "alpha-secret-value")
+writeFile(incB, "beta-secret-value")
+add(incRepo, incA, incCfg)
+add(incRepo, incB, incCfg)
+
+proc incBlobs(): seq[(string, string, string)] =
+  for e in loadManifest(incRepo):
+    result.add((e.id, e.path, readFile(vaultDir(incRepo) / &"{e.id}.gpg")))
+
+block sealSkipsUnchangedFiles:
+  ## Encryption is not deterministic, so re-sealing an untouched file used to
+  ## produce a different blob and a diff across the whole vault.
+  seal(incRepo, incCfg)
+  let before = incBlobs()
+  doAssert before.len == 2, "fixture should hold two entries"
+
+  seal(incRepo, incCfg)
+  for (id, _, blob) in before:
+    doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") == blob,
+      &"blob {id} changed although its plaintext did not"
+  echo "PASS: re-seal leaves unchanged blobs byte for byte"
+
+block sealRewritesOnlyTheChangedFile:
+  let before = incBlobs()
+  writeFile(incA, "alpha-secret-value-CHANGED")
+  seal(incRepo, incCfg)
+
+  var changed = 0
+  for (id, path, blob) in before:
+    let now = readFile(vaultDir(incRepo) / &"{id}.gpg")
+    if resolvePath(incCfg, path) == incA:
+      doAssert now != blob, "the edited file should have a fresh blob"
+      changed.inc
+    else:
+      doAssert now == blob, &"untouched {path} should keep its blob"
+  doAssert changed == 1, "exactly one blob should have been rewritten"
+  echo "PASS: seal rewrites only the changed file"
+
+block sealForceRewritesEverything:
+  let before = incBlobs()
+  seal(incRepo, incCfg, force = true)
+  for (id, _, blob) in before:
+    doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") != blob,
+      &"--force should have re-encrypted {id}"
+  echo "PASS: --force re-encrypts every blob"
+
+block sealRepairsMissingAndCorruptBlobs:
+  ## A skip must not survive a blob that is gone or corrupted.
+  seal(incRepo, incCfg)
+  let entries = loadManifest(incRepo)
+  let victim = vaultDir(incRepo) / &"{entries[0].id}.gpg"
+  removeFile(victim)
+  seal(incRepo, incCfg)
+  doAssert fileExists(victim), "seal should re-create a missing blob"
+
+  let tampered = vaultDir(incRepo) / &"{entries[1].id}.gpg"
+  writeFile(tampered, readFile(tampered) & "tamper")
+  let broken = readFile(tampered)
+  seal(incRepo, incCfg)
+  doAssert readFile(tampered) != broken,
+    "seal should replace a blob whose hash no longer matches"
+  echo "PASS: seal repairs missing and corrupted blobs"
+
+block sealKeyTracksEncryptionTarget:
+  ## Unchanged plaintext still owes a new blob when the recipient moves.
+  let a = GpgConfig(recipient: "KEY-A", backend: "gpg", signer: "gpg")
+  let b = GpgConfig(recipient: "KEY-B", backend: "gpg", signer: "gpg")
+  doAssert sealKey(a) != sealKey(b), "a different recipient must change the key"
+  doAssert sealKey(a) == sealKey(a), "the same config must be stable"
+
+  var c = a
+  c.backend = "age"
+  doAssert sealKey(a) != sealKey(c), "a different backend must change the key"
+
+  seal(incRepo, incCfg)
+  let meta = loadManifestMeta(incRepo, cfg = incCfg)
+  doAssert meta.sealKey == sealKey(incCfg), "manifest should record the seal key"
+  echo "PASS: seal key tracks the encryption target"
+
+block sealKeyChangeForcesFullReseal:
+  ## The whole point of recording the key: a rotation must not be skipped.
+  seal(incRepo, incCfg)
+  let before = incBlobs()
+
+  var rotated = incCfg
+  rotated.signer = "none"
+  doAssert sealKey(rotated) != sealKey(incCfg)
+  seal(incRepo, rotated)
+  for (id, _, blob) in before:
+    doAssert readFile(vaultDir(incRepo) / &"{id}.gpg") != blob,
+      &"a changed seal key must re-encrypt {id}"
+  echo "PASS: a seal-key change re-encrypts everything"
+
+removeDir(incRepo)
+
 # Cleanup
 removeDir(repo)
 removeDir(gpgHome)

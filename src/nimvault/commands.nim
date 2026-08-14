@@ -3,7 +3,8 @@
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
-import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils]
+import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
+            tables]
 import ./gpg, ./manifest, ./crypto
 # NimvaultError, nvRaise, nvQuiet from gpg
 
@@ -176,8 +177,18 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
-proc seal*(repo: string, cfg: GpgConfig) =
-  let entries = loadManifest(repo, cfg = cfg)
+proc seal*(repo: string, cfg: GpgConfig, force = false) =
+  ## Encrypt every tracked file whose plaintext changed since the last seal.
+  ##
+  ## Encryption output is not deterministic: GPG and age both draw a fresh
+  ## session key per run, so re-encrypting a file nobody edited still produces
+  ## a different blob. Sealing unconditionally therefore rewrote every blob in
+  ## the repo on every run, and a one-file change arrived as a diff touching
+  ## the whole vault. Files are skipped when the plaintext hash, the blob and
+  ## the blob's own hash all still agree with the manifest. `force` re-encrypts
+  ## regardless, as does any change to the seal key.
+  let meta = loadManifestMeta(repo, cfg = cfg)
+  let entries = meta.entries
   if entries.len == 0:
     nvEcho("vault is empty")
     return
@@ -191,15 +202,39 @@ proc seal*(repo: string, cfg: GpgConfig) =
       stderr.writeLine &"FATAL: plaintext missing: {src}"
       nvRaise("  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry.")
 
+  let currentKey = sealKey(cfg)
+  # No recorded key means a v4 or older manifest: seal everything once to
+  # establish one, rather than trusting hashes written under unknown settings.
+  let resealAll = force or meta.sealKey.len == 0 or meta.sealKey != currentKey
+
+  var plainHashes = initTable[string, string]()
+  var todo: seq[VaultEntry] = @[]
+  var keptIds = initHashSet[string]()
+  for e in entries:
+    let plainPath = resolvePath(cfg, e.path)
+    let ph = sha256sum(plainPath)
+    plainHashes[e.id] = ph
+    if resealAll or e.contentHash.len == 0 or e.contentHash != ph:
+      todo.add(e)
+      continue
+    # Plaintext matches. The blob still has to be present and intact, or a
+    # deleted or corrupted blob would survive as a skipped entry.
+    let blob = findBlob(repo, cfg, e.id)
+    if blob.len == 0 or not fileExists(blob) or
+       e.hash.len == 0 or sha256sum(blob) != e.hash:
+      todo.add(e)
+    else:
+      keptIds.incl(e.id)
+
   # Launch GPG encrypts in batches (NIMVAULT_GPG_PARALLEL, default 8).
   # GPG sign+encrypt is memory-intensive; launching all at once can trigger
   # "Cannot allocate memory" on systems with many vault entries.
   let batchSize = gpgParallelism()
-  for batchStart in countup(0, entries.high, batchSize):
-    let batchEnd = min(batchStart + batchSize - 1, entries.high)
+  for batchStart in countup(0, todo.high, batchSize):
+    let batchEnd = min(batchStart + batchSize - 1, todo.high)
     var procs: seq[(VaultEntry, Process)] = @[]
     for i in batchStart .. batchEnd:
-      let e = entries[i]
+      let e = todo[i]
       let inPath = resolvePath(cfg, e.path)
       let outPath = crypto.blobPath(repo, cfg, e.id)
       let p = encryptProcess(cfg, inPath, outPath)
@@ -217,12 +252,18 @@ proc seal*(repo: string, cfg: GpgConfig) =
   # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
-    let blobPath = findBlob(repo, cfg, e.id)
-    let plainPath = resolvePath(cfg, e.path)
-    hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind, sha256sum(plainPath)))
+    if e.id in keptIds:
+      hashedEntries.add(e)
+    else:
+      let blobPath = findBlob(repo, cfg, e.id)
+      hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind,
+                         plainHashes.getOrDefault(e.id)))
 
-  saveManifest(repo, hashedEntries, cfg)
-  nvEcho(&"\nSealed {entries.len} file(s).")
+  saveManifest(repo, hashedEntries, cfg, currentKey)
+  if keptIds.len > 0:
+    nvEcho(&"\nSealed {todo.len} file(s), {keptIds.len} unchanged.")
+  else:
+    nvEcho(&"\nSealed {todo.len} file(s).")
 
 proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   ## Add a file by its target path.
