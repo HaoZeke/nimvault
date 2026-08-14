@@ -284,13 +284,21 @@ random 16-char hex string.</p>
 </span><span data-line="2">git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;vault: add myapp secrets&quot;</span>
 </span></pre></div>
 </div>
-<p>Only encrypted blobs and the encrypted manifest are committed. The original
-filename (<code class="docutils literal notranslate"><span class="pre">secrets.env</span></code>) never appears in git history.</p>
+<p>Only encrypted material is committed: the blobs, the signed manifest, and the
+data-key file that lets a second machine be added without re-encrypting
+everything. The original filename (<code class="docutils literal notranslate"><span class="pre">secrets.env</span></code>) never appears in git history.</p>
 </section>
 <section id="check-status">
 <h2>Check status<a class="headerlink" href="#check-status" title="Link to this heading">¶</a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault<span class="w"> </span>status
 </span><span data-line="2"><span class="c1"># [in-sync]   ~/.config/myapp/secrets.env</span>
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">status</span></code> compares the plaintext on this machine against the manifest. To check
+the vault itself is intact – every blob still matching the digest recorded for
+it – use <code class="docutils literal notranslate"><span class="pre">check</span></code>, which decrypts nothing and needs no key:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault<span class="w"> </span>check
+</span><span data-line="2"><span class="c1"># 1 entries consistent with the manifest.</span>
 </span></pre></div>
 </div>
 </section>
