@@ -106,12 +106,15 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#overview">1 Overview</a></li>
 <li><a class="reference internal" href="#format">2 Format</a><ul>
-<li><a class="reference internal" href="#v2-current-since-0-2-0">2.1 v2 (current, since 0.2.0)</a></li>
-<li><a class="reference internal" href="#v1-legacy-pre-0-2-0">2.2 v1 (legacy, pre-0.2.0)</a></li>
+<li><a class="reference internal" href="#v5-current">2.1 v5 (current)</a></li>
+<li><a class="reference internal" href="#earlier-versions">2.2 Earlier versions</a></li>
 <li><a class="reference internal" href="#fields">2.3 Fields</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#blob-files">3 Blob files</a></li>
+<li><a class="reference internal" href="#blob-files">3 Blob files</a><ul>
+<li><a class="reference internal" href="#envelope-keys-v6">3.1 Envelope keys (v6)</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#integrity-model">4 Integrity model</a></li>
 <li><a class="reference internal" href="#directory-layout">5 Directory layout</a></li>
 </ul>
@@ -212,14 +215,18 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#overview" id="id2">1 Overview</a></p></li>
 <li><p><a class="reference internal" href="#format" id="id3">2 Format</a></p>
 <ul>
-<li><p><a class="reference internal" href="#v2-current-since-0-2-0" id="id4">2.1 v2 (current, since 0.2.0)</a></p></li>
-<li><p><a class="reference internal" href="#v1-legacy-pre-0-2-0" id="id5">2.2 v1 (legacy, pre-0.2.0)</a></p></li>
+<li><p><a class="reference internal" href="#v5-current" id="id4">2.1 v5 (current)</a></p></li>
+<li><p><a class="reference internal" href="#earlier-versions" id="id5">2.2 Earlier versions</a></p></li>
 <li><p><a class="reference internal" href="#fields" id="id6">2.3 Fields</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#blob-files" id="id7">3 Blob files</a></p></li>
-<li><p><a class="reference internal" href="#integrity-model" id="id8">4 Integrity model</a></p></li>
-<li><p><a class="reference internal" href="#directory-layout" id="id9">5 Directory layout</a></p></li>
+<li><p><a class="reference internal" href="#blob-files" id="id7">3 Blob files</a></p>
+<ul>
+<li><p><a class="reference internal" href="#envelope-keys-v6" id="id8">3.1 Envelope keys (v6)</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#integrity-model" id="id9">4 Integrity model</a></p></li>
+<li><p><a class="reference internal" href="#directory-layout" id="id10">5 Directory layout</a></p></li>
 </ul>
 </li>
 </ul>
@@ -232,32 +239,61 @@ and GPG-signed at <code class="docutils literal notranslate"><span class="pre">.
 </section>
 <section id="format">
 <h2><a class="toc-backref" href="#id3" role="doc-backlink">2 Format</a><a class="headerlink" href="#format" title="Link to this heading">¶</a></h2>
-<section id="v2-current-since-0-2-0">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 v2 (current, since 0.2.0)</a><a class="headerlink" href="#v2-current-since-0-2-0" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># vault-manifest-v2
-</span><span data-line="2">a1b2c3d4e5f67890    ~/.secret/api_key.txt   e3b0c44298fc1c14...
-</span><span data-line="3">fedcba9876543210    ~/.config/app/credentials.json  a7ffc6f8bf1ed766...
+<section id="v5-current">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 v5 (current)</a><a class="headerlink" href="#v5-current" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># vault-manifest-v5
+</span><span data-line="2"># vault-seal-key 9f2b...  (sha256 over backend, recipient, identity, signer)
+</span><span data-line="3">a1b2c3d4e5f67890    ~/.secret/api_key.txt   e3b0c442...     file    7d865e95...
+</span><span data-line="4">fedcba9876543210    ~/.config/app/credentials.json  a7ffc6f8...     file    2c26b46b...
 </span></pre></div>
 </div>
 <ul class="simple">
-<li><p>First line: version header (<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vault-manifest-v2</span></code>)</p></li>
-<li><p>Subsequent lines: <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;\t&lt;path&gt;\t&lt;sha256&gt;</span></code></p></li>
+<li><p>First line: version header</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vault-seal-key</span> <span class="pre">&lt;sha256&gt;</span></code> records what the blobs were encrypted <strong>to</strong></p></li>
+<li><p>Entry lines: <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;\t&lt;path&gt;\t&lt;blob-sha256&gt;\t&lt;kind&gt;\t&lt;plaintext-sha256&gt;</span></code></p></li>
 <li><p>Blank lines and lines starting with <code class="docutils literal notranslate"><span class="pre">#</span></code> are ignored</p></li>
 </ul>
-<p>The <code class="docutils literal notranslate"><span class="pre">sha256</span></code> field contains the SHA-256 hex digest of the corresponding
-<code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> blob. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, each blob hash is verified before
-decryption.</p>
+<p>The seal key exists so <code class="docutils literal notranslate"><span class="pre">seal</span></code> can skip a file whose plaintext is unchanged
+without going stale. Comparing content alone would be wrong the moment the
+recipient, backend or signer moves: unchanged plaintext still owes a fresh blob
+under a new key. Any change to the recorded key re-encrypts everything, and a
+manifest with no recorded key (v4 and earlier) seals in full once to establish
+one.</p>
 </section>
-<section id="v1-legacy-pre-0-2-0">
-<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 v1 (legacy, pre-0.2.0)</a><a class="headerlink" href="#v1-legacy-pre-0-2-0" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># vault-manifest-v1
-</span><span data-line="2">a1b2c3d4e5f67890    ~/.secret/api_key.txt
-</span><span data-line="3">fedcba9876543210    ~/.config/app/credentials.json
-</span></pre></div>
+<section id="earlier-versions">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 Earlier versions</a><a class="headerlink" href="#earlier-versions" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p>Version</p></td>
+<td><p>Line shape</p></td>
+<td><p>Added</p></td>
+</tr>
+<tr class="row-even"><td><p>v1</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">id\tpath</span></code></p></td>
+<td><p>unsigned, no hashes</p></td>
+</tr>
+<tr class="row-odd"><td><p>v2</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">id\tpath\thash</span></code></p></td>
+<td><p>blob digest</p></td>
+</tr>
+<tr class="row-even"><td><p>v3</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">id\tpath\thash\tkind</span></code></p></td>
+<td><p>file vs directory entry</p></td>
+</tr>
+<tr class="row-odd"><td><p>v4</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">+</span> <span class="pre">contentHash</span></code></p></td>
+<td><p>plaintext digest, so <code class="docutils literal notranslate"><span class="pre">status</span></code> needs no decryption</p></td>
+</tr>
+<tr class="row-even"><td><p>v5</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">+</span> <span class="pre">seal-key</span> <span class="pre">header</span></code></p></td>
+<td><p>incremental seal that survives key rotation</p></td>
+</tr>
+</tbody>
+</table>
 </div>
-<p>v1 manifests lack blob hashes and are unsigned. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> rejects v1 manifests by
-default. Pass <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code> to accept them, then run <code class="docutils literal notranslate"><span class="pre">seal</span></code> to upgrade to
-v2.</p>
+<p>All are still readable. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> rejects v1 by default because it carries no
+blob hashes; pass <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>, then <code class="docutils literal notranslate"><span class="pre">seal</span></code> to upgrade.</p>
 </section>
 <section id="fields">
 <h3><a class="toc-backref" href="#id6" role="doc-backlink">2.3 Fields</a><a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
@@ -270,40 +306,83 @@ for portability across machines. In root-relative mode, paths are stored
 relative to the configured root. Absolute paths outside <code class="docutils literal notranslate"><span class="pre">$HOME</span></code> are stored
 as-is.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">hash</span></code></dt><dd><p>(v2 only) SHA-256 hex digest of the encrypted <code class="docutils literal notranslate"><span class="pre">.gpg</span></code> blob. Used for
-integrity verification on <code class="docutils literal notranslate"><span class="pre">unseal</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">hash</span></code></dt><dd><p>(v2+) SHA-256 hex digest of the encrypted blob. Verified on
+<code class="docutils literal notranslate"><span class="pre">unseal</span></code>, <code class="docutils literal notranslate"><span class="pre">get</span></code> and <code class="docutils literal notranslate"><span class="pre">check</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">kind</span></code></dt><dd><p>(v3+) <code class="docutils literal notranslate"><span class="pre">file</span></code> or <code class="docutils literal notranslate"><span class="pre">dir</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">contentHash</span></code></dt><dd><p>(v4+) SHA-256 of the <strong>plaintext</strong>. Lets <code class="docutils literal notranslate"><span class="pre">status</span></code> and the
+incremental <code class="docutils literal notranslate"><span class="pre">seal</span></code> decide what changed without decrypting anything.</p>
 </dd>
 </dl>
 </section>
 </section>
 <section id="blob-files">
 <h2><a class="toc-backref" href="#id7" role="doc-backlink">3 Blob files</a><a class="headerlink" href="#blob-files" title="Link to this heading">¶</a></h2>
-<p>Each manifest entry has a corresponding <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> file containing the
-GPG-encrypted and signed file contents. The <code class="docutils literal notranslate"><span class="pre">--set-filename</span> <span class="pre">&quot;&quot;</span></code> flag is used
-during encryption to avoid leaking the original filename in GPG metadata.</p>
-<p>All blobs are signed with the user’s default GPG key during <code class="docutils literal notranslate"><span class="pre">seal</span></code> and <code class="docutils literal notranslate"><span class="pre">add</span></code>.</p>
+<p>Each manifest entry has a corresponding <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) file
+holding the encrypted contents. <code class="docutils literal notranslate"><span class="pre">--set-filename</span> <span class="pre">&quot;&quot;</span></code> keeps the original filename
+out of GPG metadata.</p>
+<section id="envelope-keys-v6">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">3.1 Envelope keys (v6)</a><a class="headerlink" href="#envelope-keys-v6" title="Link to this heading">¶</a></h3>
+<p>Blobs are encrypted under a <strong>per-file data key</strong>, and the data keys live together
+in <code class="docutils literal notranslate"><span class="pre">.vault/keys.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>), itself encrypted to the recipients.</p>
+<p>Before v6 each blob was encrypted straight to the recipient. Both backends do
+envelope encryption internally, but that wrapping lives inside the blob, so the
+recipient was baked into every payload and adding one re-encrypted the whole
+vault. Hoisting the key means <code class="docutils literal notranslate"><span class="pre">rotate</span></code> rewrites one small file and leaves every
+payload alone.</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p>Backend</p></td>
+<td><p>Data key</p></td>
+<td><p>Payload</p></td>
+</tr>
+<tr class="row-even"><td><p>gpg</p></td>
+<td><p>256-bit passphrase</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gpg</span> <span class="pre">--symmetric</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>age</p></td>
+<td><p>x25519 identity</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">age</span> <span class="pre">-r</span> <span class="pre">&lt;recipient&gt;</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A vault may hold both formats while a migration drains. The key file is the
+discriminator: an entry with a data key is v6, one without is encrypted to the
+recipient directly. The two cannot disagree, because a key is only ever written
+by the encryption that used it.</p>
+<p>A v6 payload carries no in-band signature, since it is symmetric. Authenticity
+comes from the signed manifest and the per-blob digest, which is the same model
+the age backend has always used.</p>
+</section>
 </section>
 <section id="integrity-model">
-<h2><a class="toc-backref" href="#id8" role="doc-backlink">4 Integrity model</a><a class="headerlink" href="#integrity-model" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">4 Integrity model</a><a class="headerlink" href="#integrity-model" title="Link to this heading">¶</a></h2>
 <p>The signed manifest is the integrity anchor. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>:</p>
 <ol class="arabic simple">
 <li><p>The manifest is decrypted and its GPG signature is verified</p></li>
 <li><p>Each blob’s SHA-256 hash is compared against the manifest</p></li>
 <li><p>Blobs are decrypted to temporary files</p></li>
-<li><p>Each blob’s GPG signature is verified</p></li>
+<li><p>Each blob’s GPG signature is verified, where one exists in band: v5 gpg
+blobs carry one, age blobs and v6 enveloped blobs do not</p></li>
 <li><p>Only after all checks pass are files moved to their final paths</p></li>
 </ol>
+<p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> runs step 2 on its own, over every entry, without decrypting
+and without key material.</p>
 <p>This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
 substitutes a v1 unsigned manifest).</p>
 </section>
 <section id="directory-layout">
-<h2><a class="toc-backref" href="#id9" role="doc-backlink">5 Directory layout</a><a class="headerlink" href="#directory-layout" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id10" role="doc-backlink">5 Directory layout</a><a class="headerlink" href="#directory-layout" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">.vault/
 </span><span data-line="2">  config            # recipient configuration (plaintext)
 </span><span data-line="3">  manifest.gpg      # signed + encrypted manifest
-</span><span data-line="4">  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
-</span><span data-line="5">  fedcba9876543210.gpg  # signed + encrypted blob
+</span><span data-line="4">  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
+</span><span data-line="5">  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
+</span><span data-line="6">  fedcba9876543210.gpg  # signed + encrypted blob
 </span></pre></div>
 </div>
 <p>Only <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> is committed to git. The plaintext files live at their target

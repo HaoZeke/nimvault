@@ -28,15 +28,33 @@ subcommand is a thin wrapper around the corresponding ``commands`` module proc.
 
 .. code:: text
 
-    nimvault seal [--recipient KEY]
+    nimvault seal [--recipient KEY] [--force]
 
-Encrypt and sign all vault entries from their plaintext locations. Reads each
-file at the path stored in the manifest, encrypts and GPG-signs it in parallel
-via ``startProcess``, and writes ``.vault/<id>.gpg`` blobs. Computes SHA-256 hashes
-of each blob and writes a v3 manifest with integrity data. Re-encrypts and signs
-the manifest after sealing.
+Encrypt every entry whose plaintext changed, and write the manifest.
+
+Only changed files are re-encrypted. Encryption output is not deterministic --
+both backends draw a fresh session key per run -- so re-encrypting an untouched
+file would still produce a different blob, and a one-file edit used to arrive as
+a diff touching every blob in the vault. An entry is skipped when its plaintext
+hash, its blob, and that blob's own hash all still agree with the manifest, so a
+deleted or corrupted blob is rebuilt rather than skipped.
+
+A seal that changed nothing does not rewrite the manifest either. The manifest is
+encrypted and signed, so writing it is a change in its own right.
+
+Everything is re-encrypted regardless when the seal key changes, which covers the
+backend, recipient, identity and signer: unchanged plaintext still owes a fresh
+blob under a new key.
+
+Blobs and the manifest are flushed in crash-safe order -- payloads first, then
+the manifest that records their digests.
 
 Exits non-zero if any plaintext file is missing.
+
+2.1.1 ``--force``
+^^^^^^^^^^^^^^^^^
+
+Re-encrypt every entry, not only the changed ones.
 
 2.2 unseal
 ~~~~~~~~~~
@@ -156,8 +174,68 @@ Move/rename a vault entry's target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.
 
-2.7 list
-~~~~~~~~
+2.7 get
+~~~~~~~
+
+.. code:: text
+
+    nimvault get <path> [--allow-unsigned]
+
+Print one entry's plaintext on stdout without unsealing the vault or writing
+anything to disk. Applies the same path-safety and blob-integrity checks
+``unseal`` does. Deliberately quiet, so nothing decorative shares the stream with
+a secret.
+
+2.8 check
+~~~~~~~~~
+
+.. code:: text
+
+    nimvault check [--recipient KEY]
+
+Verify every blob against the hash the manifest records for it. Decrypts
+nothing and needs no key material, so it is cheap enough for a pre-push hook or
+a continuous-integration job. Exits non-zero when anything is inconsistent.
+
+This answers a different question from ``status``. ``status`` compares the
+**plaintext** on this machine against the manifest, so it says nothing about
+whether the blobs still match; a blob committed without the manifest that
+vouches for it looks healthy there right up until an ``unseal`` somewhere else.
+Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.
+
+2.9 rotate
+~~~~~~~~~~
+
+.. code:: text
+
+    nimvault rotate [--recipient KEY] [--rekey]
+
+Rewrap the per-file data keys to whoever ``.vault/config`` now names. Payloads are
+untouched, so adding a machine costs one small file rather than a full
+re-encrypt.
+
+That rotates the **wrapping** only: a recipient key that should no longer open the
+vault stops being able to. It does nothing about a data key that has already
+leaked, because the old ciphertext is unchanged and the old key still opens it.
+
+2.9.1 ``--rekey``
+^^^^^^^^^^^^^^^^^
+
+Re-encrypt every payload under a fresh data key. This is the form that answers a
+suspected compromise of a data key or of the plaintext, and the only one that
+does. Churn is the intent, so it bypasses the incremental skip.
+
+2.10 scan
+~~~~~~~~~
+
+.. code:: text
+
+    nimvault scan [PATH...] [--vault DIR]
+
+Look for plaintext secrets that are not in the vault.
+
+2.11 list
+~~~~~~~~~
 
 .. code:: text
 
@@ -165,8 +243,8 @@ updated.
 
 List all vault entries showing their ID and target path.
 
-2.8 status
-~~~~~~~~~~
+2.12 status
+~~~~~~~~~~~
 
 .. code:: text
 
@@ -230,7 +308,10 @@ blob hashes are verified before any plaintext is written to disk:
 
 4. Blobs are decrypted to temporary files
 
-5. Signatures are verified on each blob
+5. Signatures are verified on each blob that carries one in band. gpg blobs
+   encrypted to a recipient do; age blobs and v6 enveloped blobs do not, and
+   take the same guarantee from the signed manifest plus the digest checked at
+   step 2
 
 6. Only after all checks pass are files moved to their final paths
 
@@ -255,8 +336,17 @@ vault use cases this trade-off is acceptable.
 5.1.2 No forward secrecy
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-The vault relies on a single static GPG keypair. If an adversary archives your
-public Git history today and your private key is compromised in the future, they
-can retroactively decrypt every historical version of the vault. Mitigation
-options include periodic key rotation (re-seal the vault with a new key, then
-force-push to remove old history) or storing the repository in a private remote.
+An adversary who archives the public Git history today and obtains a key later
+can decrypt every historical version. Git keeps the old ciphertext whatever the
+current vault holds, so no operation on the working tree reaches it.
+
+Be careful which rotation is meant here. ``nimvault rotate`` rewraps the data keys
+to new recipients and leaves payloads alone, so it does nothing for an archived
+copy: the old blobs and the old data keys are both still in history.
+``rotate --rekey`` re-encrypts the payloads, which changes what is stored **from now on** but does not reach back either. Only rewriting the history removes the
+old ciphertext, and only a private remote avoids the archiving in the first
+place.
+
+The distinction between rewrapping a key and re-encrypting the data it protects
+is treated formally in Everspaugh et al., CRYPTO 2017
+(`doi:10.1007/978-3-319-63697-9\ :sub:`4`\ <https://doi.org/10.1007/978-3-319-63697-9_4>`_).
