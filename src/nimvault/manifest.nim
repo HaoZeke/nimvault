@@ -144,7 +144,12 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   let tmpEnc = encPath & ".tmp"
   encryptFile(cfg, plainPath, tmpEnc)
   removeFile(plainPath)
+  # Durability, which rename alone does not give: flush the bytes before the
+  # rename that points at them, and the directory entry after, or a crash can
+  # leave the trust root present and empty. See `syncPath`.
+  syncPath(tmpEnc)
   moveFile(tmpEnc, encPath)
+  syncParentDir(encPath)
   # The manifest is the trust root: its hashes are what vouch for every blob,
   # so it is the one thing that has to be signed when the backend cannot.
   signManifest(cfg, encPath)

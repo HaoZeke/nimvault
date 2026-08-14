@@ -3,10 +3,31 @@
 ## Kept in its own module so neither backend has to know the other exists, and
 ## so the choice is made in exactly one place rather than at each call site.
 
-import std/[os, osproc, strformat]
+import std/[os, osproc, strformat, posix]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
+
+proc syncPath*(path: string) =
+  ## Flush `path` to stable storage. Best effort: a file system that refuses
+  ## the sync is not a reason to fail a command that otherwise succeeded.
+  ##
+  ## Rename is atomic against a concurrent *reader*, which is a different
+  ## property from surviving a crash: the rename can reach disk before the
+  ## bytes it points at, leaving a manifest that is present and empty. The
+  ## orderings real file systems guarantee here are narrower than the idiom
+  ## suggests (Bornholt et al., ASPLOS 2016, doi:10.1145/2872362.2872406;
+  ## Chidambaram et al., SOSP 2013, doi:10.1145/2517349.2522726), so the
+  ## durability is made explicit rather than assumed.
+  let fd = posix.open(path.cstring, O_RDONLY)
+  if fd < 0:
+    return
+  discard fsync(fd)
+  discard close(fd)
+
+proc syncParentDir*(path: string) =
+  ## Persist the directory entry a rename just created.
+  syncPath(path.parentDir)
 
 proc usesAge*(cfg: GpgConfig): bool =
   cfg.backend == "age"

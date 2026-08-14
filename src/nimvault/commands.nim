@@ -252,6 +252,18 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
         nvRaise(&"FATAL: failed to seal {e.path}\n{output}")
       nvEcho(&"  {e.path}")
 
+  # Flush new blobs before the manifest that vouches for them. The manifest
+  # records each blob's hash, so a crash that persisted the manifest but not
+  # the blob leaves an entry promising bytes that never landed, and the next
+  # unseal reports tampering for a file nobody touched. Data first, then the
+  # metadata pointing at it.
+  for e in todo:
+    let blob = findBlob(repo, cfg, e.id)
+    if blob.len > 0 and fileExists(blob):
+      syncPath(blob)
+  if todo.len > 0:
+    syncParentDir(crypto.blobPath(repo, cfg, todo[0].id))
+
   # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
   var hashedEntries: seq[VaultEntry] = @[]
   for e in entries:
