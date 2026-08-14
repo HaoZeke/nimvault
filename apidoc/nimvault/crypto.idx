@@ -1,16 +1,18 @@
 nimTitle	crypto	nimvault/crypto.html	module nimvault/crypto		0
-nim	usesAge	nimvault/crypto.html#usesAge,GpgConfig	proc usesAge(cfg: GpgConfig): bool		11
-nim	blobExt	nimvault/crypto.html#blobExt,GpgConfig	proc blobExt(cfg: GpgConfig): string		14
-nim	blobPath	nimvault/crypto.html#blobPath,string,GpgConfig,string	proc blobPath(repo: string; cfg: GpgConfig; id: string): string		21
-nim	findBlob	nimvault/crypto.html#findBlob,string,GpgConfig,string	proc findBlob(repo: string; cfg: GpgConfig; id: string): string		25
-nim	manifestPath	nimvault/crypto.html#manifestPath,string,GpgConfig	proc manifestPath(repo: string; cfg: GpgConfig): string		37
-nim	findManifest	nimvault/crypto.html#findManifest,string,GpgConfig	proc findManifest(repo: string; cfg: GpgConfig): string		41
-nim	encryptFile	nimvault/crypto.html#encryptFile,GpgConfig,string,string	proc encryptFile(cfg: GpgConfig; inPath, outPath: string)		55
-nim	decryptFile	nimvault/crypto.html#decryptFile,GpgConfig,string,string	proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		59
-nim	decryptToString	nimvault/crypto.html#decryptToString,GpgConfig,string	proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string		66
-nim	effectiveSigner	nimvault/crypto.html#effectiveSigner,GpgConfig	proc effectiveSigner(cfg: GpgConfig): string		70
-nim	signManifest	nimvault/crypto.html#signManifest,GpgConfig,string	proc signManifest(cfg: GpgConfig; path: string)		79
-nim	verifyManifest	nimvault/crypto.html#verifyManifest,GpgConfig,string,bool	proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)		87
-nim	signaturesInBand	nimvault/crypto.html#signaturesInBand,GpgConfig	proc signaturesInBand(cfg: GpgConfig): bool		98
-nim	decryptProcess	nimvault/crypto.html#decryptProcess,GpgConfig,string,string	proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		110
-nim	encryptProcess	nimvault/crypto.html#encryptProcess,GpgConfig,string,string	proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		124
+nim	syncPath	nimvault/crypto.html#syncPath,string	proc syncPath(path: string)		11
+nim	syncParentDir	nimvault/crypto.html#syncParentDir,string	proc syncParentDir(path: string)		28
+nim	usesAge	nimvault/crypto.html#usesAge,GpgConfig	proc usesAge(cfg: GpgConfig): bool		32
+nim	blobExt	nimvault/crypto.html#blobExt,GpgConfig	proc blobExt(cfg: GpgConfig): string		35
+nim	blobPath	nimvault/crypto.html#blobPath,string,GpgConfig,string	proc blobPath(repo: string; cfg: GpgConfig; id: string): string		42
+nim	findBlob	nimvault/crypto.html#findBlob,string,GpgConfig,string	proc findBlob(repo: string; cfg: GpgConfig; id: string): string		46
+nim	manifestPath	nimvault/crypto.html#manifestPath,string,GpgConfig	proc manifestPath(repo: string; cfg: GpgConfig): string		58
+nim	findManifest	nimvault/crypto.html#findManifest,string,GpgConfig	proc findManifest(repo: string; cfg: GpgConfig): string		62
+nim	encryptFile	nimvault/crypto.html#encryptFile,GpgConfig,string,string	proc encryptFile(cfg: GpgConfig; inPath, outPath: string)		76
+nim	decryptFile	nimvault/crypto.html#decryptFile,GpgConfig,string,string	proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		80
+nim	decryptToString	nimvault/crypto.html#decryptToString,GpgConfig,string	proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string		87
+nim	effectiveSigner	nimvault/crypto.html#effectiveSigner,GpgConfig	proc effectiveSigner(cfg: GpgConfig): string		91
+nim	signManifest	nimvault/crypto.html#signManifest,GpgConfig,string	proc signManifest(cfg: GpgConfig; path: string)		100
+nim	verifyManifest	nimvault/crypto.html#verifyManifest,GpgConfig,string,bool	proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)		108
+nim	signaturesInBand	nimvault/crypto.html#signaturesInBand,GpgConfig	proc signaturesInBand(cfg: GpgConfig): bool		119
+nim	decryptProcess	nimvault/crypto.html#decryptProcess,GpgConfig,string,string	proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		131
+nim	encryptProcess	nimvault/crypto.html#encryptProcess,GpgConfig,string,string	proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		145

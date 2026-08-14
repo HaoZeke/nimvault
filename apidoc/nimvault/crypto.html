@@ -110,6 +110,14 @@
   <li><a class="reference" href="#signManifest%2CGpgConfig%2Cstring" title="signManifest(cfg: GpgConfig; path: string)">signManifest(cfg: GpgConfig; path: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">syncParentDir
+  <li><a class="reference" href="#syncParentDir%2Cstring" title="syncParentDir(path: string)">syncParentDir(path: string)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">syncPath
+  <li><a class="reference" href="#syncPath%2Cstring" title="syncPath(path: string)">syncPath(path: string)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">usesAge
   <li><a class="reference" href="#usesAge%2CGpgConfig" title="usesAge(cfg: GpgConfig): bool">usesAge(cfg: GpgConfig): bool</a></li>
 
@@ -307,6 +315,30 @@
 </div>
 
 </div>
+<div id="syncParentDir-procs-all">
+  <div id="syncParentDir,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#syncParentDir%2Cstring"><span class="Identifier">syncParentDir</span></a><span class="Other">(</span><span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Persist the directory entry a rename just created.
+    
+  </dd>
+</div>
+
+</div>
+<div id="syncPath-procs-all">
+  <div id="syncPath,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#syncPath%2Cstring"><span class="Identifier">syncPath</span></a><span class="Other">(</span><span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Flush <tt class="docutils literal"><span class="pre"><span class="Identifier">path</span></span></tt> to stable storage. Best effort: a file system that refuses the sync is not a reason to fail a command that otherwise succeeded.</p>
+<p>Rename is atomic against a concurrent <em>reader</em>, which is a different property from surviving a crash: the rename can reach disk before the bytes it points at, leaving a manifest that is present and empty. The orderings real file systems guarantee here are narrower than the idiom suggests (Bornholt et al., ASPLOS 2016, doi:10.1145/2872362.2872406; Chidambaram et al., SOSP 2013, doi:10.1145/2517349.2522726), so the durability is made explicit rather than assumed.</p>
+
+    
+  </dd>
+</div>
+
+</div>
 <div id="usesAge-procs-all">
   <div id="usesAge,GpgConfig">
   <dt><pre><span class="Keyword">proc</span> <a href="#usesAge%2CGpgConfig"><span class="Identifier">usesAge</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
@@ -342,7 +374,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 13:10:51 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 13:36:52 UTC</small>
       </div>
     </div>
   </div>
