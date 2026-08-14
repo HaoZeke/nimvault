@@ -221,6 +221,11 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   let meta = loadManifestMeta(repo, cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
+    # Still drop the data keys. Returning here used to leave a key file behind
+    # for entries that no longer exist: a key able to open blobs, guarding
+    # nothing, which is the case the stale-key pruning exists to prevent.
+    for path in keyFiles(repo, cfg):
+      removeFile(path)
     nvEcho("vault is empty")
     return
 

@@ -824,6 +824,28 @@ block ambiguousRootIsRefused:
   removeDir(contentRepo)
   echo "PASS: an ambiguous root is refused, not guessed"
 
+
+block emptyVaultDropsItsDataKeys:
+  ## Removing the last entry must not leave a key able to open blobs that no
+  ## longer have entries. seal returned early on an empty vault and skipped
+  ## the pruning that handles exactly this.
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let only = d / "only.txt"
+  writeFile(only, "the only secret")
+  add(r, only, c)
+  seal(r, c)
+  doAssert keyFiles(r, c).len > 0, "sealing should have written a key file"
+
+  remove(r, only, c)
+  seal(r, c)
+  doAssert keyFiles(r, c).len == 0,
+    "an empty vault must not keep data keys"
+  removeDir(r)
+  echo "PASS: emptying the vault drops its data keys"
+
 removeDir(incRepo)
 
 # Cleanup
