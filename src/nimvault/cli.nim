@@ -7,7 +7,7 @@ from ./gpg import GpgConfig, initGpgConfig, NimvaultError
 from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous
 from ./commands import nil
 
-const Version* = "0.4.2"
+const Version* = "0.5.0"
 
 template cliRun(body: untyped) =
   try:
