@@ -30,7 +30,7 @@ Verify:
 .. code:: bash
 
     nimvault --version
-    # nimvault 0.5.0
+    # nimvault 0.5.1
 
 Set up a test repo
 ------------------
