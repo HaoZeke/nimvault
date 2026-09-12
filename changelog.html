@@ -107,40 +107,44 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#nimvault-0-5-1-2026-09-12">nimvault 0.5.1 (2026-09-12)</a><ul>
+<li><a class="reference internal" href="#nimvault-0-5-2-2026-09-12">nimvault 0.5.2 (2026-09-12)</a><ul>
 <li><a class="reference internal" href="#security">Security</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nimvault-0-5-1-2026-09-12">nimvault 0.5.1 (2026-09-12)</a><ul>
+<li><a class="reference internal" href="#id1">Security</a></li>
 <li><a class="reference internal" href="#added">Added</a></li>
 <li><a class="reference internal" href="#changed">Changed</a></li>
 <li><a class="reference internal" href="#fixed">Fixed</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-5-0-2026-08-14">nimvault 0.5.0 (2026-08-14)</a><ul>
-<li><a class="reference internal" href="#id1">Added</a></li>
-<li><a class="reference internal" href="#id2">Changed</a></li>
-<li><a class="reference internal" href="#id3">Fixed</a></li>
+<li><a class="reference internal" href="#id2">Added</a></li>
+<li><a class="reference internal" href="#id3">Changed</a></li>
+<li><a class="reference internal" href="#id4">Fixed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id4">nimvault 0.5.0 (2026-08-14)</a></li>
+<li><a class="reference internal" href="#id5">nimvault 0.5.0 (2026-08-14)</a></li>
 <li><a class="reference internal" href="#nimvault-0-4-1-2026-06-26">nimvault 0.4.1 (2026-06-26)</a><ul>
-<li><a class="reference internal" href="#id5">Changed</a></li>
+<li><a class="reference internal" href="#id6">Changed</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-4-0-2026-03-12">nimvault 0.4.0 (2026-03-12)</a><ul>
-<li><a class="reference internal" href="#id6">Added</a></li>
+<li><a class="reference internal" href="#id7">Added</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-3-0-2026-03-11">nimvault 0.3.0 (2026-03-11)</a><ul>
-<li><a class="reference internal" href="#id7">Added</a></li>
-<li><a class="reference internal" href="#id8">Fixed</a></li>
+<li><a class="reference internal" href="#id8">Added</a></li>
+<li><a class="reference internal" href="#id9">Fixed</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-2-0-2026-03-04">nimvault 0.2.0 (2026-03-04)</a><ul>
-<li><a class="reference internal" href="#id9">Security</a></li>
-<li><a class="reference internal" href="#id10">Added</a></li>
+<li><a class="reference internal" href="#id10">Security</a></li>
+<li><a class="reference internal" href="#id11">Added</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#nimvault-0-1-0-2026-03-02">nimvault 0.1.0 (2026-03-02)</a><ul>
-<li><a class="reference internal" href="#id11">Added</a></li>
+<li><a class="reference internal" href="#id12">Added</a></li>
 <li><a class="reference internal" href="#developer">Developer</a></li>
 </ul>
 </li>
@@ -234,10 +238,20 @@ data-aria-dark="Switch to auto color mode">
 </div><article class="yue dark-code" role="main">
           <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
-<section id="nimvault-0-5-1-2026-09-12">
-<h2>nimvault 0.5.1 (2026-09-12)<a class="headerlink" href="#nimvault-0-5-1-2026-09-12" title="Link to this heading">¶</a></h2>
+<section id="nimvault-0-5-2-2026-09-12">
+<h2>nimvault 0.5.2 (2026-09-12)<a class="headerlink" href="#nimvault-0-5-2-2026-09-12" title="Link to this heading">¶</a></h2>
 <section id="security">
 <h3>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>A per-entry record with a bad or missing signature is refused. A record
+this identity cannot decrypt is still skipped. (split-record-sig)</p></li>
+</ul>
+</section>
+</section>
+<section id="nimvault-0-5-1-2026-09-12">
+<h2>nimvault 0.5.1 (2026-09-12)<a class="headerlink" href="#nimvault-0-5-1-2026-09-12" title="Link to this heading">¶</a></h2>
+<section id="id1">
+<h3>Security<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><cite>add-dir</cite> refuses file and directory symlinks so a planted link cannot
 pull a file from outside the named tree into the vault. (add-dir-symlinks)</p></li>
@@ -282,8 +296,8 @@ sealed vault can be rewrapped by <cite>rotate</cite> without a forced reseal. (a
 </section>
 <section id="nimvault-0-5-0-2026-08-14">
 <h2>nimvault 0.5.0 (2026-08-14)<a class="headerlink" href="#nimvault-0-5-0-2026-08-14" title="Link to this heading">¶</a></h2>
-<section id="id1">
-<h3>Added<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<section id="id2">
+<h3>Added<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
 <ul>
 <li><p><cite>nimvault check</cite> verifies every blob against the hash the manifest records for
 it, without decrypting anything or needing key material, and exits non-zero when
@@ -394,8 +408,8 @@ needs, encrypted to a key that needs no passphrase, without widening the
 personal vault. (service-vault-howto)</p></li>
 </ul>
 </section>
-<section id="id2">
-<h3>Changed<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<section id="id3">
+<h3>Changed<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
 <ul>
 <li><p><cite>nimvault seal</cite> now re-encrypts only the files whose plaintext changed. GPG and
 age both draw a fresh session key per run, so re-sealing an untouched file still
@@ -427,8 +441,8 @@ half-written trust root. (seal-noop-and-lock)</p>
 </li>
 </ul>
 </section>
-<section id="id3">
-<h3>Fixed<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
+<section id="id4">
+<h3>Fixed<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h3>
 <ul>
 <li><p>Emptying a vault now drops its data keys. <cite>seal</cite> returned early when the
 manifest held no entries, before the pruning that removes key files for
@@ -449,14 +463,14 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 </ul>
 </section>
 </section>
-<section id="id4">
-<h2>nimvault 0.5.0 (2026-08-14)<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h2>
+<section id="id5">
+<h2>nimvault 0.5.0 (2026-08-14)<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h2>
 <p>No significant changes.</p>
 </section>
 <section id="nimvault-0-4-1-2026-06-26">
 <h2>nimvault 0.4.1 (2026-06-26)<a class="headerlink" href="#nimvault-0-4-1-2026-06-26" title="Link to this heading">¶</a></h2>
-<section id="id5">
-<h3>Changed<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h3>
+<section id="id6">
+<h3>Changed<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">status</span></code> uses manifest <strong>v4</strong> plaintext <code class="docutils literal notranslate"><span class="pre">contentHash</span></code> when present (no GPG per entry).</p></li>
 <li><p>In-process SHA-256 via <code class="docutils literal notranslate"><span class="pre">checksums</span></code> instead of spawning <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code>.</p></li>
@@ -466,8 +480,8 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 </section>
 <section id="nimvault-0-4-0-2026-03-12">
 <h2>nimvault 0.4.0 (2026-03-12)<a class="headerlink" href="#nimvault-0-4-0-2026-03-12" title="Link to this heading">¶</a></h2>
-<section id="id6">
-<h3>Added<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
+<section id="id7">
+<h3>Added<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>New <code class="docutils literal notranslate"><span class="pre">add-dir</span></code> command to recursively add directories to the vault. Each file in a directory tree is encrypted individually with its own blob ID, and the directory structure is preserved via relative paths in the manifest. (#12)</p></li>
 <li><p>Manifest v3 format with <code class="docutils literal notranslate"><span class="pre">EntryKind</span></code> field to distinguish files from directories. Backward compatible with v1 and v2 manifests. (#13)</p></li>
@@ -476,14 +490,14 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 </section>
 <section id="nimvault-0-3-0-2026-03-11">
 <h2>nimvault 0.3.0 (2026-03-11)<a class="headerlink" href="#nimvault-0-3-0-2026-03-11" title="Link to this heading">¶</a></h2>
-<section id="id7">
-<h3>Added<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h3>
+<section id="id8">
+<h3>Added<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">install</span></code> task builds in release mode and installs to <code class="docutils literal notranslate"><span class="pre">~/.local/bin/nimvault</span></code>. (pixi-install)</p></li>
 </ul>
 </section>
-<section id="id8">
-<h3>Fixed<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h3>
+<section id="id9">
+<h3>Fixed<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">seal</span></code> and <code class="docutils literal notranslate"><span class="pre">unseal</span></code> now process GPG operations in batches of 4 instead of launching all processes simultaneously, preventing “Cannot allocate memory” failures on systems with many vault entries and high memory pressure. (batch-gpg)</p></li>
 </ul>
@@ -491,8 +505,8 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 </section>
 <section id="nimvault-0-2-0-2026-03-04">
 <h2>nimvault 0.2.0 (2026-03-04)<a class="headerlink" href="#nimvault-0-2-0-2026-03-04" title="Link to this heading">¶</a></h2>
-<section id="id9">
-<h3>Security<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h3>
+<section id="id10">
+<h3>Security<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> now decrypts to temporary files and verifies all signatures before moving any file to its final path. This prevents release of unverified plaintext, where GPG streams decrypted content to disk before the signature check completes. (atomic-unseal)</p></li>
 <li><p>Manifest v2 stores SHA-256 hashes of encrypted blobs. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> verifies each blob hash before decryption, preventing ciphertext forgery and swap attacks. (blob-hashes)</p></li>
@@ -503,8 +517,8 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 <li><p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> now validates that resolved paths stay within expected boundaries (repo root or <code class="docutils literal notranslate"><span class="pre">$HOME</span></code>), preventing directory traversal via crafted manifest entries. (path-traversal)</p></li>
 </ul>
 </section>
-<section id="id10">
-<h3>Added<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h3>
+<section id="id11">
+<h3>Added<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> now automatically appends the stored path to <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> when the file is not already ignored, preventing accidental plaintext commits. (auto-gitignore)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> flag for <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">add</span></code> to opt out of automatic <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> updates and get a warning instead. (no-gitignore-flag)</p></li>
@@ -513,8 +527,8 @@ would have surfaced later as an integrity failure on a file nobody touched. (man
 </section>
 <section id="nimvault-0-1-0-2026-03-02">
 <h2>nimvault 0.1.0 (2026-03-02)<a class="headerlink" href="#nimvault-0-1-0-2026-03-02" title="Link to this heading">¶</a></h2>
-<section id="id11">
-<h3>Added<a class="headerlink" href="#id11" title="Link to this heading">¶</a></h3>
+<section id="id12">
+<h3>Added<a class="headerlink" href="#id12" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>GPG-encrypted opaque-blob vault with randomized filenames and encrypted manifest.</p></li>
 <li><p>3-tier recipient resolution: CLI flag, environment variable, <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> file.</p></li>
