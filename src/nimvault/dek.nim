@@ -161,14 +161,35 @@ proc newDek*(cfg: GpgConfig): string =
       result.add(b.toHex(2).toLowerAscii())
 
 proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
-  ## Merge every data-key file this machine can actually open.
+  ## Merge every data-key this machine can actually open.
   ##
-  ## A file that will not decrypt is not an error: it belongs to a group whose
-  ## recipients do not include this machine, which is the feature working. The
-  ## caller finds out per entry, when it looks for a key and there is none.
+  ## Per-entry records under `.vault/e/` are the mergeable source. Grouped
+  ## `keys.*` files still fill ids that have no record yet (a v6 vault
+  ## mid-migration). A file that will not decrypt is not an error: it
+  ## belongs to a group this machine is not in.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
+  let edir = dir / "e"
+  if dirExists(edir):
+    for kind, path in walkDir(edir):
+      if kind != pcFile:
+        continue
+      let name = path.extractFilename
+      if not (name.endsWith(".gpg") or name.endsWith(".age")):
+        continue
+      var plain = ""
+      try:
+        plain = decryptToString(cfg, path, false)
+      except CatchableError:
+        continue
+      for line in plain.splitLines:
+        let s = line.strip()
+        if s.len == 0 or s.startsWith("#"):
+          continue
+        let parts = s.split('\t')
+        if parts.len >= 6 and parts[5].len > 0:
+          result[parts[0]] = parts[5]
   var candidates: seq[string] = @[]
   for kind, path in walkDir(dir):
     if kind != pcFile:

@@ -1,8 +1,9 @@
 ## Vault manifest operations: entry types, load/save, ID generation.
 
-import std/[os, strutils, strformat, sysrand]
+import std/[os, strutils, strformat, sysrand, tables]
 import ./gpg
 import ./crypto
+import ./dek
 
 type
   EntryKind* = enum
@@ -16,6 +17,10 @@ const SealKeyHeader* = "# vault-seal-key"
 const EnvelopeHeader* = "# vault-envelope"
   ## Set when this vault has per-file data keys. `check` uses it to refuse
   ## a vault whose blobs still match but whose key file is gone.
+const EntryDirName* = "e"
+  ## Per-entry records. Two machines that add different files write different
+  ## paths under here, so git can merge them. The combined manifest cannot.
+const EntryHeader* = "# vault-entry-v7"
 
 proc genId*(): string =
   ## 16-char random hex via cryptographic randomness.
@@ -68,6 +73,33 @@ proc vaultDir*(repo: string): string =
   ## Path to the .vault directory within a repo.
   repo / ".vault"
 
+proc entryDir*(repo: string): string =
+  vaultDir(repo) / EntryDirName
+
+proc hasSplitEntries*(repo: string): bool =
+  let dir = entryDir(repo)
+  if not dirExists(dir):
+    return false
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.endsWith(".gpg") or name.endsWith(".age"):
+      return true
+  return false
+
+proc entryFile*(repo: string, cfg: GpgConfig, id: string): string =
+  entryDir(repo) / (id & cfg.blobExt)
+
+proc findEntryFile*(repo: string, cfg: GpgConfig, id: string): string =
+  let mine = entryFile(repo, cfg, id)
+  if fileExists(mine):
+    return mine
+  let other = entryDir(repo) / (id & (if cfg.usesAge: ".gpg" else: ".age"))
+  if fileExists(other):
+    return other
+  return ""
+
 proc sealKey*(cfg: GpgConfig): string =
   ## Fingerprint of everything that decides what a blob is encrypted to.
   ##
@@ -80,6 +112,96 @@ proc sealKey*(cfg: GpgConfig): string =
     cfg.backend & "\n" & cfg.recipient & "\n" & cfg.identity & "\n" &
     cfg.signer & "\n" & cfg.signKey & "\n" & cfg.allowedSigners & "\n" &
     cfg.signerIdentity)
+
+proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: string] =
+  var got = false
+  for line in plain.splitLines:
+    let stripped = line.strip()
+    if stripped.len == 0 or stripped.startsWith("#"):
+      continue
+    let parts = stripped.split('\t')
+    if parts.len < 6:
+      continue
+    let kind = if parts[3] == "dir": ekDir else: ekFile
+    result.entry = (parts[0], parts[1], parts[2], kind, parts[4])
+    result.dek = parts[5]
+    result.ok = true
+    got = true
+    break
+  if not got:
+    result.ok = false
+
+proc loadSplitEntries*(repo: string, cfg: GpgConfig,
+                       verifySig = false): tuple[entries: seq[VaultEntry],
+                                                 deks: DekTable] =
+  ## Union of every per-entry record this machine can open.
+  let dir = entryDir(repo)
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+      continue
+    if name.endsWith(".sig"):
+      continue
+    try:
+      if verifySig:
+        verifyManifest(cfg, path, true)
+      let plain = decryptToString(cfg, path, verifySig)
+      let parsed = parseEntryPlain(plain)
+      if parsed.ok:
+        result.entries.add(parsed.entry)
+        if parsed.dek.len > 0:
+          result.deks[parsed.entry.id] = parsed.dek
+    except CatchableError:
+      discard
+
+proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
+  ## Write one signed encrypted record. A different id is a different path,
+  ## which is why two adds merge.
+  let recips = recipientsFor(cfg, e.path)
+  createDir(entryDir(repo))
+  let work = privateWorkDir()
+  let plainPath = work / "entry.plain"
+  let dest = entryFile(repo, cfg, e.id)
+  var content = EntryHeader & "\n"
+  content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\t{dek}\n")
+  writeFile(plainPath, content)
+  setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
+  let tmp = dest & ".tmp"
+  try:
+    encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
+  finally:
+    if dirExists(work):
+      removeDir(work)
+  syncPath(tmp)
+  moveFile(tmp, dest)
+  syncParentDir(dest)
+  signManifest(cfg, dest)
+
+proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
+                       deks: DekTable) =
+  ## Persist the live set as one file per id. Records that are gone are
+  ## removed so a deleted entry does not linger with its data key.
+  createDir(entryDir(repo))
+  var live = initTable[string, bool]()
+  for e in entries:
+    live[e.id] = true
+    saveEntryRecord(repo, cfg, e, deks.getOrDefault(e.id))
+  for kind, path in walkDir(entryDir(repo)):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.endsWith(".sig"):
+      continue
+    let stem = name.rsplit('.', maxsplit = 1)[0]
+    if stem notin live:
+      removeFile(path)
+      let sig = path & ".sig"
+      if fileExists(sig):
+        removeFile(sig)
 
 proc loadManifestMeta*(repo: string, verifySig = false,
                        cfg = GpgConfig()): tuple[entries: seq[VaultEntry],
@@ -94,6 +216,26 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   ## `cfg` is optional so the many call sites that only read a gpg vault stay
   ## unchanged. `findManifest` still refuses to report a vault sealed by the
   ## other backend as empty, so omitting it fails loudly rather than quietly.
+  if hasSplitEntries(repo):
+    let split = loadSplitEntries(repo, cfg, verifySig)
+    result.entries = split.entries
+    result.envelope = true
+    # Seal key still lives on the stub combined manifest when one exists.
+    let encStub = findManifest(repo, cfg)
+    if encStub.len > 0:
+      try:
+        if verifySig:
+          verifyManifest(cfg, encStub, true)
+        let stub = decryptToString(cfg, encStub, verifySig)
+        for line in stub.splitLines:
+          let stripped = line.strip()
+          if stripped.startsWith(SealKeyHeader):
+            result.sealKey = stripped[SealKeyHeader.len .. ^1].strip()
+          if stripped.startsWith(EnvelopeHeader):
+            result.envelope = true
+      except CatchableError:
+        discard
+    return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
     return (@[], "", false)
@@ -145,7 +287,24 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     content.add(&"{SealKeyHeader} {sealKey}\n")
   if envelope:
     content.add(&"{EnvelopeHeader} 1\n")
+  if envelope:
+    # Split records are the mergeable trust root. The combined file is a
+    # stub: seal-key plus envelope mark, no rows. Rewriting it on every add
+    # would recreate the last-writer-wins hole, so the stub is only written
+    # when it is missing or the seal key changed.
+    let existing = loadManifestMeta(repo, cfg = cfg)
+    let deks = loadDeks(repo, cfg)
+    saveSplitEntries(repo, cfg, entries, deks)
+    if existing.sealKey == sealKey and findManifest(repo, cfg).len > 0 and
+       existing.envelope:
+      if dirExists(work):
+        removeDir(work)
+      return
+    # Fall through and write a rowless stub so old readers see an explicit
+    # empty combined manifest rather than a missing one.
   for e in entries:
+    if envelope:
+      break
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
   setFilePermissions(plainPath, {fpUserRead, fpUserWrite})

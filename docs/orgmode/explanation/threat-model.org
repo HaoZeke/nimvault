@@ -45,3 +45,25 @@ decrypt rather than forging plaintext.
 - A private vault repository is the way to keep ciphertext off a public
   remote. Rotation cannot reach the GitHub fork network.
 - ~--allow-unsigned~ is a migration hatch. It is not a daily mode.
+
+* In-repo review (2026-09)
+
+Not a third-party audit. Findings from reading ~src/~ and the test suite,
+then fixing what was independently true:
+
+- ~add~ / ~rm~ / ~mv~ / ~add-dir~ used to drop the seal-key header (fixed).
+- ~add~ used to write v5 blobs into a v6 vault (fixed).
+- Plaintext and data keys used to land in ~.vault/.plain~ and pid-named
+  ~/tmp~ files (fixed).
+- ~add-dir~ used to follow symlinks out of the named tree (fixed).
+- ~get~ on a GPG v5 blob used to ~strip~ the secret (fixed).
+- ~check~ used to pass a v6 vault with no key file (fixed).
+- One combined ~manifest.gpg~ is last-writer-wins on two adds; per-entry
+  records under ~.vault/e/~ close that (nimvault-k0fo).
+
+Accepted:
+
+- Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
+- Unsigned GPG in-band signatures on key files stay unsigned so a second
+  machine does not need the signer's public key to decrypt.
+- Third-party review is not commissioned from this sitting.

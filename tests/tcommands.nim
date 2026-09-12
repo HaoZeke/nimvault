@@ -436,9 +436,19 @@ block sealLeavesManifestAloneWhenNothingChanged:
     "a seal that changed nothing must not rewrite the manifest"
 
   writeFile(incB, "beta-secret-value-CHANGED")
+  var bId = ""
+  for e in loadManifest(incRepo):
+    if resolvePath(incCfg, e.path) == incB:
+      bId = e.id
+  let epath = findEntryFile(incRepo, incCfg, bId)
+  let ebefore = if epath.len > 0 and fileExists(epath): readFile(epath) else: ""
   seal(incRepo, incCfg)
-  doAssert readFile(mpath) != before,
-    "a real change must still be recorded"
+  if epath.len > 0 and fileExists(epath):
+    doAssert readFile(epath) != ebefore,
+      "a real change must rewrite that entry's record"
+  else:
+    doAssert readFile(mpath) != before,
+      "a real change must still be recorded"
   echo "PASS: no-op seal leaves the manifest untouched"
 
 block vaultLockExcludesAnotherProcess:
@@ -1064,11 +1074,16 @@ block checkRefusesMissingKeyFiles:
   doAssert checkVault(r, c).problems.len == 0
   for p in keyFiles(r, c):
     removeFile(p)
-  let broken = checkVault(r, c)
-  doAssert broken.problems.len >= 1, "check must notice missing key files"
-  doAssert "data-key" in broken.problems[0]
+  if hasSplitEntries(r):
+    doAssert checkVault(r, c).problems.len == 0,
+      "split entry records carry the data keys; keys.* is optional"
+    echo "PASS: check accepts split records without keys.*"
+  else:
+    let broken = checkVault(r, c)
+    doAssert broken.problems.len >= 1, "check must notice missing key files"
+    doAssert "data-key" in broken.problems[0]
+    echo "PASS: check refuses a vault whose key files are gone"
   removeDir(r)
-  echo "PASS: check refuses a vault whose key files are gone"
 
 block whoListsWrapRecipients:
   let r = setupTestRepo()
@@ -1141,6 +1156,50 @@ block hookInstallsCheckAndScan:
   doAssert raised, "hook must not overwrite"
   removeDir(r)
   echo "PASS: hook install writes check and scan hooks"
+
+block twoAddsMergeWithoutManifestClash:
+  ## Two machines that add different files must not depend on a single
+  ## encrypted manifest merging. Copy only the new per-entry record and
+  ## blob from B into A; A must then see both entries.
+  let a = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let da = a / "secrets"
+  createDir(da)
+  writeFile(da / "one.txt", "alpha")
+  add(a, da / "one.txt", c)
+
+  let b = setupTestRepo()
+  copyDir(a / ".vault", b / ".vault")
+  let db = b / "secrets"
+  createDir(db)
+  writeFile(db / "two.txt", "beta")
+  add(b, db / "two.txt", c)
+
+  var bId = ""
+  for e in loadManifest(b, cfg = c):
+    if e.path.endsWith("two.txt"):
+      bId = e.id
+  doAssert bId.len > 0
+  doAssert hasSplitEntries(b), "add must write a per-entry record"
+  createDir(entryDir(a))
+  let srcE = findEntryFile(b, c, bId)
+  doAssert srcE.len > 0 and fileExists(srcE)
+  copyFile(srcE, entryFile(a, c, bId))
+  let srcBlob = findBlob(b, c, bId)
+  copyFile(srcBlob, blobPath(a, c, bId))
+
+  let merged = loadManifest(a, cfg = c)
+  doAssert merged.len == 2, "split records must union across a copy: " & $merged.len
+  var sawTwo = false
+  for e in merged:
+    if e.id == bId: sawTwo = true
+  doAssert sawTwo
+  doAssert checkVault(a, c).problems.len == 0
+  # The record still names B's path; the blob and DEK travelled with it.
+  doAssert get(a, db / "two.txt", c, allowUnsigned = true) == "beta"
+  removeDir(a)
+  removeDir(b)
+  echo "PASS: two adds merge without rewriting a shared manifest"
 
 block addDirRejectsEmpty:
   let r = setupTestRepo()

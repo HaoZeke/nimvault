@@ -985,7 +985,8 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
     let actual = sha256sum(blob)
     if actual != e.hash:
       result.problems.add(&"blob does not match the manifest for {e.path}")
-  if entries.len > 0 and meta.envelope and keyFiles(repo, cfg).len == 0:
+  if entries.len > 0 and meta.envelope and keyFiles(repo, cfg).len == 0 and
+     not hasSplitEntries(repo):
     result.problems.add("no data-key file; this vault cannot be unsealed")
     result.checked.inc
 
