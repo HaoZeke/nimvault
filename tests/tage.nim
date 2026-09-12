@@ -111,20 +111,22 @@ block unsealAndGet:
   doAssert get(work, secret, cfg).strip() == secretText
   echo "PASS: age get reads a single entry"
 
-block tamperedManifestIsRefused:
-  # The signature is the only thing standing between a rewritten manifest and a
-  # trusted one, since age blobs carry no signature of their own.
-  let mpath = manifestPath(work, cfg)
-  let original = readFile(mpath)
-  writeFile(mpath, original & "tamper")
+block tamperedRecordIsRefused:
+  # Split records are the trust root. The combined stub can be rewritten
+  # by another machine; a bad signature on an entry record cannot.
+  let entries = loadManifest(work, cfg = cfg)
+  doAssert entries.len == 1
+  let rec = entryFile(work, cfg, entries[0].id)
+  let original = readFile(rec)
+  writeFile(rec, original & "tamper")
   var raised = false
   try:
     discard loadManifest(work, verifySig = true, cfg = cfg)
   except CatchableError:
     raised = true
-  doAssert raised, "a modified manifest must not verify"
-  writeFile(mpath, original)
-  echo "PASS: age refuses a tampered manifest"
+  doAssert raised, "a modified entry record must not verify"
+  writeFile(rec, original)
+  echo "PASS: age refuses a tampered entry record"
 
 removeDir(work)
 echo "All age backend tests passed."

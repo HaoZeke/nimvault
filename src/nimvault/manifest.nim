@@ -156,7 +156,14 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
         if parsed.dek.len > 0:
           result.deks[parsed.entry.id] = parsed.dek
     except CatchableError:
-      discard
+      # A record this identity cannot decrypt is skippable. A bad or
+      # missing signature is not: that is a replaced trust root, not
+      # "not for us".
+      let msg = getCurrentExceptionMsg()
+      if verifySig and ("signature verification failed" in msg or
+                        "missing signature" in msg or
+                        "signature required" in msg):
+        raise
 
 proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
   ## Write one signed encrypted record. A different id is a different path,
