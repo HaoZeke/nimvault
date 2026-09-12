@@ -3,10 +3,49 @@
 ## Kept in its own module so neither backend has to know the other exists, and
 ## so the choice is made in exactly one place rather than at each call site.
 
-import std/[os, osproc, streams, strformat, posix]
+import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
+
+proc privateWorkDir*(): string =
+  ## Owner-only directory for plaintext and data keys that must not land in
+  ## `.vault/` or under a shared `/tmp` name. Prefer `$XDG_RUNTIME_DIR` so
+  ## the bytes die with the login; fall back to a 0700 directory named by
+  ## uid under the process temp area.
+  let xdg = getEnv("XDG_RUNTIME_DIR")
+  let parent =
+    if xdg.len > 0 and dirExists(xdg): xdg / "nimvault"
+    else: getTempDir() / &"nimvault-{getuid()}"
+  if not dirExists(parent):
+    createDir(parent)
+    setFilePermissions(parent, {fpUserRead, fpUserWrite, fpUserExec})
+  var buf: array[8, byte]
+  doAssert urandom(buf)
+  var id = ""
+  for b in buf:
+    id.add(b.toHex(2).toLowerAscii())
+  result = parent / id
+  createDir(result)
+  setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+
+template withPrivateUmask*(body: untyped) =
+  ## Decrypt/encrypt sidecars inherit the process umask. Force 077 so a
+  ## typical 022 does not leave a world-readable plaintext next to the
+  ## destination for the length of the batch.
+  let old = posix.umask(0o077.Mode)
+  try:
+    body
+  finally:
+    discard posix.umask(old)
+
+proc ensureVaultDir*(repo: string) =
+  ## `.vault/` holds ciphertext, but a crash can leave a plaintext sidecar
+  ## in it. Mode 0700 means another uid on the box cannot scoop that file.
+  let d = repo / ".vault"
+  if not dirExists(d):
+    createDir(d)
+  setFilePermissions(d, {fpUserRead, fpUserWrite, fpUserExec})
 
 proc syncPath*(path: string) =
   ## Flush `path` to stable storage. Best effort: a file system that refuses

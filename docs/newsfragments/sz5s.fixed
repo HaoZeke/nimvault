@@ -1,0 +1,2 @@
+`add`, `rm`, `mv` and `add-dir` keep the recorded seal key, so the next
+seal still skips unchanged files instead of re-encrypting the whole vault.

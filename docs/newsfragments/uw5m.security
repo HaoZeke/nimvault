@@ -1,0 +1,2 @@
+`add-dir` refuses file and directory symlinks so a planted link cannot
+pull a file from outside the named tree into the vault.

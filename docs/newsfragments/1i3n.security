@@ -1,0 +1,3 @@
+Plaintext manifests, data keys and `get` scratch files are written in an
+owner-only work directory, never as `.vault/.plain` or a predictable name
+under `/tmp`.

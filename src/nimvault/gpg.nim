@@ -154,7 +154,7 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
     options = {poUsePath})
-  result = p.outputStream.readAll().strip()
+  result = p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()

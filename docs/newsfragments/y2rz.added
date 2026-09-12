@@ -1,0 +1,2 @@
+`nimvault init` writes `.vault/config`. `nimvault hook` installs a
+pre-push `check` hook and a pre-commit `scan` hook.

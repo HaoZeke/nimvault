@@ -13,6 +13,9 @@ type
 
 const SealKeyHeader* = "# vault-seal-key"
   ## Comment header, so every older reader skips it as a comment.
+const EnvelopeHeader* = "# vault-envelope"
+  ## Set when this vault has per-file data keys. `check` uses it to refuse
+  ## a vault whose blobs still match but whose key file is gone.
 
 proc genId*(): string =
   ## 16-char random hex via cryptographic randomness.
@@ -80,7 +83,8 @@ proc sealKey*(cfg: GpgConfig): string =
 
 proc loadManifestMeta*(repo: string, verifySig = false,
                        cfg = GpgConfig()): tuple[entries: seq[VaultEntry],
-                                                 sealKey: string] =
+                                                 sealKey: string,
+                                                 envelope: bool] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
   ## Returns empty seq if no manifest exists.
@@ -92,13 +96,16 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   ## other backend as empty, so omitting it fails loudly rather than quietly.
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "")
+    return (@[], "", false)
   verifyManifest(cfg, enc, verifySig)
   let plain = decryptToString(cfg, enc, verifySig)
   for line in plain.splitLines:
     let stripped = line.strip()
     if stripped.startsWith(SealKeyHeader):
       result.sealKey = stripped[SealKeyHeader.len .. ^1].strip()
+      continue
+    if stripped.startsWith(EnvelopeHeader):
+      result.envelope = true
       continue
     if stripped.len == 0 or stripped.startsWith("#"):
       continue
@@ -124,26 +131,34 @@ proc loadManifest*(repo: string, verifySig = false,
   loadManifestMeta(repo, verifySig, cfg).entries
 
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
-                   sealKey = "") =
+                   sealKey = "", envelope = false) =
   ## Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt.
   ## A non-empty `sealKey` records what the blobs are encrypted to (v5), which
   ## is what lets a later `seal` skip unchanged files without going stale
   ## across a recipient change.
-  let plainPath = vaultDir(repo) / ".manifest.plain"
+  ensureVaultDir(repo)
+  let work = privateWorkDir()
+  let plainPath = work / "manifest.plain"
   let encPath = manifestPath(repo, cfg)
   var content = "# vault-manifest-v" & (if sealKey.len > 0: "5" else: "4") & "\n"
   if sealKey.len > 0:
     content.add(&"{SealKeyHeader} {sealKey}\n")
+  if envelope:
+    content.add(&"{EnvelopeHeader} 1\n")
   for e in entries:
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
+  setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
   # Encrypt beside the real manifest and rename over it. Writing encPath in
   # place leaves a window where it is half a file, and a reader that lands in
   # that window sees the trust root for every blob truncated. Rename within one
   # directory is atomic, so a reader sees either the old manifest or the new.
   let tmpEnc = encPath & ".tmp"
-  encryptFile(cfg, plainPath, tmpEnc)
-  removeFile(plainPath)
+  try:
+    encryptFile(cfg, plainPath, tmpEnc)
+  finally:
+    if dirExists(work):
+      removeDir(work)
   # Durability, which rename alone does not give: flush the bytes before the
   # rename that points at them, and the directory entry after, or a crash can
   # leave the trust root present and empty. See `syncPath`.
@@ -153,3 +168,11 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   # The manifest is the trust root: its hashes are what vouch for every blob,
   # so it is the one thing that has to be signed when the backend cannot.
   signManifest(cfg, encPath)
+
+proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
+                       envelope = false) =
+  ## Rewrite the entry list without dropping the seal key or the envelope
+  ## mark. add/rm/mv/addDir used to call `saveManifest` with the defaults
+  ## and so forced the next seal to re-encrypt every blob.
+  let meta = loadManifestMeta(repo, cfg = cfg)
+  saveManifest(repo, entries, cfg, meta.sealKey, meta.envelope or envelope)

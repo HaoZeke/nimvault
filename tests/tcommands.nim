@@ -633,6 +633,12 @@ block wrapRulesSelectRecipients:
   # No rules at all is the pre-groups behaviour.
   let plain = GpgConfig(recipient: "ONLY")
   doAssert recipientsFor(plain, "anything") == @["ONLY"]
+
+  # `**/mine.txt` matches a root-level name, not only `dir/mine.txt`.
+  var c4 = GpgConfig(recipient: "DEFAULT")
+  c4.wraps = @["**/mine.txt:LAPTOP", "**:BOTH"]
+  doAssert recipientsFor(c4, "mine.txt") == @["LAPTOP"]
+  doAssert recipientsFor(c4, "dir/mine.txt") == @["LAPTOP"]
   echo "PASS: wrap rules select recipients by path"
 
 block groupIdDependsOnTheSetNotTheSpelling:
@@ -846,6 +852,312 @@ block emptyVaultDropsItsDataKeys:
   removeDir(r)
   echo "PASS: emptying the vault drops its data keys"
 
+# --- nimvault-sz5s / nimvault-k2la / nimvault-1i3n / nimvault-uw5m ---
+
+block addDoesNotForceFullReseal:
+  ## Incremental seal is the reason a one-file edit is a one-file diff.
+  ## add/rm/mv used to drop the seal-key header, so the next seal rewrote
+  ## every blob. A two-file vault that then gains a third file must keep
+  ## the first two blobs byte-identical.
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  let b = d / "b.txt"
+  let extra = d / "c.txt"
+  writeFile(a, "aaa")
+  writeFile(b, "bbb")
+  add(r, a, c)
+  add(r, b, c)
+  seal(r, c)
+  var before: seq[(string, string, string)] = @[]
+  for e in loadManifest(r):
+    before.add((e.id, e.path, readFile(vaultDir(r) / &"{e.id}.gpg")))
+  doAssert before.len == 2
+
+  writeFile(extra, "ccc")
+  add(r, extra, c)
+  seal(r, c)
+
+  for (id, path, blob) in before:
+    doAssert readFile(vaultDir(r) / &"{id}.gpg") == blob,
+      &"untouched {path} was re-encrypted after add (nimvault-sz5s)"
+  let meta = loadManifestMeta(r, cfg = c)
+  doAssert meta.sealKey == sealKey(c),
+    "add must preserve the recorded seal key"
+  removeDir(r)
+  echo "PASS: add does not force a full reseal"
+
+block addWritesV6DataKeyWithoutASecondSeal:
+  ## Once the seal-key is preserved, incremental seal will skip a file
+  ## whose contentHash already matches. add itself must therefore write
+  ## the data key, or the new entry stays v5 forever and rotate cannot
+  ## rewrap it.
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  let extra = d / "new.txt"
+  writeFile(a, "already-sealed")
+  add(r, a, c)
+  seal(r, c)
+  doAssert loadDeks(r, c).len == 1
+
+  writeFile(extra, "brand-new")
+  add(r, extra, c)
+  let deks = loadDeks(r, c)
+  var extraId = ""
+  for e in loadManifest(r):
+    if resolvePath(c, e.path) == extra:
+      extraId = e.id
+  doAssert extraId.len > 0
+  doAssert deks.hasKey(extraId),
+    "add must write a v6 data key before the next seal (nimvault-k2la)"
+  doAssert deks.len == 2
+  removeDir(r)
+  echo "PASS: add writes a v6 data key"
+
+block rmAndMvPreserveSealKey:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  let b = d / "b.txt"
+  writeFile(a, "aaa")
+  writeFile(b, "bbb")
+  add(r, a, c)
+  add(r, b, c)
+  seal(r, c)
+  let key = loadManifestMeta(r, cfg = c).sealKey
+  doAssert key.len > 0
+
+  remove(r, b, c)
+  doAssert loadManifestMeta(r, cfg = c).sealKey == key,
+    "rm must preserve the seal key"
+  move(r, a, d / "a-moved.txt", c)
+  doAssert loadManifestMeta(r, cfg = c).sealKey == key,
+    "mv must preserve the seal key"
+  removeDir(r)
+  echo "PASS: rm and mv preserve the seal key"
+
+block vaultDirHoldsNoPlaintextSidecars:
+  ## After a successful seal/status/get the vault directory must not
+  ## contain a leftover plaintext manifest, key file, or status decrypt.
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  writeFile(a, "sidecar-secret")
+  add(r, a, c)
+  seal(r, c)
+  discard statusReport(r, c)
+  discard get(r, a, c, allowUnsigned = true)
+  for kind, path in walkDir(vaultDir(r)):
+    if kind != pcFile: continue
+    let name = path.extractFilename
+    doAssert ".plain" notin name, "leftover plaintext: " & name
+    doAssert not name.startsWith(".status-tmp"), "leftover status decrypt: " & name
+    doAssert not name.startsWith(".manifest"), "leftover manifest sidecar: " & name
+  removeDir(r)
+  echo "PASS: .vault holds no plaintext sidecars"
+
+block getLeavesNoPredictableTmp:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  writeFile(a, "tmp-secret")
+  add(r, a, c)
+  seal(r, c)
+  discard get(r, a, c, allowUnsigned = true)
+  let pid = $getCurrentProcessId()
+  for kind, path in walkDir(getTempDir()):
+    if kind != pcFile: continue
+    let name = path.extractFilename
+    doAssert not name.startsWith("nimvault-get-" & pid),
+      "get left a predictable tmp file: " & name
+    doAssert not name.startsWith("nimvault-dek-" & pid),
+      "decryptWithDek left a predictable identity file: " & name
+  removeDir(r)
+  echo "PASS: get leaves no predictable tmp files"
+
+block addDirRefusesSymlinkEscape:
+  ## A symlink inside the named tree must not pull a file from outside it.
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let outside = createTempDir("nimvault_outside_", "_dir")
+  let secret = outside / "outside.txt"
+  writeFile(secret, "should-not-be-vaulted")
+  let tree = createTempDir("nimvault_tree_", "_dir")
+  writeFile(tree / "inside.txt", "ok")
+  createSymlink(secret, tree / "escape.txt")
+
+  var raised = false
+  try:
+    addDir(r, tree, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "addDir must refuse a symlink escape (nimvault-uw5m)"
+  doAssert loadManifest(r).len == 0, "a refused addDir must write no entries"
+  removeDir(tree)
+  removeDir(outside)
+  removeDir(r)
+  echo "PASS: addDir refuses a symlink that leaves the tree"
+
+block privateWorkDirIsOwnerOnly:
+  let dir = privateWorkDir()
+  let perms = getFilePermissions(dir)
+  doAssert fpUserRead in perms and fpUserWrite in perms and fpUserExec in perms
+  doAssert fpGroupRead notin perms and fpOthersRead notin perms,
+    "privateWorkDir must be 0700 (nimvault-1i3n)"
+  removeDir(dir)
+  echo "PASS: privateWorkDir is owner-only"
+
+block getPreservesTrailingNewline:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "pw.txt"
+  writeFile(a, "pass\n")
+  add(r, a, c)
+  doAssert get(r, a, c, allowUnsigned = true) == "pass\n",
+    "get must return the secret byte for byte"
+  removeDir(r)
+  echo "PASS: get preserves a trailing newline"
+
+block rmDropsDataKeyWithoutSeal:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  let b = d / "b.txt"
+  writeFile(a, "aaa")
+  writeFile(b, "bbb")
+  add(r, a, c)
+  add(r, b, c)
+  seal(r, c)
+  var bId = ""
+  for e in loadManifest(r):
+    if resolvePath(c, e.path) == b: bId = e.id
+  remove(r, b, c)
+  doAssert not loadDeks(r, c).hasKey(bId),
+    "rm must drop the data key without waiting for seal"
+  removeDir(r)
+  echo "PASS: rm drops the data key"
+
+block checkRefusesMissingKeyFiles:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  writeFile(a, "aaa")
+  add(r, a, c)
+  seal(r, c)
+  doAssert checkVault(r, c).problems.len == 0
+  for p in keyFiles(r, c):
+    removeFile(p)
+  let broken = checkVault(r, c)
+  doAssert broken.problems.len >= 1, "check must notice missing key files"
+  doAssert "data-key" in broken.problems[0]
+  removeDir(r)
+  echo "PASS: check refuses a vault whose key files are gone"
+
+block whoListsWrapRecipients:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  writeFile(d / "mine.txt", "only")
+  writeFile(d / "shared.txt", "both")
+  add(r, d / "mine.txt", c)
+  add(r, d / "shared.txt", c)
+  # who is a query of the current wrap rules, so they can be set after add.
+  var q = c
+  q.wraps = @["**/mine.txt:LAPTOP", "**:LAPTOP,TERRA"]
+  let report = whoReport(r, q)
+  doAssert "mine.txt" in report
+  doAssert "LAPTOP" in report
+  doAssert "TERRA" in report
+  removeDir(r)
+  echo "PASS: who lists wrap recipients"
+
+block lockRemovesInSyncPlaintext:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let d = r / "secrets"
+  createDir(d)
+  let a = d / "a.txt"
+  writeFile(a, "lock-me")
+  add(r, a, c)
+  seal(r, c)
+  lockPlaintext(r, c)
+  doAssert not fileExists(a), "lock must remove in-sync plaintext"
+  unseal(r, c, allowUnsigned = true)
+  doAssert readFile(a) == "lock-me"
+  writeFile(a, "edited")
+  var raised = false
+  try:
+    lockPlaintext(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "lock must refuse a modified file"
+  doAssert fileExists(a)
+  removeDir(r)
+  echo "PASS: lock removes in-sync plaintext and refuses edits"
+
+block initWritesConfig:
+  let r = setupTestRepo()
+  initVault(r, keyId)
+  doAssert fileExists(r / ".vault" / "config")
+  doAssert keyId in readFile(r / ".vault" / "config")
+  var raised = false
+  try:
+    initVault(r, keyId)
+  except CatchableError:
+    raised = true
+  doAssert raised, "second init must refuse"
+  removeDir(r)
+  echo "PASS: init writes config once"
+
+block hookInstallsCheckAndScan:
+  let r = setupTestRepo()
+  installHooks(r)
+  doAssert fileExists(r / ".git" / "hooks" / "pre-push")
+  doAssert "nimvault check" in readFile(r / ".git" / "hooks" / "pre-push")
+  doAssert "nimvault scan" in readFile(r / ".git" / "hooks" / "pre-commit")
+  var raised = false
+  try:
+    installHooks(r)
+  except CatchableError:
+    raised = true
+  doAssert raised, "hook must not overwrite"
+  removeDir(r)
+  echo "PASS: hook install writes check and scan hooks"
+
+block addDirRejectsEmpty:
+  let r = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let empty = createTempDir("nimvault_empty_", "_dir")
+  var raised = false
+  try:
+    addDir(r, empty, c)
+  except CatchableError as e:
+    raised = true
+    doAssert "empty" in e.msg.toLowerAscii
+  doAssert raised
+  doAssert loadManifest(r).len == 0
+  removeDir(empty)
+  removeDir(r)
+  echo "PASS: addDir rejects an empty directory"
+
 removeDir(incRepo)
 
 # Cleanup
@@ -853,28 +1165,3 @@ removeDir(repo)
 removeDir(gpgHome)
 delEnv("GNUPGHOME")
 echo "All integration tests passed."
-
-# --- Directory security tests ---
-block directorySecurityTests:
-  ## Security tests for directory support.
-
-  # Test path safety with nested traversal attempts
-  let secCfg = GpgConfig(recipient: keyId, root: "/tmp/fakerepo")
-  doAssert not isPathSafe(secCfg, "secrets/../../etc/passwd"), "Nested traversal should fail"
-  doAssert not isPathSafe(secCfg, "a/b/../../../etc/passwd"), "Deep nested traversal should fail"
-  doAssert isPathSafe(secCfg, "secrets/subdir/file.txt"), "Legitimate nested path should pass"
-  echo "PASS: directory path safety"
-
-  # Test empty directory rejection (CLI must exit non-zero; execCmdEx does not raise)
-  let emptyDirRepo = setupTestRepo()
-  let emptyTestDir = createTempDir("nimvault_empty_", "_dir")
-
-  let (emptyOut, emptyCode) = execCmdEx(&"nimvault add-dir {emptyTestDir}",
-                                        workingDir = emptyDirRepo)
-  doAssert emptyCode != 0, "Should have rejected empty directory, got:\n" & emptyOut
-
-  removeDir(emptyTestDir)
-  removeDir(emptyDirRepo)
-  echo "PASS: empty directory rejection"
-
-  echo "PASS: all directory security tests"

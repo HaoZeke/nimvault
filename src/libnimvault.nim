@@ -3,11 +3,12 @@
 
 import std/[os, strutils]
 import nimvault/[gpg, commands]
+from nimvault/version import Version
 
 var gLastError: string
 
 proc nv_version(): cstring {.exportc, dynlib, cdecl.} =
-  cstring("0.4.2-lib")
+  cstring(Version)
 
 proc nv_free(p: pointer) {.exportc, dynlib, cdecl.} =
   if p != nil:
@@ -103,3 +104,33 @@ proc nv_scan(repo: cstring, path: cstring, recipient: cstring): cstring {.export
     let (r, cfg) = setupRepo(repo, recipient)
     let target = if path == nil or path[0] == '\0': r else: $path
     commands.scanReport(r, target, cfg)
+
+proc nv_get(repo: cstring, path: cstring, recipient: cstring,
+            allowUnsigned: cint): cstring {.exportc, dynlib, cdecl.} =
+  exportOp:
+    let (r, cfg) = setupRepo(repo, recipient)
+    if path == nil or path[0] == '\0':
+      nvRaise("path is required")
+    commands.get(r, $path, cfg, allowUnsigned != 0)
+
+proc nv_check(repo: cstring, recipient: cstring): cstring {.exportc, dynlib, cdecl.} =
+  exportOp:
+    let (r, cfg) = setupRepo(repo, recipient)
+    commands.checkReport(r, cfg)
+
+proc nv_gc(repo: cstring, recipient: cstring, dryRun: cint): cstring {.exportc, dynlib, cdecl.} =
+  exportOp:
+    let (r, cfg) = setupRepo(repo, recipient)
+    commands.gc(r, cfg, dryRun != 0)
+    if dryRun != 0: "dry run\n" else: "gc\n"
+
+proc nv_rotate(repo: cstring, recipient: cstring, rekey: cint): cstring {.exportc, dynlib, cdecl.} =
+  exportOp:
+    let (r, cfg) = setupRepo(repo, recipient)
+    commands.rotate(r, cfg, rekey != 0)
+    "rotated\n"
+
+proc nv_who(repo: cstring, recipient: cstring): cstring {.exportc, dynlib, cdecl.} =
+  exportOp:
+    let (r, cfg) = setupRepo(repo, recipient)
+    commands.whoReport(r, cfg)

@@ -82,9 +82,13 @@ proc matchesGlob(pattern, path: string): bool =
     pat.add("**")
   # Anchored at both ends: an unanchored pattern matches a prefix, so `~/x/*`
   # would quietly cover `~/x/deep/one` and send it to the wrong machine.
+  # `**/foo` must match `foo` as well as `a/foo`. Turning `**` into `.*`
+  # and leaving the slash required would send a root-level "machine-only"
+  # file to the catch-all recipients.
   let rx = "^" & pat.replace(".", "\\.")
                     .replace("**", "\u0001")
                     .replace("*", "[^/]*")
+                    .replace("\u0001/", "(.*/)?")
                     .replace("\u0001", ".*") & "$"
   return path.match(re(rx))
 
@@ -204,16 +208,20 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
 
   for gid, lines in byGroup:
     let path = groupKeysPath(repo, cfg, gid)
-    let plainPath = dir / (".keys." & gid & ".plain")
+    let work = privateWorkDir()
+    let plainPath = work / "keys.plain"
     var content = "# vault-keys-v6\n"
     for l in lines:
       content.add(l & "\n")
     writeFile(plainPath, content)
     setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
     let tmp = path & ".tmp"
-    encryptFileTo(cfg, recipsOf.getOrDefault(gid, @[cfg.recipient]),
-                  plainPath, tmp, sign = false)
-    removeFile(plainPath)
+    try:
+      encryptFileTo(cfg, recipsOf.getOrDefault(gid, @[cfg.recipient]),
+                    plainPath, tmp, sign = false)
+    finally:
+      if dirExists(work):
+        removeDir(work)
     syncPath(tmp)
     moveFile(tmp, path)
     syncParentDir(path)
@@ -268,10 +276,13 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
 proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   ## Decrypt a v6 payload with its data key.
   if cfg.usesAge:
-    let identFile = getTempDir() / &"nimvault-dek-{getCurrentProcessId()}"
+    let work = privateWorkDir()
+    let identFile = work / "identity"
     writeFile(identFile, dek & "\n")
     setFilePermissions(identFile, {fpUserRead, fpUserWrite})
-    defer: removeFile(identFile)
+    defer:
+      if dirExists(work):
+        removeDir(work)
     let p = startProcess(ageBinary(),
       args = @["-d", "-i", identFile, "-o", outPath, inPath],
       options = {poUsePath, poStdErrToStdOut})

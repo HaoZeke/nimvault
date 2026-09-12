@@ -74,7 +74,7 @@ proc acquire*(repo: string, timeoutMs = 30_000): VaultLock =
   if not dirExists(dir):
     createDir(dir)
   let path = lockPath(repo)
-  let fd = open(path.cstring, O_RDWR or O_CREAT, 0o600.Mode)
+  let fd = open(path.cstring, O_RDWR or O_CREAT or O_CLOEXEC, 0o600.Mode)
   if fd < 0:
     nvRaise(&"FATAL: cannot open vault lock: {path}")
 

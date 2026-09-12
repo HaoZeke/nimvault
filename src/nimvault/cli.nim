@@ -6,8 +6,8 @@ import cligen
 from ./gpg import GpgConfig, initGpgConfig, NimvaultError
 from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous
 from ./commands import nil
-
-const Version* = "0.5.0"
+from ./version import Version
+export Version
 
 template cliRun(body: untyped) =
   try:
@@ -117,11 +117,39 @@ proc doCheck(recipient = "", vault = "") =
     commands.check(repo, cfg)
 
 proc doScan(path: seq[string], recipient = "", vault = "") =
+  if path.len > 1:
+    stderr.writeLine "usage: nimvault scan [PATH]"
+    quit 1
   let targetArg = if path.len == 0: "." else: path[0]
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
     let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
     commands.scan(repo, target, cfg)
+
+proc doWho(recipient = "", vault = "") =
+  cliRun:
+    let (repo, cfg) = resolve(recipient, vault)
+    commands.who(repo, cfg)
+
+proc doLock(recipient = "", vault = "") =
+  cliRun:
+    let (repo, cfg) = resolve(recipient, vault)
+    commands.lockPlaintext(repo, cfg)
+
+proc doInit(recipient = "", vault = "") =
+  cliRun:
+    let repo = resolveVaultRepo(vault)
+    commands.initVault(repo, recipient)
+
+proc doHook(recipient = "", vault = "") =
+  cliRun:
+    let repo = resolveVaultRepo(vault)
+    commands.installHooks(repo)
+
+proc doDoctor(recipient = "", vault = "") =
+  cliRun:
+    let (repo, cfg) = resolve(recipient, vault)
+    commands.doctor(repo, cfg)
 
 proc doVersion() =
   ## Print package version (also via --version / -V before dispatch).
@@ -166,6 +194,18 @@ proc main*(args: seq[string] = commandLineParams()) =
      help = {"recipient": rh, "vault": vh,
              "rekey": "re-encrypt every payload, not just the key wrapping"}],
     [doScan, cmdName = "scan", positional = "path",
+     help = {"recipient": rh, "vault": vh}],
+    [doWho, cmdName = "who",
+     help = {"recipient": rh, "vault": vh}],
+    [doLock, cmdName = "lock",
+     help = {"recipient": rh, "vault": vh}],
+    [doInit, cmdName = "init",
+     help = {"recipient": rh, "vault": vh}],
+    [doHook, cmdName = "hook",
+     help = {"recipient": rh, "vault": vh}],
+    [doDoctor, cmdName = "doctor",
+     help = {"recipient": rh, "vault": vh}],
+    [doRm, cmdName = "remove", positional = "path",
      help = {"recipient": rh, "vault": vh}],
     [doVersion, cmdName = "version"],
   )

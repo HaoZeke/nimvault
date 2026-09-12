@@ -30,8 +30,8 @@ nimble build -y
 
 #+BEGIN_SRC bash
 # Configure recipient in your git repo
-mkdir -p .vault
-echo "recipient = YOUR_KEY_ID" > .vault/config
+nimvault init --recipient YOUR_KEY_ID
+nimvault hook          # pre-push check, pre-commit scan
 
 # Add a single file
 nimvault add ~/.secret/api_key.txt
@@ -47,9 +47,12 @@ git add .vault/ && git commit -m "vault: add secrets"
 # Restore on another machine
 nimvault unseal
 nimvault status
+nimvault who           # which wrap-rule recipients can open each entry
+nimvault lock          # shred in-sync plaintext; unseal restores it
 
 # Verify every blob still matches the manifest (no decryption, no key needed)
 nimvault check
+nimvault doctor
 
 # Let another machine read: rewraps the data keys, payloads untouched.
 # --rekey re-encrypts everything instead, which is what a key compromise needs.
