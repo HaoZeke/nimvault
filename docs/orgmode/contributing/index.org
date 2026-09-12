@@ -42,14 +42,22 @@ then builds with Sphinx. Nim API docs are generated separately via ~nim doc
 #+begin_src text
 src/nimvault/
   gpg.nim        -- GPG operations, recipient resolution
+  age.nim        -- age encrypt/decrypt and ssh manifest signatures
+  crypto.nim     -- backend dispatch, private work dirs
+  dek.nim        -- v6 data keys and wrap rules
+  lock.nim       -- fcntl vault lock
+  vaultrepo.nim  -- --vault / pointer / env resolution
   manifest.nim   -- VaultEntry type, manifest load/save
-  commands.nim   -- seal, unseal, add, rm, mv, list, status
+  commands.nim   -- seal, unseal, add, rm, get, check, rotate, gc, ...
   cli.nim        -- cligen-based dispatch
+  version.nim    -- single package version
 src/nimvault.nim -- library root (re-exports + isMainModule)
 tests/
   tmanifest.nim  -- manifest unit tests
   tgpg.nim       -- GPG unit tests (throwaway key)
+  tage.nim       -- age backend tests
   tcommands.nim  -- integration tests (temp git repo)
+  tmeta.nim      -- version and workflow-shape locks
 #+end_src
 
 Tests require a working GPG installation. Test suites create throwaway GPG keys

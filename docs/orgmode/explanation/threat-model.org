@@ -1,0 +1,47 @@
+#+TITLE: Threat model
+#+OPTIONS: toc:t num:nil
+
+This is the threat model for the CLI, not a third-party audit.
+
+* Assets
+
+- Plaintext secrets on disk after ~unseal~ or ~get~
+- Per-file data keys in ~.vault/keys.*~
+- The signed manifest (the trust root: paths plus blob digests)
+- Ciphertext blobs in git history (they outlive ~rotate --rekey~)
+
+* Adversaries
+
+- Anyone who can clone the remote (ciphertext and the encrypted name map)
+- A machine that is later lost (its private key still opens the wrap group
+  it was given)
+- A local uid that can read world-readable temp files
+- A malicious pull request running in CI
+
+* What the commands buy
+
+| Command | Gives | Does not give |
+| ~check~ | blob digests still match the signed manifest; no key needed | that you can decrypt; that git history is gone |
+| ~rotate~ | a removed recipient can no longer unwrap the data keys | post-compromise secrecy for a leaked data key |
+| ~rotate --rekey~ | new data keys and new payloads | erasure of old objects on the remote |
+| ~status~ | local plaintext vs the recorded content hash | blob integrity |
+| ~scan~ | unvaulted secret-shaped literals on disk | a complete detector |
+
+* Trust root
+
+The manifest is signed. Age payloads have no in-band signature; GPG v5
+blobs do. v6 payloads are symmetric and unsigned in-band. Authenticity
+for those is the signed manifest plus the blob digest ~unseal~ and ~get~
+check before decrypting.
+
+Key files are encrypted and not signed. A tampered key file fails to
+decrypt rather than forging plaintext.
+
+* Limits that stay
+
+- Filenames are hidden; counts, sizes and mtimes of blobs are not.
+- There is no forward secrecy: old ciphertext in git history still
+  opens with an old data key.
+- A private vault repository is the way to keep ciphertext off a public
+  remote. Rotation cannot reach the GitHub fork network.
+- ~--allow-unsigned~ is a migration hatch. It is not a daily mode.

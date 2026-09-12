@@ -86,9 +86,10 @@ digraph G {
 
 - Opaque filenames :: Each file is assigned a 16-character random hex ID
   generated from 8 bytes of cryptographic randomness (~std/sysrand~).
-- Signed and verified :: All blobs and the manifest are GPG-signed. ~unseal~
-  verifies signatures and SHA-256 blob hashes before writing any plaintext to
-  disk (atomic, fail-closed).
+- Signed and verified :: The manifest is signed (GPG in-band, or a detached
+  SSH signature for age). v6 payloads have no in-band signature; authenticity
+  is the signed manifest plus each blob digest. ~unseal~ checks those before
+  writing any plaintext (atomic, fail-closed).
 - Parallel GPG :: Encryption and decryption spawn GPG processes in parallel via
   ~startProcess~ for fast batch operations.
 - Portable paths :: Paths under ~$HOME~ are stored with =~/= prefix so the
@@ -96,8 +97,8 @@ digraph G {
 - 3-tier recipient resolution :: The GPG recipient is resolved from (1) CLI
   ~--recipient~ flag, (2) ~NIMVAULT_GPG_RECIPIENT~ environment variable, or (3)
   ~.vault/config~ file. First non-empty value wins.
-- Zero runtime dependencies :: Single static binary; only requires GPG on the
-  system.
+- Backends :: GPG backend needs ~gpg~ on PATH. Age backend needs ~age~ (or
+  ~rage~) and ~ssh-keygen~ for the detached manifest signature.
 
 * Module structure
   The library is split into four focused modules, each with a single
@@ -159,6 +160,7 @@ digraph G {
      howto/chezmoi
      howto/private-vault-repo
      howto/service-vault
+     howto/headless-gpg
 #+end_export
 
 * Reference
@@ -170,6 +172,7 @@ digraph G {
      reference/cli
      reference/config
      reference/manifest
+     explanation/threat-model
 #+end_export
 
 * Development

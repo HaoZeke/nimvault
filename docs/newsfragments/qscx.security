@@ -1,0 +1,2 @@
+The documentation workflow builds pull requests with `contents: read` and
+deploys only from a push-gated job that holds write.

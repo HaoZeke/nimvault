@@ -57,6 +57,13 @@ Whitespace around the ~=~ is ignored. Recognized keys:
   portability.
 - ~wrap~ :: Repeatable. ~<glob>:<recipient>[,<recipient>...]~ -- which
   recipients may open the entries matching a path pattern. See below.
+- ~backend~ :: ~gpg~ (default) or ~age~. Also ~NIMVAULT_BACKEND~.
+- ~identity~ :: Age identity file. Also ~NIMVAULT_AGE_IDENTITY~.
+- ~signer~ :: ~gpg~ (default for the GPG backend), ~ssh~ (default for age),
+  or ~none~.
+- ~sign_key~ :: SSH private key used to sign the manifest when ~signer = ssh~.
+- ~allowed_signers~ :: SSH allowed-signers file used to verify that signature.
+- ~signer_identity~ :: Principal to match inside ~allowed_signers~.
 
 * Per-path recipients
 

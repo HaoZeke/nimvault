@@ -49,4 +49,4 @@ html_sidebars = {
     ],
 }
 
-html_baseurl = "nimvault.rgoswami.me"
+html_baseurl = "https://nimvault.rgoswami.me/"

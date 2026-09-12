@@ -50,10 +50,14 @@ Re-encrypt every entry, not only the changed ones.
 ** unseal
 
 #+begin_src text
-nimvault unseal [--recipient KEY] [--allow-unsigned]
+nimvault unseal [PATH...] [--recipient KEY] [--allow-unsigned] [--vault DIR]
 #+end_src
 
-Decrypt all vault blobs to their target paths. Before decryption, verifies:
+With no path this restores the whole vault. Naming paths restores only
+those entries, and a directory restores everything beneath it. A selector
+that matches nothing is an error.
+
+Before decryption, verifies:
 - Manifest GPG signature
 - Blob SHA-256 hashes against manifest
 - Path safety (no directory traversal)
@@ -230,8 +234,9 @@ List all vault entries showing their ID and target path.
 nimvault status [--recipient KEY]
 #+end_src
 
-Show sync status of all vault entries by comparing SHA-256 hashes of local files
-against decrypted blobs:
+Show sync status of all vault entries by comparing local plaintext SHA-256
+to the manifest ~contentHash~. Only v3-and-earlier entries that lack a
+content hash are decrypted:
 
 - ~[in-sync]~ :: local matches vault
 - ~[modified]~ :: local differs from vault (needs ~seal~)
@@ -240,6 +245,49 @@ against decrypted blobs:
 
 Directory entries: When you ~add-dir~ a directory, each file appears individually
 in ~list~ and ~status~ output. The directory structure is implicit in the paths.
+
+** who
+
+#+begin_src text
+nimvault who [--recipient KEY] [--vault DIR]
+#+end_src
+
+Print which wrap-rule recipients can open each entry.
+
+** lock
+
+#+begin_src text
+nimvault lock [--recipient KEY] [--vault DIR]
+#+end_src
+
+Remove in-sync plaintext. Vault entries stay; ~unseal~ restores them. A
+modified file is refused.
+
+** init
+
+#+begin_src text
+nimvault init [--recipient KEY] [--vault DIR]
+#+end_src
+
+Write ~.vault/config~ with the recipient. Refuses if the file already exists.
+
+** hook
+
+#+begin_src text
+nimvault hook [--vault DIR]
+#+end_src
+
+Install a ~pre-push~ hook that runs ~nimvault check~ and a ~pre-commit~ hook
+that runs ~nimvault scan~. Refuses to overwrite existing hooks.
+
+** doctor
+
+#+begin_src text
+nimvault doctor [--recipient KEY] [--vault DIR]
+#+end_src
+
+Print backend, recipient, binaries, manifest and ~check~ status. Exits
+non-zero when something will not work.
 
 * Where the vault lives
 

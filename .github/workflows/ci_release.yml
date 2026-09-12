@@ -24,6 +24,13 @@ jobs:
         with:
           version: "2.2.2"
 
+      - name: Check tag matches package version
+        run: |
+          TAG=$(git describe --tags --exact-match)
+          VER=$(awk '/^version/{gsub(/"/, "", $3); print $3; exit}' nimvault.nimble)
+          test "$TAG" = "v$VER"
+          grep -q "const Version\\* = \"$VER\"" src/nimvault/version.nim
+
       - name: Install dependencies
         run: nimble install cligen -y
 

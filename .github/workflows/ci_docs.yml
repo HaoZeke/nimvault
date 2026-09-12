@@ -1,23 +1,23 @@
 name: Build and Deploy Documentation
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 on:
   push:
     branches: [main]
     tags: ["*"]
   pull_request:
+    branches: [main]
   schedule:
     - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
 
 jobs:
   build_docs:
     name: Build documentation
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,8 +52,24 @@ jobs:
           name: documentation
           path: docs/build
 
+  deploy_docs:
+    name: Deploy documentation
+    needs: build_docs
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    steps:
+      - name: Download documentation
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation
+          path: docs/build
+
       - name: Deploy
-        if: github.event_name == 'push'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
