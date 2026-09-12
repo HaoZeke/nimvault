@@ -1,2 +1,0 @@
-A per-entry record with a bad or missing signature is refused. A record
-this identity cannot decrypt is still skipped.

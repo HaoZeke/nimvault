@@ -4,6 +4,16 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.5.2 (2026-09-12)
+===========================
+
+Security
+--------
+
+- A per-entry record with a bad or missing signature is refused. A record
+  this identity cannot decrypt is still skipped. (split-record-sig)
+
+
 nimvault 0.5.1 (2026-09-12)
 ===========================
 
