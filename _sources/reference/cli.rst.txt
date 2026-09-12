@@ -61,9 +61,13 @@ Re-encrypt every entry, not only the changed ones.
 
 .. code:: text
 
-    nimvault unseal [--recipient KEY] [--allow-unsigned]
+    nimvault unseal [PATH...] [--recipient KEY] [--allow-unsigned] [--vault DIR]
 
-Decrypt all vault blobs to their target paths. Before decryption, verifies:
+With no path this restores the whole vault. Naming paths restores only
+those entries, and a directory restores everything beneath it. A selector
+that matches nothing is an error.
+
+Before decryption, verifies:
 
 - Manifest GPG signature
 
@@ -271,8 +275,9 @@ List all vault entries showing their ID and target path.
 
     nimvault status [--recipient KEY]
 
-Show sync status of all vault entries by comparing SHA-256 hashes of local files
-against decrypted blobs:
+Show sync status of all vault entries by comparing local plaintext SHA-256
+to the manifest ``contentHash``. Only v3-and-earlier entries that lack a
+content hash are decrypted:
 
 ``[in-sync]``
     local matches vault
@@ -288,6 +293,54 @@ against decrypted blobs:
 
 Directory entries: When you ``add-dir`` a directory, each file appears individually
 in ``list`` and ``status`` output. The directory structure is implicit in the paths.
+
+2.14 who
+~~~~~~~~
+
+.. code:: text
+
+    nimvault who [--recipient KEY] [--vault DIR]
+
+Print which wrap-rule recipients can open each entry.
+
+2.15 lock
+~~~~~~~~~
+
+.. code:: text
+
+    nimvault lock [--recipient KEY] [--vault DIR]
+
+Remove in-sync plaintext. Vault entries stay; ``unseal`` restores them. A
+modified file is refused.
+
+2.16 init
+~~~~~~~~~
+
+.. code:: text
+
+    nimvault init [--recipient KEY] [--vault DIR]
+
+Write ``.vault/config`` with the recipient. Refuses if the file already exists.
+
+2.17 hook
+~~~~~~~~~
+
+.. code:: text
+
+    nimvault hook [--vault DIR]
+
+Install a ``pre-push`` hook that runs ``nimvault check`` and a ``pre-commit`` hook
+that runs ``nimvault scan``. Refuses to overwrite existing hooks.
+
+2.18 doctor
+~~~~~~~~~~~
+
+.. code:: text
+
+    nimvault doctor [--recipient KEY] [--vault DIR]
+
+Print backend, recipient, binaries, manifest and ``check`` status. Exits
+non-zero when something will not work.
 
 3 Where the vault lives
 -----------------------

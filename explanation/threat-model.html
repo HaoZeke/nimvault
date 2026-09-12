@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>chezmoi Integration - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Keep the vault in its own private repository" href="private-vault-repo.html" /><link rel="prev" title="Keybase GPG Key Management" href="keybase.html" />
-      <link rel="canonical" href="https://nimvault.rgoswami.me/howto/chezmoi.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Threat model - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Contributing" href="../contributing/index.html" /><link rel="prev" title="Manifest Format" href="../reference/manifest.html" />
+      <link rel="canonical" href="https://nimvault.rgoswami.me/explanation/threat-model.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -19,8 +19,8 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="https://nimvault.rgoswami.me/howto/chezmoi.html"/>
-  <meta property="og:title" content="chezmoi Integration"/>
+  <meta property="og:url" content="https://nimvault.rgoswami.me/explanation/threat-model.html"/>
+  <meta property="og:title" content="Threat model"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -78,19 +78,19 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/directory-support.html">Encrypting Directories</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
-<ul class="current">
-<li class="toctree-l1 _expand"><a class="reference internal" href="keybase.html">Keybase GPG Key Management</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">chezmoi Integration</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="private-vault-repo.html">Keep the vault in its own private repository</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="service-vault.html">Service Vaults</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="headless-gpg.html">Headless and CI GPG</a></li>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/keybase.html">Keybase GPG Key Management</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/chezmoi.html">chezmoi Integration</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/cli.html">CLI Reference</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/config.html">Configuration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../reference/manifest.html">Manifest Format</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/threat-model.html">Threat model</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Threat model</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
 <ul>
@@ -107,13 +107,12 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#initial-setup">Initial setup</a></li>
-<li><a class="reference internal" href="#add-a-secret">Add a secret</a></li>
-<li><a class="reference internal" href="#automatic-unseal-on-apply">Automatic unseal on apply</a></li>
-<li><a class="reference internal" href="#workflow-on-a-new-machine">Workflow on a new machine</a></li>
-<li><a class="reference internal" href="#updating-a-secret">Updating a secret</a></li>
-<li><a class="reference internal" href="#removing-a-secret">Removing a secret</a></li>
-<li><a class="reference internal" href="#migration-from-embedded-vault-nim">Migration from embedded vault.nim</a></li>
+<li><a class="reference internal" href="#assets">Assets</a></li>
+<li><a class="reference internal" href="#adversaries">Adversaries</a></li>
+<li><a class="reference internal" href="#what-the-commands-buy">What the commands buy</a></li>
+<li><a class="reference internal" href="#trust-root">Trust root</a></li>
+<li><a class="reference internal" href="#limits-that-stay">Limits that stay</a></li>
+<li><a class="reference internal" href="#in-repo-review-2026-09">In-repo review (2026-09)</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -137,7 +136,7 @@ data-aria-dark="Switch to auto color mode">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/HaoZeke/nimvault/blob/main/docs/source/howto/chezmoi.rst">Edit this page</a>
+  <a href="https://github.com/HaoZeke/nimvault/blob/main/docs/source/explanation/threat-model.rst">Edit this page</a>
 </div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -154,7 +153,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">chezmoi Integration</strong>
+        <strong itemprop="name">Threat model</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -171,7 +170,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="https://nimvault.rgoswami.me/_sources/howto/chezmoi.rst.txt"
+      data-url="https://nimvault.rgoswami.me/_sources/explanation/threat-model.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -185,160 +184,135 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="https://nimvault.rgoswami.me/_sources/howto/chezmoi.rst.txt">
+          data-url="https://nimvault.rgoswami.me/_sources/explanation/threat-model.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="https://nimvault.rgoswami.me/_sources/howto/chezmoi.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//nimvault.rgoswami.me/_sources/howto/chezmoi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://nimvault.rgoswami.me/_sources/explanation/threat-model.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//nimvault.rgoswami.me/_sources/explanation/threat-model.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//nimvault.rgoswami.me/_sources/howto/chezmoi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//nimvault.rgoswami.me/_sources/explanation/threat-model.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="chezmoi-integration">
-<h1><a class="toc-backref" href="#id1" role="doc-backlink">chezmoi Integration</a><a class="headerlink" href="#chezmoi-integration" title="Link to this heading">¶</a></h1>
+          <section id="threat-model">
+<h1><a class="toc-backref" href="#id1" role="doc-backlink">Threat model</a><a class="headerlink" href="#threat-model" title="Link to this heading">¶</a></h1>
 <nav class="contents" id="contents">
 <p class="topic-title">Contents</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="#chezmoi-integration" id="id1">chezmoi Integration</a></p>
+<li><p><a class="reference internal" href="#threat-model" id="id1">Threat model</a></p>
 <ul>
-<li><p><a class="reference internal" href="#initial-setup" id="id2">Initial setup</a></p></li>
-<li><p><a class="reference internal" href="#add-a-secret" id="id3">Add a secret</a></p></li>
-<li><p><a class="reference internal" href="#automatic-unseal-on-apply" id="id4">Automatic unseal on apply</a></p></li>
-<li><p><a class="reference internal" href="#workflow-on-a-new-machine" id="id5">Workflow on a new machine</a></p></li>
-<li><p><a class="reference internal" href="#updating-a-secret" id="id6">Updating a secret</a></p></li>
-<li><p><a class="reference internal" href="#removing-a-secret" id="id7">Removing a secret</a></p></li>
-<li><p><a class="reference internal" href="#migration-from-embedded-vault-nim" id="id8">Migration from embedded vault.nim</a></p></li>
+<li><p><a class="reference internal" href="#assets" id="id2">Assets</a></p></li>
+<li><p><a class="reference internal" href="#adversaries" id="id3">Adversaries</a></p></li>
+<li><p><a class="reference internal" href="#what-the-commands-buy" id="id4">What the commands buy</a></p></li>
+<li><p><a class="reference internal" href="#trust-root" id="id5">Trust root</a></p></li>
+<li><p><a class="reference internal" href="#limits-that-stay" id="id6">Limits that stay</a></p></li>
+<li><p><a class="reference internal" href="#in-repo-review-2026-09" id="id7">In-repo review (2026-09)</a></p></li>
 </ul>
 </li>
 </ul>
 </nav>
-<p>Encrypt secrets in your chezmoi dotfiles repo so they travel safely across
-machines. <code class="docutils literal notranslate"><span class="pre">chezmoi</span> <span class="pre">apply</span></code> will automatically decrypt them.</p>
-<img alt="../_images/chezmoi_flow.svg" src="../_images/chezmoi_flow.svg" />
-<section id="initial-setup">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">Initial setup</a><a class="headerlink" href="#initial-setup" title="Link to this heading">¶</a></h2>
-<p>This example encrypts a Claude Code settings file using chezmoi and nimvault.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># Navigate to the chezmoi source directory</span>
-</span><span data-line="2"><span class="nb">cd</span><span class="w"> </span>~/.local/share/chezmoi
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1"># Create a vault config with your GPG key ID</span>
-</span><span data-line="5">mkdir<span class="w"> </span>-p<span class="w"> </span>.vault
-</span><span data-line="6"><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;recipient = 9CCCE36402CB49A6&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.vault/config
-</span><span data-line="7"><span class="c1"># ^ replace with your key ID (gpg --list-keys --keyid-format long)</span>
-</span></pre></div>
+<p>This is the threat model for the CLI, not a third-party audit.</p>
+<section id="assets">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Assets</a><a class="headerlink" href="#assets" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Plaintext secrets on disk after <code class="docutils literal notranslate"><span class="pre">unseal</span></code> or <code class="docutils literal notranslate"><span class="pre">get</span></code></p></li>
+<li><p>Per-file data keys in <code class="docutils literal notranslate"><span class="pre">.vault/keys.*</span></code></p></li>
+<li><p>The signed manifest (the trust root: paths plus blob digests)</p></li>
+<li><p>Ciphertext blobs in git history (they outlive <code class="docutils literal notranslate"><span class="pre">rotate</span> <span class="pre">--rekey</span></code>)</p></li>
+</ul>
+</section>
+<section id="adversaries">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Adversaries</a><a class="headerlink" href="#adversaries" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Anyone who can clone the remote (ciphertext and the encrypted name map)</p></li>
+<li><p>A machine that is later lost (its private key still opens the wrap group
+it was given)</p></li>
+<li><p>A local uid that can read world-readable temp files</p></li>
+<li><p>A malicious pull request running in CI</p></li>
+</ul>
+</section>
+<section id="what-the-commands-buy">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">What the commands buy</a><a class="headerlink" href="#what-the-commands-buy" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p>Command</p></td>
+<td><p>Gives</p></td>
+<td><p>Does not give</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">check</span></code></p></td>
+<td><p>blob digests still match the signed manifest; no key needed</p></td>
+<td><p>that you can decrypt; that git history is gone</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rotate</span></code></p></td>
+<td><p>a removed recipient can no longer unwrap the data keys</p></td>
+<td><p>post-compromise secrecy for a leaked data key</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rotate</span> <span class="pre">--rekey</span></code></p></td>
+<td><p>new data keys and new payloads</p></td>
+<td><p>erasure of old objects on the remote</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p>local plaintext vs the recorded content hash</p></td>
+<td><p>blob integrity</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scan</span></code></p></td>
+<td><p>unvaulted secret-shaped literals on disk</p></td>
+<td><p>a complete detector</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 </section>
-<section id="add-a-secret">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">Add a secret</a><a class="headerlink" href="#add-a-secret" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>~/.local/share/chezmoi
-</span><span data-line="2">
-</span><span data-line="3"><span class="c1"># Add a sensitive file to the vault</span>
-</span><span data-line="4">nimvault<span class="w"> </span>add<span class="w"> </span>~/.claude/settings.json
-</span><span data-line="5"><span class="c1"># Added:</span>
-</span><span data-line="6"><span class="c1">#   id:   e4a1f7c9b2d30856</span>
-</span><span data-line="7"><span class="c1">#   path: ~/.claude/settings.json</span>
-</span><span data-line="8"><span class="c1">#   blob: .vault/e4a1f7c9b2d30856.gpg</span>
-</span><span data-line="9">
-</span><span data-line="10"><span class="c1"># Seal all entries (encrypts to .vault/*.gpg)</span>
-</span><span data-line="11">nimvault<span class="w"> </span>seal
-</span><span data-line="12">
-</span><span data-line="13"><span class="c1"># Commit the encrypted blobs</span>
-</span><span data-line="14">git<span class="w"> </span>add<span class="w"> </span>.vault/
-</span><span data-line="15">git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;vault: add claude settings&quot;</span>
-</span><span data-line="16">git<span class="w"> </span>push
-</span></pre></div>
-</div>
+<section id="trust-root">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Trust root</a><a class="headerlink" href="#trust-root" title="Link to this heading">¶</a></h2>
+<p>The manifest is signed. Age payloads have no in-band signature; GPG v5
+blobs do. v6 payloads are symmetric and unsigned in-band. Authenticity
+for those is the signed manifest plus the blob digest <code class="docutils literal notranslate"><span class="pre">unseal</span></code> and <code class="docutils literal notranslate"><span class="pre">get</span></code>
+check before decrypting.</p>
+<p>Key files are encrypted and not signed. A tampered key file fails to
+decrypt rather than forging plaintext.</p>
 </section>
-<section id="automatic-unseal-on-apply">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">Automatic unseal on apply</a><a class="headerlink" href="#automatic-unseal-on-apply" title="Link to this heading">¶</a></h2>
-<p>Create a chezmoi run-before script that unseals the vault before applying
-dotfiles. This runs every time you call <code class="docutils literal notranslate"><span class="pre">chezmoi</span> <span class="pre">apply</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">cat<span class="w"> </span>&gt;<span class="w"> </span>~/.local/share/chezmoi/.chezmoiscripts/run_before_unseal_vault.sh.tmpl<span class="w"> </span><span class="s">&lt;&lt; &#39;TMPL&#39;</span>
-</span><span data-line="2"><span class="s">#!/bin/bash --norc</span>
-</span><span data-line="3"><span class="s">{{ if and (eq .setup_vault &quot;yes&quot;) (eq .encrypted &quot;yes&quot;) -}}</span>
-</span><span data-line="4"><span class="s">cd &quot;{{ .chezmoi.sourceDir }}&quot;</span>
-</span><span data-line="5"><span class="s">if command -v nimvault &amp;&gt;/dev/null &amp;&amp; command -v gpg &amp;&gt;/dev/null; then</span>
-</span><span data-line="6"><span class="s">    nimvault unseal 2&gt;/dev/null || true</span>
-</span><span data-line="7"><span class="s">fi</span>
-</span><span data-line="8"><span class="s">{{ end -}}</span>
-</span><span data-line="9"><span class="s">TMPL</span>
-</span></pre></div>
-</div>
-<p>Add the template data to your chezmoi config. For <code class="docutils literal notranslate"><span class="pre">.chezmoidata.toml</span></code>:</p>
-<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">[data]</span>
-</span><span data-line="2"><span class="n">setup_vault</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;yes&quot;</span>
-</span><span data-line="3"><span class="n">encrypted</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;yes&quot;</span>
-</span></pre></div>
-</div>
-<p>Or for <code class="docutils literal notranslate"><span class="pre">.chezmoi.toml.tmpl</span></code> (if using prompted config):</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">[data]
-</span><span data-line="2">setup_vault = {{ promptString &quot;Enable vault? (yes/no)&quot; | quote }}
-</span><span data-line="3">encrypted   = {{ promptString &quot;Encrypted? (yes/no)&quot; | quote }}
-</span></pre></div>
-</div>
+<section id="limits-that-stay">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Limits that stay</a><a class="headerlink" href="#limits-that-stay" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Filenames are hidden; counts, sizes and mtimes of blobs are not.</p></li>
+<li><p>There is no forward secrecy: old ciphertext in git history still
+opens with an old data key.</p></li>
+<li><p>A private vault repository is the way to keep ciphertext off a public
+remote. Rotation cannot reach the GitHub fork network.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code> is a migration hatch. It is not a daily mode.</p></li>
+</ul>
 </section>
-<section id="workflow-on-a-new-machine">
-<h2><a class="toc-backref" href="#id5" role="doc-backlink">Workflow on a new machine</a><a class="headerlink" href="#workflow-on-a-new-machine" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="c1"># 1. Install nimvault</span>
-</span><span data-line="2">nimble<span class="w"> </span>install<span class="w"> </span>nimvault
-</span><span data-line="3">
-</span><span data-line="4"><span class="c1"># 2. Initialize chezmoi (pulls your dotfiles repo)</span>
-</span><span data-line="5">chezmoi<span class="w"> </span>init<span class="w"> </span>https://github.com/YOU/dotfiles.git
-</span><span data-line="6">
-</span><span data-line="7"><span class="c1"># 3. Apply -- the run-before script calls nimvault unseal automatically</span>
-</span><span data-line="8">chezmoi<span class="w"> </span>apply
-</span><span data-line="9"><span class="c1"># nimvault decrypts all vault entries to their target paths</span>
-</span></pre></div>
-</div>
-</section>
-<section id="updating-a-secret">
-<h2><a class="toc-backref" href="#id6" role="doc-backlink">Updating a secret</a><a class="headerlink" href="#updating-a-secret" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>~/.local/share/chezmoi
-</span><span data-line="2">
-</span><span data-line="3"><span class="c1"># Check what changed</span>
-</span><span data-line="4">nimvault<span class="w"> </span>status
-</span><span data-line="5"><span class="c1"># [modified]   ~/.claude/settings.json</span>
-</span><span data-line="6">
-</span><span data-line="7"><span class="c1"># Re-encrypt with updated content</span>
-</span><span data-line="8">nimvault<span class="w"> </span>seal
-</span><span data-line="9">git<span class="w"> </span>add<span class="w"> </span>.vault/
-</span><span data-line="10">git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;vault: update claude settings&quot;</span>
-</span><span data-line="11">git<span class="w"> </span>push
-</span></pre></div>
-</div>
-</section>
-<section id="removing-a-secret">
-<h2><a class="toc-backref" href="#id7" role="doc-backlink">Removing a secret</a><a class="headerlink" href="#removing-a-secret" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>~/.local/share/chezmoi
-</span><span data-line="2">
-</span><span data-line="3">nimvault<span class="w"> </span>rm<span class="w"> </span>~/.claude/settings.json
-</span><span data-line="4"><span class="c1"># Removed e4a1f7c9b2d30856 (~/.claude/settings.json)</span>
-</span><span data-line="5"><span class="c1"># The local plaintext file is NOT deleted</span>
-</span><span data-line="6">
-</span><span data-line="7">git<span class="w"> </span>add<span class="w"> </span>.vault/
-</span><span data-line="8">git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;vault: remove claude settings&quot;</span>
-</span></pre></div>
-</div>
-</section>
-<section id="migration-from-embedded-vault-nim">
-<h2><a class="toc-backref" href="#id8" role="doc-backlink">Migration from embedded vault.nim</a><a class="headerlink" href="#migration-from-embedded-vault-nim" title="Link to this heading">¶</a></h2>
-<p>If you previously used an inline <code class="docutils literal notranslate"><span class="pre">scripts/vault.nim</span></code> in your chezmoi repo:</p>
-<ol class="arabic simple">
-<li><p>Install nimvault globally (<code class="docutils literal notranslate"><span class="pre">nimble</span> <span class="pre">install</span> <span class="pre">nimvault</span></code>)</p></li>
-<li><p>Add <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> with your recipient key</p></li>
-<li><p>Update the run-before script to call <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">unseal</span></code> instead of
-<code class="docutils literal notranslate"><span class="pre">nim</span> <span class="pre">r</span> <span class="pre">scripts/vault.nim</span> <span class="pre">unseal</span></code></p></li>
-<li><p>Remove <code class="docutils literal notranslate"><span class="pre">scripts/vault.nim</span></code> from the chezmoi repo</p></li>
-<li><p>The <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> directory and blobs are unchanged: no re-encryption needed</p></li>
-</ol>
+<section id="in-repo-review-2026-09">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">In-repo review (2026-09)</a><a class="headerlink" href="#in-repo-review-2026-09" title="Link to this heading">¶</a></h2>
+<p>Not a third-party audit. Findings from reading <code class="docutils literal notranslate"><span class="pre">src/</span></code> and the test suite,
+then fixing what was independently true:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">add</span></code> / <code class="docutils literal notranslate"><span class="pre">rm</span></code> / <code class="docutils literal notranslate"><span class="pre">mv</span></code> / <code class="docutils literal notranslate"><span class="pre">add-dir</span></code> used to drop the seal-key header (fixed).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">add</span></code> used to write v5 blobs into a v6 vault (fixed).</p></li>
+<li><p>Plaintext and data keys used to land in <code class="docutils literal notranslate"><span class="pre">.vault/.plain</span></code> and pid-named
+<code class="docutils literal notranslate"><span class="pre">/tmp</span></code> files (fixed).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">add-dir</span></code> used to follow symlinks out of the named tree (fixed).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">get</span></code> on a GPG v5 blob used to <code class="docutils literal notranslate"><span class="pre">strip</span></code> the secret (fixed).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">check</span></code> used to pass a v6 vault with no key file (fixed).</p></li>
+<li><p>One combined <code class="docutils literal notranslate"><span class="pre">manifest.gpg</span></code> is last-writer-wins on two adds; per-entry
+records under <code class="docutils literal notranslate"><span class="pre">.vault/e/</span></code> close that (nimvault-k0fo).</p></li>
+</ul>
+<p>Accepted:</p>
+<ul class="simple">
+<li><p>Absolute paths outside <code class="docutils literal notranslate"><span class="pre">$HOME</span></code> with no <code class="docutils literal notranslate"><span class="pre">root</span></code> are the caller’s choice.</p></li>
+<li><p>Unsigned GPG in-band signatures on key files stay unsigned so a second
+machine does not need the signer’s public key to decrypt.</p></li>
+<li><p>Third-party review is not commissioned from this sitting.</p></li>
+</ul>
 </section>
 </section>
 
@@ -348,16 +322,16 @@ dotfiles. This runs every time you call <code class="docutils literal notranslat
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="keybase.html">
+    <a href="../reference/manifest.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Keybase GPG Key Management</div></div>
+        <span>Previous</span><div class="title">Manifest Format</div></div>
     </a>
   </div><div class="navigation-next">
-    <a href="private-vault-repo.html">
+    <a href="../contributing/index.html">
       <div class="page-info">
         <span>Next</span>
-        <div class="title">Keep the vault in its own private repository</div>
+        <div class="title">Contributing</div>
       </div>
       <i class="i-lucide chevron-right"></i>
     </a>

@@ -2,8 +2,8 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>CLI Reference - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Configuration" href="config.html" /><link rel="prev" title="Service Vaults" href="../howto/service-vault.html" />
-      <link rel="canonical" href="nimvault.rgoswami.me/reference/cli.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>CLI Reference - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Configuration" href="config.html" /><link rel="prev" title="Headless and CI GPG" href="../howto/headless-gpg.html" />
+      <link rel="canonical" href="https://nimvault.rgoswami.me/reference/cli.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -19,7 +19,7 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="nimvault.rgoswami.me/reference/cli.html"/>
+  <meta property="og:url" content="https://nimvault.rgoswami.me/reference/cli.html"/>
   <meta property="og:title" content="CLI Reference"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
@@ -83,12 +83,14 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/chezmoi.html">chezmoi Integration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="config.html">Configuration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="manifest.html">Manifest Format</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/threat-model.html">Threat model</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
 <ul>
@@ -132,6 +134,11 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#scan">2.11 scan</a></li>
 <li><a class="reference internal" href="#list">2.12 list</a></li>
 <li><a class="reference internal" href="#status">2.13 status</a></li>
+<li><a class="reference internal" href="#who">2.14 who</a></li>
+<li><a class="reference internal" href="#lock">2.15 lock</a></li>
+<li><a class="reference internal" href="#init">2.16 init</a></li>
+<li><a class="reference internal" href="#hook">2.17 hook</a></li>
+<li><a class="reference internal" href="#doctor">2.18 doctor</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#where-the-vault-lives">3 Where the vault lives</a></li>
@@ -202,7 +209,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="nimvault.rgoswami.me/_sources/reference/cli.rst.txt"
+      data-url="https://nimvault.rgoswami.me/_sources/reference/cli.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -216,17 +223,17 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="nimvault.rgoswami.me/_sources/reference/cli.rst.txt">
+          data-url="https://nimvault.rgoswami.me/_sources/reference/cli.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="nimvault.rgoswami.me/_sources/reference/cli.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20nimvault.rgoswami.me/_sources/reference/cli.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://nimvault.rgoswami.me/_sources/reference/cli.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//nimvault.rgoswami.me/_sources/reference/cli.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20nimvault.rgoswami.me/_sources/reference/cli.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//nimvault.rgoswami.me/_sources/reference/cli.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
@@ -272,17 +279,22 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#scan" id="id18">2.11 scan</a></p></li>
 <li><p><a class="reference internal" href="#list" id="id19">2.12 list</a></p></li>
 <li><p><a class="reference internal" href="#status" id="id20">2.13 status</a></p></li>
+<li><p><a class="reference internal" href="#who" id="id21">2.14 who</a></p></li>
+<li><p><a class="reference internal" href="#lock" id="id22">2.15 lock</a></p></li>
+<li><p><a class="reference internal" href="#init" id="id23">2.16 init</a></p></li>
+<li><p><a class="reference internal" href="#hook" id="id24">2.17 hook</a></p></li>
+<li><p><a class="reference internal" href="#doctor" id="id25">2.18 doctor</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#where-the-vault-lives" id="id21">3 Where the vault lives</a></p></li>
-<li><p><a class="reference internal" href="#global-options" id="id22">4 Global options</a></p></li>
-<li><p><a class="reference internal" href="#exit-codes" id="id23">5 Exit codes</a></p></li>
-<li><p><a class="reference internal" href="#security-model" id="id24">6 Security model</a></p>
+<li><p><a class="reference internal" href="#where-the-vault-lives" id="id26">3 Where the vault lives</a></p></li>
+<li><p><a class="reference internal" href="#global-options" id="id27">4 Global options</a></p></li>
+<li><p><a class="reference internal" href="#exit-codes" id="id28">5 Exit codes</a></p></li>
+<li><p><a class="reference internal" href="#security-model" id="id29">6 Security model</a></p>
 <ul>
-<li><p><a class="reference internal" href="#known-limitations" id="id25">6.1 Known limitations</a></p>
+<li><p><a class="reference internal" href="#known-limitations" id="id30">6.1 Known limitations</a></p>
 <ul>
-<li><p><a class="reference internal" href="#metadata-leakage" id="id26">6.1.1 Metadata leakage</a></p></li>
-<li><p><a class="reference internal" href="#no-forward-secrecy" id="id27">6.1.2 No forward secrecy</a></p></li>
+<li><p><a class="reference internal" href="#metadata-leakage" id="id31">6.1.1 Metadata leakage</a></p></li>
+<li><p><a class="reference internal" href="#no-forward-secrecy" id="id32">6.1.2 No forward secrecy</a></p></li>
 </ul>
 </li>
 </ul>
@@ -331,10 +343,13 @@ the manifest that records their digests.</p>
 </section>
 <section id="unseal">
 <h3><a class="toc-backref" href="#id6" role="doc-backlink">2.2 unseal</a><a class="headerlink" href="#unseal" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [--recipient KEY] [--allow-unsigned]
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [PATH...] [--recipient KEY] [--allow-unsigned] [--vault DIR]
 </span></pre></div>
 </div>
-<p>Decrypt all vault blobs to their target paths. Before decryption, verifies:</p>
+<p>With no path this restores the whole vault. Naming paths restores only
+those entries, and a directory restores everything beneath it. A selector
+that matches nothing is an error.</p>
+<p>Before decryption, verifies:</p>
 <ul class="simple">
 <li><p>Manifest GPG signature</p></li>
 <li><p>Blob SHA-256 hashes against manifest</p></li>
@@ -497,8 +512,9 @@ does. Churn is the intent, so it bypasses the incremental skip.</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault status [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Show sync status of all vault entries by comparing SHA-256 hashes of local files
-against decrypted blobs:</p>
+<p>Show sync status of all vault entries by comparing local plaintext SHA-256
+to the manifest <code class="docutils literal notranslate"><span class="pre">contentHash</span></code>. Only v3-and-earlier entries that lack a
+content hash are decrypted:</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">[in-sync]</span></code></dt><dd><p>local matches vault</p>
 </dd>
@@ -512,9 +528,47 @@ against decrypted blobs:</p>
 <p>Directory entries: When you <code class="docutils literal notranslate"><span class="pre">add-dir</span></code> a directory, each file appears individually
 in <code class="docutils literal notranslate"><span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">status</span></code> output. The directory structure is implicit in the paths.</p>
 </section>
+<section id="who">
+<h3><a class="toc-backref" href="#id21" role="doc-backlink">2.14 who</a><a class="headerlink" href="#who" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault who [--recipient KEY] [--vault DIR]
+</span></pre></div>
+</div>
+<p>Print which wrap-rule recipients can open each entry.</p>
+</section>
+<section id="lock">
+<h3><a class="toc-backref" href="#id22" role="doc-backlink">2.15 lock</a><a class="headerlink" href="#lock" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault lock [--recipient KEY] [--vault DIR]
+</span></pre></div>
+</div>
+<p>Remove in-sync plaintext. Vault entries stay; <code class="docutils literal notranslate"><span class="pre">unseal</span></code> restores them. A
+modified file is refused.</p>
+</section>
+<section id="init">
+<h3><a class="toc-backref" href="#id23" role="doc-backlink">2.16 init</a><a class="headerlink" href="#init" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault init [--recipient KEY] [--vault DIR]
+</span></pre></div>
+</div>
+<p>Write <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> with the recipient. Refuses if the file already exists.</p>
+</section>
+<section id="hook">
+<h3><a class="toc-backref" href="#id24" role="doc-backlink">2.17 hook</a><a class="headerlink" href="#hook" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault hook [--vault DIR]
+</span></pre></div>
+</div>
+<p>Install a <code class="docutils literal notranslate"><span class="pre">pre-push</span></code> hook that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> and a <code class="docutils literal notranslate"><span class="pre">pre-commit</span></code> hook
+that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">scan</span></code>. Refuses to overwrite existing hooks.</p>
+</section>
+<section id="doctor">
+<h3><a class="toc-backref" href="#id25" role="doc-backlink">2.18 doctor</a><a class="headerlink" href="#doctor" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault doctor [--recipient KEY] [--vault DIR]
+</span></pre></div>
+</div>
+<p>Print backend, recipient, binaries, manifest and <code class="docutils literal notranslate"><span class="pre">check</span></code> status. Exits
+non-zero when something will not work.</p>
+</section>
 </section>
 <section id="where-the-vault-lives">
-<h2><a class="toc-backref" href="#id21" role="doc-backlink">3 Where the vault lives</a><a class="headerlink" href="#where-the-vault-lives" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id26" role="doc-backlink">3 Where the vault lives</a><a class="headerlink" href="#where-the-vault-lives" title="Link to this heading">¶</a></h2>
 <p>Every command accepts <code class="docutils literal notranslate"><span class="pre">--vault</span> <span class="pre">DIR</span></code>. The vault repository need not be the one
 you are standing in, which is what lets <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> sit in a private repository
 while the dotfiles it protects stay public. Resolution order:</p>
@@ -527,7 +581,7 @@ while the dotfiles it protects stay public. Resolution order:</p>
 <p>See the <a class="reference external" href="../howto/private-vault-repo.rst">private vault repository how-to</a>.</p>
 </section>
 <section id="global-options">
-<h2><a class="toc-backref" href="#id22" role="doc-backlink">4 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id27" role="doc-backlink">4 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code></dt><dd><p>GPG recipient key ID. Overrides env var and config file.
 See <a class="reference external" href="config.rst">configuration</a> for the full resolution chain.</p>
@@ -539,7 +593,7 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 </dl>
 </section>
 <section id="exit-codes">
-<h2><a class="toc-backref" href="#id23" role="doc-backlink">5 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id28" role="doc-backlink">5 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper docutils container">
 <table class="docutils align-default">
 <thead>
@@ -559,7 +613,7 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 </div>
 </section>
 <section id="security-model">
-<h2><a class="toc-backref" href="#id24" role="doc-backlink">6 Security model</a><a class="headerlink" href="#security-model" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id29" role="doc-backlink">6 Security model</a><a class="headerlink" href="#security-model" title="Link to this heading">¶</a></h2>
 <p>All encryption operations also GPG-sign the payload. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, signatures and
 blob hashes are verified before any plaintext is written to disk:</p>
 <ol class="arabic simple">
@@ -576,10 +630,10 @@ step 2</p></li>
 <p>This design prevents forgery, ciphertext swapping, path traversal, and release
 of unverified plaintext.</p>
 <section id="known-limitations">
-<h3><a class="toc-backref" href="#id25" role="doc-backlink">6.1 Known limitations</a><a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id30" role="doc-backlink">6.1 Known limitations</a><a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h3>
 <p>These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.</p>
 <section id="metadata-leakage">
-<h4><a class="toc-backref" href="#id26" role="doc-backlink">6.1.1 Metadata leakage</a><a class="headerlink" href="#metadata-leakage" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id31" role="doc-backlink">6.1.1 Metadata leakage</a><a class="headerlink" href="#metadata-leakage" title="Link to this heading">¶</a></h4>
 <p>Because the tool encrypts files individually, an observer analyzing the Git
 history can track update frequency, ciphertext size variations, and file count
 over time. GPG ciphertext sizes correlate with plaintext sizes, so relative file
@@ -588,7 +642,7 @@ would conceal this metadata but sacrifice Git delta efficiency. For most persona
 vault use cases this trade-off is acceptable.</p>
 </section>
 <section id="no-forward-secrecy">
-<h4><a class="toc-backref" href="#id27" role="doc-backlink">6.1.2 No forward secrecy</a><a class="headerlink" href="#no-forward-secrecy" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id32" role="doc-backlink">6.1.2 No forward secrecy</a><a class="headerlink" href="#no-forward-secrecy" title="Link to this heading">¶</a></h4>
 <p>An adversary who archives the public Git history today and obtains a key later
 can decrypt every historical version. Git keeps the old ciphertext whatever the
 current vault holds, so no operation on the working tree reaches it.</p>
@@ -612,10 +666,10 @@ is treated formally in Everspaugh et al., CRYPTO 2017
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../howto/service-vault.html">
+    <a href="../howto/headless-gpg.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Service Vaults</div></div>
+        <span>Previous</span><div class="title">Headless and CI GPG</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="config.html">

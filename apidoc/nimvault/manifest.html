@@ -71,7 +71,10 @@
   <details open>
     <summary><a class="reference reference-toplevel" href="#10" id="60">Consts</a></summary>
     <ul class="simple simple-toc-section">
-      <li><a class="reference" href="#SealKeyHeader" title="SealKeyHeader = &quot;# vault-seal-key&quot;">SealKeyHeader</a></li>
+      <li><a class="reference" href="#EntryDirName" title="EntryDirName = &quot;e&quot;">EntryDirName</a></li>
+<li><a class="reference" href="#EntryHeader" title="EntryHeader = &quot;# vault-entry-v7&quot;">EntryHeader</a></li>
+<li><a class="reference" href="#EnvelopeHeader" title="EnvelopeHeader = &quot;# vault-envelope&quot;">EnvelopeHeader</a></li>
+<li><a class="reference" href="#SealKeyHeader" title="SealKeyHeader = &quot;# vault-seal-key&quot;">SealKeyHeader</a></li>
 
     </ul>
   </details>
@@ -80,12 +83,28 @@
   <details open>
     <summary><a class="reference reference-toplevel" href="#12" id="62">Procs</a></summary>
     <ul class="simple simple-toc-section">
-      <ul class="simple nested-toc-section">expandHome
+      <ul class="simple nested-toc-section">entryDir
+  <li><a class="reference" href="#entryDir%2Cstring" title="entryDir(repo: string): string">entryDir(repo: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">entryFile
+  <li><a class="reference" href="#entryFile%2Cstring%2CGpgConfig%2Cstring" title="entryFile(repo: string; cfg: GpgConfig; id: string): string">entryFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">expandHome
   <li><a class="reference" href="#expandHome%2Cstring" title="expandHome(p: string): string">expandHome(p: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">findEntryFile
+  <li><a class="reference" href="#findEntryFile%2Cstring%2CGpgConfig%2Cstring" title="findEntryFile(repo: string; cfg: GpgConfig; id: string): string">findEntryFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">genId
   <li><a class="reference" href="#genId" title="genId(): string">genId(): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">hasSplitEntries
+  <li><a class="reference" href="#hasSplitEntries%2Cstring" title="hasSplitEntries(repo: string): bool">hasSplitEntries(repo: string): bool</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">isPathSafe
@@ -98,18 +117,40 @@
 </ul>
 <ul class="simple nested-toc-section">loadManifestMeta
   <li><a class="reference" href="#loadManifestMeta%2Cstring" title="loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
-    entries: seq[VaultEntry], sealKey: string]">loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
-    entries: seq[VaultEntry], sealKey: string]</a></li>
+    entries: seq[VaultEntry], sealKey: string, envelope: bool]">loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
+    entries: seq[VaultEntry], sealKey: string, envelope: bool]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">loadSplitEntries
+  <li><a class="reference" href="#loadSplitEntries%2Cstring%2CGpgConfig" title="loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[
+    entries: seq[VaultEntry], deks: DekTable]">loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[
+    entries: seq[VaultEntry], deks: DekTable]</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">resolvePath
   <li><a class="reference" href="#resolvePath%2CGpgConfig%2Cstring" title="resolvePath(cfg: GpgConfig; path: string): string">resolvePath(cfg: GpgConfig; path: string): string</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">saveEntryRecord
+  <li><a class="reference" href="#saveEntryRecord%2Cstring%2CGpgConfig%2CVaultEntry%2Cstring" title="saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)">saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">saveManifest
   <li><a class="reference" href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring" title="saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
-             sealKey = &quot;&quot;)">saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
-             sealKey = &quot;&quot;)</a></li>
+             sealKey = &quot;&quot;; envelope = false)">saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             sealKey = &quot;&quot;; envelope = false)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">saveManifestKeep
+  <li><a class="reference" href="#saveManifestKeep%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig" title="saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+                 envelope = false)">saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+                 envelope = false)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">saveSplitEntries
+  <li><a class="reference" href="#saveSplitEntries%2Cstring%2CGpgConfig%2Cseq%5BVaultEntry%5D%2CDekTable" title="saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
+                 deks: DekTable)">saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
+                 deks: DekTable)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">sealKey
@@ -140,7 +181,7 @@
     <div class="section" id="6">
   <h1><a class="toc-backref" href="#6">Imports</a></h1>
   <dl class="item">
-    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="crypto.html">crypto</a>
+    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="crypto.html">crypto</a>, <a class="reference external" href="dek.html">dek</a>
   </dl>
 </div>
 <div class="section" id="7">
@@ -171,7 +212,31 @@
 <div class="section" id="10">
   <h1><a class="toc-backref" href="#10">Consts</a></h1>
   <dl class="item">
-    <div id="SealKeyHeader">
+    <div id="EntryDirName">
+  <dt><pre><a href="manifest.html#EntryDirName"><span class="Identifier">EntryDirName</span></a> <span class="Other">=</span> <span class="StringLit">&quot;e&quot;</span></pre></dt>
+  <dd>
+    
+    Per-entry records. Two machines that add different files write different paths under here, so git can merge them. The combined manifest cannot.
+    
+  </dd>
+</div>
+<div id="EntryHeader">
+  <dt><pre><a href="manifest.html#EntryHeader"><span class="Identifier">EntryHeader</span></a> <span class="Other">=</span> <span class="StringLit">&quot;# vault-entry-v7&quot;</span></pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+<div id="EnvelopeHeader">
+  <dt><pre><a href="manifest.html#EnvelopeHeader"><span class="Identifier">EnvelopeHeader</span></a> <span class="Other">=</span> <span class="StringLit">&quot;# vault-envelope&quot;</span></pre></dt>
+  <dd>
+    
+    Set when this vault has per-file data keys. <tt class="docutils literal"><span class="pre"><span class="Identifier">check</span></span></tt> uses it to refuse a vault whose blobs still match but whose key file is gone.
+    
+  </dd>
+</div>
+<div id="SealKeyHeader">
   <dt><pre><a href="manifest.html#SealKeyHeader"><span class="Identifier">SealKeyHeader</span></a> <span class="Other">=</span> <span class="StringLit">&quot;# vault-seal-key&quot;</span></pre></dt>
   <dd>
     
@@ -185,7 +250,30 @@
 <div class="section" id="12">
   <h1><a class="toc-backref" href="#12">Procs</a></h1>
   <dl class="item">
-    <div id="expandHome-procs-all">
+    <div id="entryDir-procs-all">
+  <div id="entryDir,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#entryDir%2Cstring"><span class="Identifier">entryDir</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="entryFile-procs-all">
+  <div id="entryFile,string,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#entryFile%2Cstring%2CGpgConfig%2Cstring"><span class="Identifier">entryFile</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">id</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="expandHome-procs-all">
   <div id="expandHome,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#expandHome%2Cstring"><span class="Identifier">expandHome</span></a><span class="Other">(</span><span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
                                      <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span>
@@ -198,12 +286,36 @@
 </div>
 
 </div>
+<div id="findEntryFile-procs-all">
+  <div id="findEntryFile,string,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#findEntryFile%2Cstring%2CGpgConfig%2Cstring"><span class="Identifier">findEntryFile</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">id</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
 <div id="genId-procs-all">
   <div id="genId">
   <dt><pre><span class="Keyword">proc</span> <a href="#genId"><span class="Identifier">genId</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     16-char random hex via cryptographic randomness.
+    
+  </dd>
+</div>
+
+</div>
+<div id="hasSplitEntries-procs-all">
+  <div id="hasSplitEntries,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#hasSplitEntries%2Cstring"><span class="Identifier">hasSplitEntries</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
     
   </dd>
 </div>
@@ -224,13 +336,13 @@
 <div id="loadManifest-procs-all">
   <div id="loadManifest,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#loadManifest%2Cstring"><span class="Identifier">loadManifest</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">cfg</span> <span class="Other">=</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span>
-    <a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
     <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
     <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Entries only; see <a class="reference internal nimdoc" title="proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
-    entries: seq[VaultEntry], sealKey: string]" href="#loadManifestMeta,string">loadManifestMeta</a> when the seal key matters.
+    entries: seq[VaultEntry], sealKey: string, envelope: bool]" href="#loadManifestMeta,string">loadManifestMeta</a> when the seal key matters.
     
   </dd>
 </div>
@@ -239,8 +351,8 @@
 <div id="loadManifestMeta-procs-all">
   <div id="loadManifestMeta,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#loadManifestMeta%2Cstring"><span class="Identifier">loadManifestMeta</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">cfg</span> <span class="Other">=</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Keyword">tuple</span><span class="Other">[</span>
-    <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">sealKey</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">sealKey</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">,</span> <span class="Identifier">envelope</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
     <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
@@ -248,6 +360,20 @@
     <p>Decrypt and parse the vault manifest, with the seal key it was written under (empty for v4 and earlier, which did not record one). Returns empty seq if no manifest exists. Supports v1–v5 (v4 adds plaintext contentHash for fast <tt class="docutils literal"><span class="pre"><span class="Identifier">status</span></span></tt>; v5 adds the <tt class="docutils literal"><span class="pre"><span class="Comment"># vault-seal-key</span></span></tt> header).</p>
 <p><tt class="docutils literal"><span class="pre"><span class="Identifier">cfg</span></span></tt> is optional so the many call sites that only read a gpg vault stay unchanged. <tt class="docutils literal"><span class="pre"><span class="Identifier">findManifest</span></span></tt> still refuses to report a vault sealed by the other backend as empty, so omitting it fails loudly rather than quietly.</p>
 
+    
+  </dd>
+</div>
+
+</div>
+<div id="loadSplitEntries-procs-all">
+  <div id="loadSplitEntries,string,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#loadSplitEntries%2Cstring%2CGpgConfig"><span class="Identifier">loadSplitEntries</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Keyword">tuple</span><span class="Other">[</span>
+    <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Union of every per-entry record this machine can open.
     
   </dd>
 </div>
@@ -265,16 +391,62 @@
 </div>
 
 </div>
+<div id="saveEntryRecord-procs-all">
+  <div id="saveEntryRecord,string,GpgConfig,VaultEntry,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#saveEntryRecord%2Cstring%2CGpgConfig%2CVaultEntry%2Cstring"><span class="Identifier">saveEntryRecord</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">e</span><span class="Other">:</span> <a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">;</span> <span class="Identifier">dek</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">RegexError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span>
+    <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+                       <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+                       <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Write one signed encrypted record. A different id is a different path, which is why two adds merge.
+    
+  </dd>
+</div>
+
+</div>
 <div id="saveManifest-procs-all">
   <div id="saveManifest,string,seq[VaultEntry],GpgConfig,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring"><span class="Identifier">saveManifest</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span>
-                  <span class="Identifier">sealKey</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span>
-    <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
-                                   <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
-                                   <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+                  <span class="Identifier">sealKey</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">;</span> <span class="Identifier">envelope</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span>
+    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span>
+    <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+                                 <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+                                 <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt. A non-empty <tt class="docutils literal"><span class="pre"><span class="Identifier">sealKey</span></span></tt> records what the blobs are encrypted to (v5), which is what lets a later <tt class="docutils literal"><span class="pre"><span class="Identifier">seal</span></span></tt> skip unchanged files without going stale across a recipient change.
+    
+  </dd>
+</div>
+
+</div>
+<div id="saveManifestKeep-procs-all">
+  <div id="saveManifestKeep,string,seq[VaultEntry],GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#saveManifestKeep%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig"><span class="Identifier">saveManifestKeep</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span>
+                      <span class="Identifier">envelope</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span>
+    <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Rewrite the entry list without dropping the seal key or the envelope mark. add/rm/mv/addDir used to call <tt class="docutils literal"><span class="pre"><span class="Identifier">saveManifest</span></span></tt> with the defaults and so forced the next seal to re-encrypt every blob.
+    
+  </dd>
+</div>
+
+</div>
+<div id="saveSplitEntries-procs-all">
+  <div id="saveSplitEntries,string,GpgConfig,seq[VaultEntry],DekTable">
+  <dt><pre><span class="Keyword">proc</span> <a href="#saveSplitEntries%2Cstring%2CGpgConfig%2Cseq%5BVaultEntry%5D%2CDekTable"><span class="Identifier">saveSplitEntries</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span>
+                      <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">,</span>
+    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Persist the live set as one file per id. Records that are gone are removed so a deleted entry does not linger with its data key.
     
   </dd>
 </div>
@@ -327,7 +499,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 19:10:18 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-12 20:20:06 UTC</small>
       </div>
     </div>
   </div>

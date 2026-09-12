@@ -25,7 +25,7 @@
   <div class="document" id="documentId">
     <div class="container">
       <h1 class="title">Index</h1>
-      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/dek.html">nimvault/dek</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/lock.html">nimvault/lock</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>, <a href="nimvault/vaultrepo.html">nimvault/vaultrepo</a>.<br/><p /><h2>API symbols</h2>
+      Modules: <a href="nimvault.html">nimvault</a>, <a href="nimvault/age.html">nimvault/age</a>, <a href="nimvault/cli.html">nimvault/cli</a>, <a href="nimvault/commands.html">nimvault/commands</a>, <a href="nimvault/crypto.html">nimvault/crypto</a>, <a href="nimvault/dek.html">nimvault/dek</a>, <a href="nimvault/gpg.html">nimvault/gpg</a>, <a href="nimvault/lock.html">nimvault/lock</a>, <a href="nimvault/manifest.html">nimvault/manifest</a>, <a href="nimvault/vaultrepo.html">nimvault/vaultrepo</a>, <a href="nimvault/version.html">nimvault/version</a>.<br/><p /><h2>API symbols</h2>
 <dl><dt><a name="acquire" href="#acquire"><span>acquire:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock" href="nimvault/lock.html#acquire%2Cstring%2Cint">lock: proc acquire(repo: string; timeoutMs = 30000): VaultLock</a></li>
@@ -118,6 +118,14 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: type DekTable" href="nimvault/dek.html#DekTable">dek: type DekTable</a></li>
           </ul></dd>
+<dt><a name="doctor" href="#doctor"><span>doctor:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc doctor(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#doctor%2Cstring%2CGpgConfig">commands: proc doctor(repo: string; cfg: GpgConfig)</a></li>
+          </ul></dd>
+<dt><a name="doctorReport" href="#doctorReport"><span>doctorReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc doctorReport(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#doctorReport%2Cstring%2CGpgConfig">commands: proc doctorReport(repo: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
 <dt><a name="effectiveSigner" href="#effectiveSigner"><span>effectiveSigner:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc effectiveSigner(cfg: GpgConfig): string" href="nimvault/crypto.html#effectiveSigner%2CGpgConfig">crypto: proc effectiveSigner(cfg: GpgConfig): string</a></li>
@@ -148,9 +156,33 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)" href="nimvault/dek.html#encryptWithDek%2CGpgConfig%2Cstring%2Cstring%2Cstring">dek: proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)</a></li>
           </ul></dd>
+<dt><a name="ensureVaultDir" href="#ensureVaultDir"><span>ensureVaultDir:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc ensureVaultDir(repo: string)" href="nimvault/crypto.html#ensureVaultDir%2Cstring">crypto: proc ensureVaultDir(repo: string)</a></li>
+          </ul></dd>
+<dt><a name="entryDir" href="#entryDir"><span>entryDir:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc entryDir(repo: string): string" href="nimvault/manifest.html#entryDir%2Cstring">manifest: proc entryDir(repo: string): string</a></li>
+          </ul></dd>
+<dt><a name="EntryDirName" href="#EntryDirName"><span>EntryDirName:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const EntryDirName" href="nimvault/manifest.html#EntryDirName">manifest: const EntryDirName</a></li>
+          </ul></dd>
+<dt><a name="entryFile" href="#entryFile"><span>entryFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc entryFile(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/manifest.html#entryFile%2Cstring%2CGpgConfig%2Cstring">manifest: proc entryFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
+          </ul></dd>
+<dt><a name="EntryHeader" href="#EntryHeader"><span>EntryHeader:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const EntryHeader" href="nimvault/manifest.html#EntryHeader">manifest: const EntryHeader</a></li>
+          </ul></dd>
 <dt><a name="EntryKind" href="#EntryKind"><span>EntryKind:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: enum EntryKind" href="nimvault/manifest.html#EntryKind">manifest: enum EntryKind</a></li>
+          </ul></dd>
+<dt><a name="EnvelopeHeader" href="#EnvelopeHeader"><span>EnvelopeHeader:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const EnvelopeHeader" href="nimvault/manifest.html#EnvelopeHeader">manifest: const EnvelopeHeader</a></li>
           </ul></dd>
 <dt><a name="expandHome" href="#expandHome"><span>expandHome:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -159,6 +191,10 @@
 <dt><a name="findBlob" href="#findBlob"><span>findBlob:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/crypto.html#findBlob%2Cstring%2CGpgConfig%2Cstring">crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string</a></li>
+          </ul></dd>
+<dt><a name="findEntryFile" href="#findEntryFile"><span>findEntryFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc findEntryFile(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/manifest.html#findEntryFile%2Cstring%2CGpgConfig%2Cstring">manifest: proc findEntryFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
           </ul></dd>
 <dt><a name="findKeysFile" href="#findKeysFile"><span>findKeysFile:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -212,9 +248,21 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string" href="nimvault/dek.html#groupKeysPath%2Cstring%2CGpgConfig%2Cstring">dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string</a></li>
           </ul></dd>
+<dt><a name="hasSplitEntries" href="#hasSplitEntries"><span>hasSplitEntries:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc hasSplitEntries(repo: string): bool" href="nimvault/manifest.html#hasSplitEntries%2Cstring">manifest: proc hasSplitEntries(repo: string): bool</a></li>
+          </ul></dd>
 <dt><a name="initGpgConfig" href="#initGpgConfig"><span>initGpgConfig:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig" href="nimvault/gpg.html#initGpgConfig%2Cstring%2Cstring">gpg: proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig</a></li>
+          </ul></dd>
+<dt><a name="initVault" href="#initVault"><span>initVault:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc initVault(repo, recipient: string)" href="nimvault/commands.html#initVault%2Cstring%2Cstring">commands: proc initVault(repo, recipient: string)</a></li>
+          </ul></dd>
+<dt><a name="installHooks" href="#installHooks"><span>installHooks:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc installHooks(repo: string)" href="nimvault/commands.html#installHooks%2Cstring">commands: proc installHooks(repo: string)</a></li>
           </ul></dd>
 <dt><a name="isPathSafe" href="#isPathSafe"><span>isPathSafe:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -251,12 +299,22 @@
 <dt><a name="loadManifestMeta" href="#loadManifestMeta"><span>loadManifestMeta:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
-    entries: seq[VaultEntry], sealKey: string]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
-    entries: seq[VaultEntry], sealKey: string]</a></li>
+    entries: seq[VaultEntry], sealKey: string, envelope: bool]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[
+    entries: seq[VaultEntry], sealKey: string, envelope: bool]</a></li>
+          </ul></dd>
+<dt><a name="loadSplitEntries" href="#loadSplitEntries"><span>loadSplitEntries:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[
+    entries: seq[VaultEntry], deks: DekTable]" href="nimvault/manifest.html#loadSplitEntries%2Cstring%2CGpgConfig">manifest: proc loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[
+    entries: seq[VaultEntry], deks: DekTable]</a></li>
           </ul></dd>
 <dt><a name="lockPath" href="#lockPath"><span>lockPath:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="lock: proc lockPath(repo: string): string" href="nimvault/lock.html#lockPath%2Cstring">lock: proc lockPath(repo: string): string</a></li>
+          </ul></dd>
+<dt><a name="lockPlaintext" href="#lockPlaintext"><span>lockPlaintext:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc lockPlaintext(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#lockPlaintext%2Cstring%2CGpgConfig">commands: proc lockPlaintext(repo: string; cfg: GpgConfig)</a></li>
           </ul></dd>
 <dt><a name="main" href="#main"><span>main:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -302,6 +360,10 @@
 <li><a class="reference external"
           data-doc-search-tag="vaultrepo: const PointerFile" href="nimvault/vaultrepo.html#PointerFile">vaultrepo: const PointerFile</a></li>
           </ul></dd>
+<dt><a name="privateWorkDir" href="#privateWorkDir"><span>privateWorkDir:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: proc privateWorkDir(): string" href="nimvault/crypto.html#privateWorkDir">crypto: proc privateWorkDir(): string</a></li>
+          </ul></dd>
 <dt><a name="readPointer" href="#readPointer"><span>readPointer:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="vaultrepo: proc readPointer(dir: string): string" href="nimvault/vaultrepo.html#readPointer%2Cstring">vaultrepo: proc readPointer(dir: string): string</a></li>
@@ -346,11 +408,27 @@
                 groupOf: Table[string, string];
                 recipsOf: Table[string, seq[string]])</a></li>
           </ul></dd>
+<dt><a name="saveEntryRecord" href="#saveEntryRecord"><span>saveEntryRecord:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)" href="nimvault/manifest.html#saveEntryRecord%2Cstring%2CGpgConfig%2CVaultEntry%2Cstring">manifest: proc saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)</a></li>
+          </ul></dd>
 <dt><a name="saveManifest" href="#saveManifest"><span>saveManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
-             sealKey = &quot;&quot;)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
-             sealKey = &quot;&quot;)</a></li>
+             sealKey = &quot;&quot;; envelope = false)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             sealKey = &quot;&quot;; envelope = false)</a></li>
+          </ul></dd>
+<dt><a name="saveManifestKeep" href="#saveManifestKeep"><span>saveManifestKeep:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+                 envelope = false)" href="nimvault/manifest.html#saveManifestKeep%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig">manifest: proc saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+                 envelope = false)</a></li>
+          </ul></dd>
+<dt><a name="saveSplitEntries" href="#saveSplitEntries"><span>saveSplitEntries:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
+                 deks: DekTable)" href="nimvault/manifest.html#saveSplitEntries%2Cstring%2CGpgConfig%2Cseq%5BVaultEntry%5D%2CDekTable">manifest: proc saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
+                 deks: DekTable)</a></li>
           </ul></dd>
 <dt><a name="scan" href="#scan"><span>scan:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -458,11 +536,23 @@
           </ul></dd>
 <dt><a name="Version" href="#Version"><span>Version:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="cli: const Version" href="nimvault/cli.html#Version">cli: const Version</a></li>
+          data-doc-search-tag="version: const Version" href="nimvault/version.html#Version">version: const Version</a></li>
           </ul></dd>
 <dt><a name="warnIfRootIsAmbiguous" href="#warnIfRootIsAmbiguous"><span>warnIfRootIsAmbiguous:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="vaultrepo: proc warnIfRootIsAmbiguous(vaultRepo, configuredRoot: string)" href="nimvault/vaultrepo.html#warnIfRootIsAmbiguous%2Cstring%2Cstring">vaultrepo: proc warnIfRootIsAmbiguous(vaultRepo, configuredRoot: string)</a></li>
+          </ul></dd>
+<dt><a name="who" href="#who"><span>who:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc who(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#who%2Cstring%2CGpgConfig">commands: proc who(repo: string; cfg: GpgConfig)</a></li>
+          </ul></dd>
+<dt><a name="whoReport" href="#whoReport"><span>whoReport:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc whoReport(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#whoReport%2Cstring%2CGpgConfig">commands: proc whoReport(repo: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="withPrivateUmask" href="#withPrivateUmask"><span>withPrivateUmask:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="crypto: template withPrivateUmask(body: untyped)" href="nimvault/crypto.html#withPrivateUmask.t%2Cuntyped">crypto: template withPrivateUmask(body: untyped)</a></li>
           </ul></dd>
 <dt><a name="withVaultLock" href="#withVaultLock"><span>withVaultLock:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -472,7 +562,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-08-14 19:10:19 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-12 20:20:06 UTC</small>
       </div>
     </div>
   </div>

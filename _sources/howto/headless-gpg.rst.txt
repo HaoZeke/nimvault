@@ -1,0 +1,60 @@
+===================
+Headless and CI GPG
+===================
+
+
+.. contents::
+
+``status`` and ``check`` do not need a key. ``seal``, ``unseal``, ``get`` and
+``rotate`` do. This page is how to unlock GPG when there is no pinentry.
+
+The service-vault howto is a different problem: a dedicated empty-passphrase
+key for one machine. Do not unlock a personal passphrase-protected key in CI
+if a service vault can hold the secret instead.
+
+Throwaway unprotected key (CI)
+------------------------------
+
+This is what ``.github/workflows/ci_test.yml`` does.
+
+.. code:: bash
+
+    GNUPGHOME=$(mktemp -d)
+    chmod 700 "$GNUPGHOME"
+    export GNUPGHOME
+    cat > "$GNUPGHOME/keygen.txt" <<'EOF'
+    %no-protection
+    Key-Type: RSA
+    Key-Length: 2048
+    Name-Real: CI Test
+    Name-Email: ci@nimvault.test
+    Expire-Date: 0
+    %commit
+    EOF
+    gpg --batch --gen-key "$GNUPGHOME/keygen.txt"
+
+Use that key as ``recipient``. Delete ``GNUPGHOME`` at the end of the job.
+
+Loopback pinentry for a real key
+--------------------------------
+
+Only when the job must open an existing key and a service vault is not
+an option.
+
+.. code:: bash
+
+    gpg-connect-agent /bye
+    gpg --batch --pinentry-mode loopback --passphrase-file "$PASSPHRASE_FILE" \
+        --decrypt .vault/manifest.gpg >/dev/null
+    nimvault unseal
+
+Keep the passphrase in the CI secret store, not in the repository. Prefer
+``--passphrase-file`` over putting the passphrase on argv (``/proc/<pid>/cmdline``
+is world-readable).
+
+When not to do this
+-------------------
+
+If the machine is unattended and only needs a subset of secrets, make a
+service vault with its own empty-passphrase key and ``wrap`` rules. See
+`service vaults <service-vault.rst>`_.

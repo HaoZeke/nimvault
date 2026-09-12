@@ -1,16 +1,27 @@
 nimTitle	manifest	nimvault/manifest.html	module nimvault/manifest		0
-nim	ekFile	nimvault/manifest.html#ekFile	EntryKind.ekFile		8
-nim	ekDir	nimvault/manifest.html#ekDir	EntryKind.ekDir		8
-nim	EntryKind	nimvault/manifest.html#EntryKind	enum EntryKind		8
-nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		12
-nim	SealKeyHeader	nimvault/manifest.html#SealKeyHeader	const SealKeyHeader		14
-nim	genId	nimvault/manifest.html#genId	proc genId(): string		17
-nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		24
-nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		31
-nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		40
-nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		51
-nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		64
-nim	sealKey	nimvault/manifest.html#sealKey,GpgConfig	proc sealKey(cfg: GpgConfig): string		68
-nim	loadManifestMeta	nimvault/manifest.html#loadManifestMeta,string	proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[\n    entries: seq[VaultEntry], sealKey: string]		81
-nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		121
-nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig,string	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n             sealKey = "")		126
+nim	ekFile	nimvault/manifest.html#ekFile	EntryKind.ekFile		9
+nim	ekDir	nimvault/manifest.html#ekDir	EntryKind.ekDir		9
+nim	EntryKind	nimvault/manifest.html#EntryKind	enum EntryKind		9
+nim	VaultEntry	nimvault/manifest.html#VaultEntry	tuple VaultEntry		13
+nim	SealKeyHeader	nimvault/manifest.html#SealKeyHeader	const SealKeyHeader		15
+nim	EnvelopeHeader	nimvault/manifest.html#EnvelopeHeader	const EnvelopeHeader		17
+nim	EntryDirName	nimvault/manifest.html#EntryDirName	const EntryDirName		20
+nim	EntryHeader	nimvault/manifest.html#EntryHeader	const EntryHeader		23
+nim	genId	nimvault/manifest.html#genId	proc genId(): string		25
+nim	expandHome	nimvault/manifest.html#expandHome,string	proc expandHome(p: string): string		32
+nim	resolvePath	nimvault/manifest.html#resolvePath,GpgConfig,string	proc resolvePath(cfg: GpgConfig; path: string): string		39
+nim	storePath	nimvault/manifest.html#storePath,GpgConfig,string,string	proc storePath(cfg: GpgConfig; absPath: string; repo: string): string		48
+nim	isPathSafe	nimvault/manifest.html#isPathSafe,GpgConfig,string	proc isPathSafe(cfg: GpgConfig; manifestPath: string): bool		59
+nim	vaultDir	nimvault/manifest.html#vaultDir,string	proc vaultDir(repo: string): string		72
+nim	entryDir	nimvault/manifest.html#entryDir,string	proc entryDir(repo: string): string		76
+nim	hasSplitEntries	nimvault/manifest.html#hasSplitEntries,string	proc hasSplitEntries(repo: string): bool		79
+nim	entryFile	nimvault/manifest.html#entryFile,string,GpgConfig,string	proc entryFile(repo: string; cfg: GpgConfig; id: string): string		91
+nim	findEntryFile	nimvault/manifest.html#findEntryFile,string,GpgConfig,string	proc findEntryFile(repo: string; cfg: GpgConfig; id: string): string		94
+nim	sealKey	nimvault/manifest.html#sealKey,GpgConfig	proc sealKey(cfg: GpgConfig): string		103
+nim	loadSplitEntries	nimvault/manifest.html#loadSplitEntries,string,GpgConfig	proc loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[\n    entries: seq[VaultEntry], deks: DekTable]		134
+nim	saveEntryRecord	nimvault/manifest.html#saveEntryRecord,string,GpgConfig,VaultEntry,string	proc saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)		161
+nim	saveSplitEntries	nimvault/manifest.html#saveSplitEntries,string,GpgConfig,seq[VaultEntry],DekTable	proc saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];\n                 deks: DekTable)		184
+nim	loadManifestMeta	nimvault/manifest.html#loadManifestMeta,string	proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[\n    entries: seq[VaultEntry], sealKey: string, envelope: bool]		206
+nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		270
+nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig,string	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n             sealKey = ""; envelope = false)		275
+nim	saveManifestKeep	nimvault/manifest.html#saveManifestKeep,string,seq[VaultEntry],GpgConfig	proc saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n                 envelope = false)		331

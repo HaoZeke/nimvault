@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>nimvault documentation</title><link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Tutorial" href="quickstart.html" />
-      <link rel="canonical" href="nimvault.rgoswami.me/" /><script>
+      <link rel="canonical" href="https://nimvault.rgoswami.me/" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="_static/pygments.css?v=e1a1ceaf" />
@@ -19,7 +19,7 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="nimvault.rgoswami.me/"/>
+  <meta property="og:url" content="https://nimvault.rgoswami.me/"/>
   <meta property="og:title" content="nimvault"/><meta property="og:image" content="https://github.com/HaoZeke/nimvault/blob/main/branding/logo/nimvault.svg"/><meta name="twitter:card" content="summary_large_image"/>
   <!-- Manual favicon handling with favicon.io -->
 <!-- since sphinx-favicon doesn't work with shibuya -->
@@ -82,12 +82,14 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="howto/chezmoi.html">chezmoi Integration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="howto/service-vault.html">Service Vaults</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="howto/headless-gpg.html">Headless and CI GPG</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="reference/cli.html">CLI Reference</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="reference/config.html">Configuration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="reference/manifest.html">Manifest Format</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="explanation/threat-model.html">Threat model</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
 <ul>
@@ -172,7 +174,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="nimvault.rgoswami.me/_sources/index.rst.txt"
+      data-url="https://nimvault.rgoswami.me/_sources/index.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -186,17 +188,17 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="nimvault.rgoswami.me/_sources/index.rst.txt">
+          data-url="https://nimvault.rgoswami.me/_sources/index.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="nimvault.rgoswami.me/_sources/index.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20nimvault.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://nimvault.rgoswami.me/_sources/index.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//nimvault.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20nimvault.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//nimvault.rgoswami.me/_sources/index.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
@@ -233,9 +235,10 @@ names.</p>
 <dt>Opaque filenames</dt><dd><p>Each file is assigned a 16-character random hex ID
 generated from 8 bytes of cryptographic randomness (<code class="docutils literal notranslate"><span class="pre">std/sysrand</span></code>).</p>
 </dd>
-<dt>Signed and verified</dt><dd><p>All blobs and the manifest are GPG-signed. <code class="docutils literal notranslate"><span class="pre">unseal</span></code>
-verifies signatures and SHA-256 blob hashes before writing any plaintext to
-disk (atomic, fail-closed).</p>
+<dt>Signed and verified</dt><dd><p>The manifest is signed (GPG in-band, or a detached
+SSH signature for age). v6 payloads have no in-band signature; authenticity
+is the signed manifest plus each blob digest. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> checks those before
+writing any plaintext (atomic, fail-closed).</p>
 </dd>
 <dt>Parallel GPG</dt><dd><p>Encryption and decryption spawn GPG processes in parallel via
 <code class="docutils literal notranslate"><span class="pre">startProcess</span></code> for fast batch operations.</p>
@@ -247,8 +250,8 @@ manifest works across machines.</p>
 <code class="docutils literal notranslate"><span class="pre">--recipient</span></code> flag, (2) <code class="docutils literal notranslate"><span class="pre">NIMVAULT_GPG_RECIPIENT</span></code> environment variable, or (3)
 <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> file. First non-empty value wins.</p>
 </dd>
-<dt>Zero runtime dependencies</dt><dd><p>Single static binary; only requires GPG on the
-system.</p>
+<dt>Backends</dt><dd><p>GPG backend needs <code class="docutils literal notranslate"><span class="pre">gpg</span></code> on PATH. Age backend needs <code class="docutils literal notranslate"><span class="pre">age</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">rage</span></code>) and <code class="docutils literal notranslate"><span class="pre">ssh-keygen</span></code> for the detached manifest signature.</p>
 </dd>
 </dl>
 </section>
@@ -295,6 +298,7 @@ responsibility.</p>
 <li class="toctree-l1"><a class="reference internal" href="howto/chezmoi.html">chezmoi Integration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1"><a class="reference internal" href="howto/service-vault.html">Service Vaults</a></li>
+<li class="toctree-l1"><a class="reference internal" href="howto/headless-gpg.html">Headless and CI GPG</a></li>
 </ul>
 </div>
 </div></blockquote>
@@ -308,6 +312,7 @@ responsibility.</p>
 <li class="toctree-l1"><a class="reference internal" href="reference/cli.html">CLI Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference/config.html">Configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference/manifest.html">Manifest Format</a></li>
+<li class="toctree-l1"><a class="reference internal" href="explanation/threat-model.html">Threat model</a></li>
 </ul>
 </div>
 </div></blockquote>

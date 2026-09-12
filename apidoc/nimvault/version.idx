@@ -1,0 +1,2 @@
+nimTitle	version	nimvault/version.html	module nimvault/version		0
+nim	Version	nimvault/version.html#Version	const Version		2

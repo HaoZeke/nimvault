@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Configuration - nimvault documentation</title><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Manifest Format" href="manifest.html" /><link rel="prev" title="CLI Reference" href="cli.html" />
-      <link rel="canonical" href="nimvault.rgoswami.me/reference/config.html" /><script>
+      <link rel="canonical" href="https://nimvault.rgoswami.me/reference/config.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
@@ -19,7 +19,7 @@
 }
 </style>
     <meta property="og:type" content="website"/>
-  <meta property="og:url" content="nimvault.rgoswami.me/reference/config.html"/>
+  <meta property="og:url" content="https://nimvault.rgoswami.me/reference/config.html"/>
   <meta property="og:title" content="Configuration"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Manual favicon handling with favicon.io -->
@@ -83,12 +83,14 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/chezmoi.html">chezmoi Integration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 _expand"><a class="reference internal" href="cli.html">CLI Reference</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="manifest.html">Manifest Format</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/threat-model.html">Threat model</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
 <ul>
@@ -175,7 +177,7 @@ data-aria-dark="Switch to auto color mode">
     <button
       type="button"
       class="js-copy px-3 py-1 inline-flex items-center gap-1"
-      data-url="nimvault.rgoswami.me/_sources/reference/config.rst.txt"
+      data-url="https://nimvault.rgoswami.me/_sources/reference/config.rst.txt"
     >
       <i class="i-lucide" data-icon="copy"></i>
       <span>Copy page</span>
@@ -189,17 +191,17 @@ data-aria-dark="Switch to auto color mode">
     <div role="presentation">
       <div class="flex flex-col" role="group">
         <button class="js-copy" type="button" role="menuitem"
-          data-url="nimvault.rgoswami.me/_sources/reference/config.rst.txt">
+          data-url="https://nimvault.rgoswami.me/_sources/reference/config.rst.txt">
           <span class="iconify-icon">
             <i class="i-lucide" data-icon="copy"></i>
           </span>
           <span>Copy page</span>
         </button>
-        <a role="menuitem" href="nimvault.rgoswami.me/_sources/reference/config.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
-            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20nimvault.rgoswami.me/_sources/reference/config.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        <a role="menuitem" href="https://nimvault.rgoswami.me/_sources/reference/config.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//nimvault.rgoswami.me/_sources/reference/config.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:openai"></iconify-icon>
           <span>Open in ChatGPT</span>
-        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20nimvault.rgoswami.me/_sources/reference/config.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//nimvault.rgoswami.me/_sources/reference/config.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
           <iconify-icon icon="bi:claude"></iconify-icon>
           <span>Open in Claude</span>
         </a></div>
@@ -263,6 +265,19 @@ portability.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">wrap</span></code></dt><dd><p>Repeatable. <code class="docutils literal notranslate"><span class="pre">&lt;glob&gt;:&lt;recipient&gt;[,&lt;recipient&gt;...]</span></code> – which
 recipients may open the entries matching a path pattern. See below.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">backend</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">gpg</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">age</span></code>. Also <code class="docutils literal notranslate"><span class="pre">NIMVAULT_BACKEND</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">identity</span></code></dt><dd><p>Age identity file. Also <code class="docutils literal notranslate"><span class="pre">NIMVAULT_AGE_IDENTITY</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">signer</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">gpg</span></code> (default for the GPG backend), <code class="docutils literal notranslate"><span class="pre">ssh</span></code> (default for age),
+or <code class="docutils literal notranslate"><span class="pre">none</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sign_key</span></code></dt><dd><p>SSH private key used to sign the manifest when <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">ssh</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">allowed_signers</span></code></dt><dd><p>SSH allowed-signers file used to verify that signature.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">signer_identity</span></code></dt><dd><p>Principal to match inside <code class="docutils literal notranslate"><span class="pre">allowed_signers</span></code>.</p>
 </dd>
 </dl>
 </section>
