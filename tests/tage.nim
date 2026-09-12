@@ -74,17 +74,32 @@ block addAndSeal:
            "manifest should be signed"
   echo "PASS: age add + seal produce an age blob and a signed manifest"
 
-block signatureTracksTheLatestManifest:
-  # Both add and seal save the manifest, and age encryption is
-  # non-deterministic, so the second save produces different ciphertext. A
-  # signature left over from the first would describe content that no longer
-  # exists, and every command would still report success.
-  let sig = manifestPath(work, cfg) & ".sig"
-  let before = readFile(sig)
+block signatureTracksTheLatestRecord:
+  # Incremental seal leaves the combined stub (and its signature) alone
+  # when nothing changed. A leftover stub signature is therefore not a
+  # bug: the stub has the same bytes. The per-entry record is the trust
+  # root. age encryption is non-deterministic, so a real rewrite must
+  # replace that record's detached signature.
+  let stubSig = manifestPath(work, cfg) & ".sig"
+  let beforeStub = readFile(stubSig)
   seal(work, cfg)
-  doAssert readFile(sig) != before,
-           "re-sealing must replace the signature, not leave a stale one"
-  echo "PASS: re-sealing replaces the signature"
+  doAssert readFile(stubSig) == beforeStub,
+           "no-op seal must leave the stub signature alone"
+  discard loadManifest(work, verifySig = true, cfg = cfg)
+
+  writeFile(secret, secretText & "-changed")
+  let entries = loadManifest(work, cfg = cfg)
+  doAssert entries.len == 1
+  let recSig = entryFile(work, cfg, entries[0].id) & ".sig"
+  doAssert fileExists(recSig), "age records carry a detached signature"
+  let beforeRec = readFile(recSig)
+  seal(work, cfg)
+  doAssert readFile(recSig) != beforeRec,
+           "resealing a changed file must replace the record signature"
+  discard loadManifest(work, verifySig = true, cfg = cfg)
+  writeFile(secret, secretText)
+  seal(work, cfg)
+  echo "PASS: no-op keeps the stub; a rewrite replaces the record signature"
 
 block unsealAndGet:
   removeFile(secret)
