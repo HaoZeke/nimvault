@@ -4,6 +4,52 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.5.1 (2026-09-12)
+===========================
+
+Security
+--------
+
+- `add-dir` refuses file and directory symlinks so a planted link cannot
+  pull a file from outside the named tree into the vault. (add-dir-symlinks)
+- The documentation workflow builds pull requests with `contents: read` and
+  deploys only from a push-gated job that holds write. (docs-ci-read)
+- Plaintext manifests, data keys and `get` scratch files are written in an
+  owner-only work directory, never as `.vault/.plain` or a predictable name
+  under `/tmp`. (work-dir-plaintext)
+
+
+Added
+-----
+
+- `nimvault init` writes `.vault/config`. `nimvault hook` installs a
+  pre-push `check` hook and a pre-commit `scan` hook. (init-hook)
+- `nimvault lock` removes in-sync plaintext and refuses if any file is
+  modified. `unseal` brings the files back. (lock)
+- Each entry is now its own signed encrypted record under `.vault/e/`, so
+  two machines that add different files no longer fight over one
+  `manifest.gpg`. (split-trust-root)
+- `nimvault who` prints which wrap-rule recipients can open each entry. (who)
+
+
+Changed
+-------
+
+- Docs match the live CLI: version string, age/GPG backends, wrap/signer
+  config keys, selective unseal, threat model, and headless GPG. (docs-accuracy)
+
+
+Fixed
+-----
+
+- `nimvault check` fails when a v6 vault has matching blobs but no data-key
+  file, so CI cannot pass a vault that will not unseal. (check-missing-keys)
+- `add`, `rm`, `mv` and `add-dir` keep the recorded seal key, so the next
+  seal still skips unchanged files instead of re-encrypting the whole vault. (keep-seal-key)
+- `add` and `add-dir` write v6 data keys immediately, so a new entry in a
+  sealed vault can be rewrapped by `rotate` without a forced reseal. (add-v6-deks)
+
+
 nimvault 0.5.0 (2026-08-14)
 ===========================
 

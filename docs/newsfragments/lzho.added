@@ -1,2 +1,0 @@
-`nimvault lock` removes in-sync plaintext and refuses if any file is
-modified. `unseal` brings the files back.

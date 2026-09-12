@@ -1,3 +1,0 @@
-Each entry is now its own signed encrypted record under `.vault/e/`, so
-two machines that add different files no longer fight over one
-`manifest.gpg`.

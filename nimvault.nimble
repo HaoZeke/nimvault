@@ -1,5 +1,5 @@
 # Package
-version       = "0.5.0"
+version       = "0.5.1"
 author        = "Rohit Goswami"
 description   = "GPG-encrypted opaque-blob vault with hidden filenames"
 license       = "MIT"

@@ -1,2 +1,0 @@
-`nimvault check` fails when a v6 vault has matching blobs but no data-key
-file, so CI cannot pass a vault that will not unseal.

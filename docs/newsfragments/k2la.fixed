@@ -1,2 +1,0 @@
-`add` and `add-dir` write v6 data keys immediately, so a new entry in a
-sealed vault can be rewrapped by `rotate` without a forced reseal.
