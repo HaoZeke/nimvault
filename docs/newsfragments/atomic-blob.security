@@ -1,0 +1,3 @@
+Payload encrypt writes a sibling tmp file and renames. unseal holds the
+vault lock and decrypts into the owner-only work dir, not dest.nimvault-tmp.
+add stores an absolute path and refuses one outside the vault root.

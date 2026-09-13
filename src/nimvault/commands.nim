@@ -141,6 +141,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   ## express any partial restore somewhere else. A machine that should hold a
   ## subset of the vault otherwise has to model that split in whatever tool
   ## sits above this one, which is both duplicated and invisible from here.
+  let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
   let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
   if allEntries.len == 0:
@@ -165,6 +166,11 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       stderr.writeLine &"  Resolved: {normalizedPath(resolvePath(cfg, e.path))}"
       nvRaise("  Possible directory traversal attack.")
+    let dest = resolvePath(cfg, e.path)
+    if dirExists(dest.parentDir) or symlinkExists(dest.parentDir):
+      let realDest = expandFilename(dest.parentDir) / dest.extractFilename
+      if not isPathSafe(cfg, storePath(cfg, realDest, repo)):
+        nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
     # Blob hash verification
     if e.hash.len > 0:
       let actualHash = sha256sum(inPath)
@@ -185,6 +191,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # umask 077 so the tmp files are not world-readable for the length of
   # the batch (gpg -o otherwise inherits a typical 022).
   let batchSize = gpgParallelism()
+  let work = privateWorkDir()
   var tmpPaths: seq[string] = @[]
   type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string,
                              code: int, enveloped: bool]
@@ -199,9 +206,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   var direct: seq[VaultEntry] = @[]
   withPrivateUmask:
     for e in entries:
-      let outPath = resolvePath(cfg, e.path)
-      let tmpPath = outPath & ".nimvault-tmp"
-      createDir(outPath.parentDir)
+      let tmpPath = work / e.id
       if deks.hasKey(e.id):
         tmpPaths.add(tmpPath)
         var status = ""
@@ -222,10 +227,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       for i in batchStart .. batchEnd:
         let e = direct[i]
         let inPath = findBlob(repo, cfg, e.id)
-        let outPath = resolvePath(cfg, e.path)
-        let tmpPath = outPath & ".nimvault-tmp"
+        let tmpPath = work / e.id
         tmpPaths.add(tmpPath)
-        createDir(outPath.parentDir)
         let p = decryptProcess(cfg, inPath, tmpPath)
         procs.add((e, tmpPath, p))
 
@@ -241,6 +244,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   template abortUnseal(msgs: varargs[string]) =
     for tp in tmpPaths:
       if fileExists(tp): removeFile(tp)
+    if dirExists(work):
+      removeDir(work)
     var acc = ""
     for msg in msgs:
       acc.add msg & "\n"
@@ -269,6 +274,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # All verified: atomically move temp files to final locations
   for r in results:
     let outPath = resolvePath(cfg, r.entry.path)
+    createDir(outPath.parentDir)
     moveFile(r.tmpPath, outPath)
     # Default to user-only 0600; give +x when the file is a shebang-style
     # script. Without this, unseal silently breaks hooks (e.g. the Claude
@@ -288,6 +294,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     setFilePermissions(outPath, perms)
     nvEcho(&"  {r.entry.path}")
 
+  if dirExists(work):
+    removeDir(work)
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
 proc seal*(repo: string, cfg: GpgConfig, force = false) =
@@ -437,7 +445,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   # Mutating command: hold the vault lock so a concurrent nimvault
   # cannot read this manifest, write its own, and drop these entries.
   let lk {.used.} = acquire(repo)
-  let absPath = if path.isAbsolute:
+  var absPath = if path.isAbsolute:
     path
   elif path.startsWith("~/"):
     expandHome(path)
@@ -445,6 +453,10 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
     cfg.root / path
   else:
     expandHome(path)
+  if not absPath.isAbsolute:
+    absPath = absolutePath(absPath)
+  if not isPathSafe(cfg, storePath(cfg, absPath, repo)):
+    nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
   if not fileExists(absPath):
     if dirExists(absPath):

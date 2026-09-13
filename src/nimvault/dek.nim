@@ -295,16 +295,20 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
 
 proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   ## Encrypt a payload under its data key. No recipient is involved, which is
-  ## the whole point.
+  ## the whole point. Write beside the live blob and rename so a crash
+  ## does not truncate the last sealed copy.
+  createDir(outPath.parentDir)
+  let tmp = outPath & ".tmp"
   if cfg.usesAge:
     let recip = ageRecipientForIdentity(dek)
     let p = startProcess(ageBinary(),
-      args = @["-r", recip, "-o", outPath, inPath],
+      args = @["-r", recip, "-o", tmp, inPath],
       options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
     let code = p.waitForExit()
     p.close()
     if code != 0:
+      if fileExists(tmp): removeFile(tmp)
       nvRaise(&"FATAL: age encrypt failed (exit {code}):\n{output}")
   else:
     # Passphrase on a pipe, never argv: /proc/<pid>/cmdline is world readable.
@@ -312,7 +316,7 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
       args = @["--batch", "--yes", "--quiet", "--symmetric",
                "--cipher-algo", "AES256", "--passphrase-fd", "0",
                "--pinentry-mode", "loopback",
-               "--set-filename", "", "-o", outPath, inPath],
+               "--set-filename", "", "-o", tmp, inPath],
       options = {poUsePath, poStdErrToStdOut})
     p.inputStream.write(dek & "\n")
     p.inputStream.close()
@@ -320,7 +324,11 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
     let code = p.waitForExit()
     p.close()
     if code != 0:
+      if fileExists(tmp): removeFile(tmp)
       nvRaise(&"FATAL: gpg symmetric encrypt failed (exit {code}):\n{output}")
+  syncPath(tmp)
+  moveFile(tmp, outPath)
+  syncParentDir(outPath)
 
 proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   ## Decrypt a v6 payload with its data key.
