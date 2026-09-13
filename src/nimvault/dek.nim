@@ -263,7 +263,13 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
       if byGroup.len > 0:
         removeFile(path)
     elif gid notin byGroup:
-      removeFile(path)
+      # A wrap-subset machine cannot see every group. Leave a file
+      # this identity cannot decrypt.
+      try:
+        discard decryptToString(cfg, path, false)
+        removeFile(path)
+      except CatchableError:
+        discard
 
 proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   ## Encrypt a payload under its data key. No recipient is involved, which is

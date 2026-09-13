@@ -1,6 +1,6 @@
 ## Vault manifest operations: entry types, load/save, ID generation.
 
-import std/[os, strutils, strformat, sysrand, tables]
+import std/[os, strutils, strformat, sysrand, tables, sets]
 import ./gpg
 import ./crypto
 import ./dek
@@ -100,6 +100,33 @@ proc findEntryFile*(repo: string, cfg: GpgConfig, id: string): string =
     return other
   return ""
 
+proc splitRecordIds*(repo: string): HashSet[string] =
+  ## Ids that have a per-entry file, including those this identity cannot
+  ## open. A wrap-subset view must not treat the rest as gone.
+  result = initHashSet[string]()
+  let dir = entryDir(repo)
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.endsWith(".sig"):
+      continue
+    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+      continue
+    result.incl(name.rsplit('.', maxsplit = 1)[0])
+
+proc dropEntryRecord*(repo: string, cfg: GpgConfig, id: string) =
+  ## Remove one split record this command just deleted. Other stems stay.
+  let path = findEntryFile(repo, cfg, id)
+  if path.len == 0:
+    return
+  removeFile(path)
+  let sig = path & ".sig"
+  if fileExists(sig):
+    removeFile(sig)
+
 proc sealKey*(cfg: GpgConfig): string =
   ## Fingerprint of everything that decides what a blob is encrypted to.
   ##
@@ -111,7 +138,7 @@ proc sealKey*(cfg: GpgConfig): string =
   sha256sumBytes(
     cfg.backend & "\n" & cfg.recipient & "\n" & cfg.identity & "\n" &
     cfg.signer & "\n" & cfg.signKey & "\n" & cfg.allowedSigners & "\n" &
-    cfg.signerIdentity)
+    cfg.signerIdentity & "\n" & cfg.wraps.join("\n"))
 
 proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: string] =
   var got = false
@@ -190,25 +217,14 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
 
 proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
                        deks: DekTable) =
-  ## Persist the live set as one file per id. Records that are gone are
-  ## removed so a deleted entry does not linger with its data key.
+  ## Rewrite the records this identity can open. Unread stems stay;
+  ## `dropEntryRecord` is the only remover.
   createDir(entryDir(repo))
-  var live = initTable[string, bool]()
   for e in entries:
-    live[e.id] = true
     saveEntryRecord(repo, cfg, e, deks.getOrDefault(e.id))
-  for kind, path in walkDir(entryDir(repo)):
-    if kind != pcFile:
-      continue
-    let name = path.extractFilename
-    if name.endsWith(".sig"):
-      continue
-    let stem = name.rsplit('.', maxsplit = 1)[0]
-    if stem notin live:
-      removeFile(path)
-      let sig = path & ".sig"
-      if fileExists(sig):
-        removeFile(sig)
+  # Do not delete stems that are missing from `entries`. That list is
+  # only what this identity could open; unread wrap-private records
+  # stay until dropEntryRecord names them.
 
 proc loadManifestMeta*(repo: string, verifySig = false,
                        cfg = GpgConfig()): tuple[entries: seq[VaultEntry],

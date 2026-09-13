@@ -211,7 +211,8 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
     if code != 0:
       nvRaise(&"FATAL: age encrypt failed (exit {code}):\n{output}")
   else:
-    args.add(@["--batch", "--yes", "--quiet", "--trust-model", "always"])
+    args.add(@["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+               "--trust-model", "always"])
     if sign:
       args.add("--sign")
     args.add("-e")
@@ -234,7 +235,8 @@ proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       options = {poUsePath, poStdErrToStdOut})
   else:
     startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
+      args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+               "--trust-model", "always",
                "--sign", "-e", "-r", cfg.recipient,
                "--set-filename", "", "-o", outPath, inPath],
       options = {poUsePath, poStdErrToStdOut})

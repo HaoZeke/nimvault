@@ -119,10 +119,22 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
     wraps: c.wraps,
   )
 
+proc gpgStatusHas*(status, token: string): bool =
+  ## True when a `[GNUPG:] TOKEN` field is present. A UID that happens
+  ## to contain the letters GOODSIG is not a status token.
+  let prefix = "[GNUPG:] " & token
+  for line in status.splitLines:
+    let s = line.strip()
+    if s == prefix:
+      return true
+    if s.startsWith(prefix) and s.len > prefix.len and s[prefix.len] in {' ', '\t'}:
+      return true
+
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## Encrypt and sign a file using GPG with the configured recipient.
   let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--trust-model", "always",
+    args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+             "--trust-model", "always",
              "--sign", "-e", "-r", cfg.recipient,
              "--set-filename", "", "-o", outPath, inPath],
     options = {poUsePath, poStdErrToStdOut})
@@ -142,13 +154,12 @@ proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
+  if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
+    nvRaise(&"FATAL: signature verification failed for {inPath}")
   if code != 0:
     nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
-  if verifySig:
-    if "BADSIG" in status or "ERRSIG" in status:
-      nvRaise(&"FATAL: signature verification failed for {inPath}")
-    if "GOODSIG" notin status:
-      nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
+  if verifySig and not gpgStatusHas(status, "GOODSIG"):
+    nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 
 proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   let p = startProcess("gpg",
@@ -158,13 +169,12 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
+  if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
+    nvRaise(&"FATAL: signature verification failed for {inPath}")
   if code != 0:
     nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
-  if verifySig:
-    if "BADSIG" in status or "ERRSIG" in status:
-      nvRaise(&"FATAL: signature verification failed for {inPath}")
-    if "GOODSIG" notin status:
-      nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
+  if verifySig and not gpgStatusHas(status, "GOODSIG"):
+    nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 
 proc gpgParallelism*(): int =
   let raw = getEnv("NIMVAULT_GPG_PARALLEL")

@@ -8,6 +8,10 @@ import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequti
 import ./gpg, ./manifest, ./crypto, ./lock, ./dek
 # NimvaultError, nvRaise, nvQuiet from gpg
 
+proc recordsNeedSig(cfg: GpgConfig): bool =
+  ## `signer = none` vaults have no record signature to check.
+  cfg.effectiveSigner != "none"
+
 proc banner(msg: string) =
   if nvQuiet: return
   let w = terminalWidth()
@@ -67,8 +71,14 @@ proc persistDeks(repo: string, cfg: GpgConfig, deks: DekTable,
     groupOf[e.id] = gid
     recipsOf[gid] = recips
   if live.len == 0:
+    # Only drop key files this identity can open. Unread wrap-group
+    # files belong to another machine.
     for path in keyFiles(repo, cfg):
-      removeFile(path)
+      try:
+        discard decryptToString(cfg, path, false)
+        removeFile(path)
+      except CatchableError:
+        discard
     return
   saveDeksGrouped(repo, cfg, live, groupOf, recipsOf)
 
@@ -239,12 +249,12 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     # digest already checked above; demanding GOODSIG here would reject every
     # one of them.
     if cfg.signaturesInBand and not r.enveloped and
-       ("BADSIG" in r.status or "ERRSIG" in r.status):
+       (gpgStatusHas(r.status, "BADSIG") or gpgStatusHas(r.status, "ERRSIG")):
       abortUnseal(&"FATAL: bad signature on blob for {r.entry.path}",
         "  The vault may have been tampered with.")
     # Missing signatures: fatal unless --allow-unsigned
     if cfg.signaturesInBand and not r.enveloped and requireSig and
-       "GOODSIG" notin r.status:
+       not gpgStatusHas(r.status, "GOODSIG"):
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
 
@@ -285,14 +295,20 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # Mutating command: hold the vault lock so a concurrent nimvault
   # cannot read this manifest, write its own, and drop these entries.
   let lk {.used.} = acquire(repo)
-  let meta = loadManifestMeta(repo, cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
-    # Still drop the data keys. Returning here used to leave a key file behind
-    # for entries that no longer exist: a key able to open blobs, guarding
-    # nothing, which is the case the stale-key pruning exists to prevent.
+    if splitRecordIds(repo).len > 0:
+      nvRaise("FATAL: no records this identity can open.\n" &
+              "  Refusing to treat the vault as empty (unread wrap groups stay).")
+    # Still drop the data keys this identity can open. Returning here
+    # used to leave a key file behind for entries that no longer exist.
     for path in keyFiles(repo, cfg):
-      removeFile(path)
+      try:
+        discard decryptToString(cfg, path, false)
+        removeFile(path)
+      except CatchableError:
+        discard
     nvEcho("vault is empty")
     return
 
@@ -429,7 +445,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
 
   banner(&"Adding {storePath(cfg, absPath, repo)} to vault ...")
   ensureVaultDir(repo)
-  var entries = loadManifest(repo, cfg = cfg)
+  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var deks = loadDeks(repo, cfg)
   addOneFile(repo, absPath, cfg, noGitignore, entries, deks)
   persistDeks(repo, cfg, deks, entries)
@@ -477,7 +493,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   ensureVaultDir(repo)
 
-  var entries = loadManifest(repo, cfg = cfg)
+  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var deks = loadDeks(repo, cfg)
   for filePath in filesToAdd:
     addOneFile(repo, filePath, cfg, noGitignore, entries, deks)
@@ -499,13 +515,15 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   else:
     expandHome(path)
 
-  var entries = loadManifest(repo, cfg = cfg)
+  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var found = false
   var newEntries: seq[VaultEntry] = @[]
   var deks = loadDeks(repo, cfg)
+  var droppedId = ""
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
       found = true
+      droppedId = e.id
       let blobPath = findBlob(repo, cfg, e.id)
       if fileExists(blobPath):
         removeFile(blobPath)
@@ -520,6 +538,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
 
   persistDeks(repo, cfg, deks, newEntries)
   saveManifestKeep(repo, newEntries, cfg)
+  dropEntryRecord(repo, cfg, droppedId)
   nvEcho("  (local plaintext file NOT deleted)")
 
 proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
@@ -611,7 +630,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
 
   let newStored = storePath(cfg, newAbs, repo)
 
-  var entries = loadManifest(repo, cfg = cfg)
+  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var found = false
   for e in entries.mitems:
     if resolvePath(cfg, e.path) == oldAbs:
@@ -630,6 +649,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   if not found:
     nvRaise(&"Not in vault: {oldPath}")
 
+  persistDeks(repo, cfg, loadDeks(repo, cfg), entries)
   saveManifestKeep(repo, entries, cfg)
   nvEcho(&"  Updated manifest (blob unchanged)")
 
@@ -878,9 +898,12 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   ## old key (Everspaugh et al., CRYPTO 2017,
   ## doi:10.1007/978-3-319-63697-9_4). Churn is the intent, so it deliberately
   ## bypasses the incremental skip.
-  let meta = loadManifestMeta(repo, cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
+    if splitRecordIds(repo).len > 0:
+      nvRaise("FATAL: no records this identity can open.\n" &
+              "  Refusing to treat the vault as empty (unread wrap groups stay).")
     nvEcho("vault is empty")
     return
 
@@ -897,6 +920,7 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
   persistDeks(repo, cfg, deks, entries)
+  saveSplitEntries(repo, cfg, entries, deks)
 
   var enveloped = 0
   for e in entries:
@@ -919,6 +943,8 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
   var live = initHashSet[string]()
   for e in entries:
     live.incl(e.id)
+  for id in splitRecordIds(repo):
+    live.incl(id)
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
@@ -971,8 +997,11 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32):
   ## checking each leaf against it is enough to detect a blob that has drifted,
   ## and needs no key material.
-  let meta = loadManifestMeta(repo, cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
+  if entries.len == 0 and splitRecordIds(repo).len > 0:
+    result.problems.add("no records this identity can open; unread wrap groups remain")
+    result.checked.inc
   for e in entries:
     result.checked.inc
     let blob = findBlob(repo, cfg, e.id)

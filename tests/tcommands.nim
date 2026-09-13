@@ -671,6 +671,14 @@ block groupsSplitKeyFilesAndGateReadability:
   putEnv("GNUPGHOME", gpgHome)
   let (impOut, impCode) = execCmdEx(&"gpg --batch --import {otherPub.quoteShell}")
   doAssert impCode == 0, "importing the other public key failed:\n" & impOut
+  # The other machine needs this writer's public key to verify records.
+  let selfPub = gpgHome / "self.pub"
+  let (_, expSelf) = execCmdEx(&"gpg --batch --yes --export --armor -o {selfPub.quoteShell} {keyId}")
+  doAssert expSelf == 0
+  putEnv("GNUPGHOME", otherHome)
+  let (impSelfOut, impSelf) = execCmdEx(&"gpg --batch --import {selfPub.quoteShell}")
+  doAssert impSelf == 0, "importing the writer public key failed:\n" & impSelfOut
+  putEnv("GNUPGHOME", gpgHome)
   # Trust is not the point of this test; --trust-model always is already used.
 
   let gRepo = setupTestRepo()
@@ -714,9 +722,18 @@ block groupsSplitKeyFilesAndGateReadability:
     found
   doAssert asOther.hasKey(sharedId), "the shared entry must be readable"
 
-  # check needs no key at all, so it still works from the other machine.
   putEnv("GNUPGHOME", gpgHome)
   doAssert checkVault(gRepo, gCfg).problems.len == 0
+
+  # A wrap-subset add must not delete laptop-only records (c4hg).
+  putEnv("GNUPGHOME", otherHome)
+  let fromOther = gDir / "from-other.txt"
+  writeFile(fromOther, "box-secret")
+  add(gRepo, fromOther, gCfg)
+  putEnv("GNUPGHOME", gpgHome)
+  doAssert get(gRepo, mine, gCfg, allowUnsigned = true) == "laptop-only-secret",
+    "subset add must keep unread split records"
+  doAssert loadDeks(gRepo, gCfg).len >= 2
 
   removeDir(gRepo)
   removeDir(otherHome)
