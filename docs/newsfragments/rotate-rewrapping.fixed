@@ -1,2 +1,0 @@
-`rotate` rewraps per-entry records as well as `keys.*`. The seal key
-includes wrap rules, so a wrap edit is not a silent no-op seal.

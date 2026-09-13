@@ -1,2 +1,0 @@
-`init` rejects a recipient that contains a newline. Duplicate singleton
-keys in `.vault/config` are fatal instead of last-wins.

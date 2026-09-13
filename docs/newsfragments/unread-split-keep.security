@@ -1,2 +1,0 @@
-A wrap-subset machine no longer deletes unread `.vault/e/` records or
-foreign `keys.*` files. `seal` refuses to treat an unread vault as empty.

@@ -1,2 +1,0 @@
-GPG status checks match `[GNUPG:]` fields, not substrings. Encrypt uses
-`--no-options --no-encrypt-to`. BADSIG is inspected before a nonzero exit.

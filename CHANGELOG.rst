@@ -4,6 +4,37 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.5.3 (2026-09-13)
+===========================
+
+Security
+--------
+
+- Payload encrypt writes a sibling tmp file and renames. unseal holds the
+  vault lock and decrypts into the owner-only work dir, not dest.nimvault-tmp.
+  add stores an absolute path and refuses one outside the vault root. (atomic-blob)
+- `init` rejects a recipient that contains a newline. Duplicate singleton
+  keys in `.vault/config` are fatal instead of last-wins. (config-single-line)
+- GPG status checks match `[GNUPG:]` fields, not substrings. Encrypt uses
+  `--no-options --no-encrypt-to`. BADSIG is inspected before a nonzero exit. (gpg-status-tokens)
+- `scan` reports path, rule, line and byte size. It does not print the
+  matching line. (scan-metadata-only)
+- A wrap-subset machine no longer deletes unread `.vault/e/` records or
+  foreign `keys.*` files. `seal` refuses to treat an unread vault as empty. (unread-split-keep)
+- `add`, `seal`, `rm`, `mv`, `rotate` and `check` verify split-record
+  signatures. `check` fails when this identity cannot open any record. (verify-on-mutate)
+
+
+Fixed
+-----
+
+- `.gitignore` lines are repo-relative and passed to git after `--`. (gitignore-relative)
+- `rotate` rewraps per-entry records as well as `keys.*`. The seal key
+  includes wrap rules, so a wrap edit is not a silent no-op seal. (rotate-rewrapping)
+- Wrap patterns are globs. `?|+()` are literals. A `~/` rule matches a
+  `root = repo` stored path. (wrap-glob-literal)
+
+
 nimvault 0.5.2 (2026-09-12)
 ===========================
 

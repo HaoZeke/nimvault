@@ -1,2 +1,0 @@
-`add`, `seal`, `rm`, `mv`, `rotate` and `check` verify split-record
-signatures. `check` fails when this identity cannot open any record.
