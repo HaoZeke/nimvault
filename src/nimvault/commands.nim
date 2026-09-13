@@ -716,7 +716,7 @@ const SkipFileNames = [
   ".credentials.json",
 ]
 
-type SecretHit = tuple[file, rule, snippet: string, line: int]
+type SecretHit = tuple[file, rule: string, line: int, bytes: int]
 
 proc compileRules(): seq[(string, Regex)] =
   ## Returns (rule-name, compiled-regex) pairs. Order matters: more specific
@@ -752,7 +752,8 @@ proc isSkippedFile(path: string): bool =
 
 proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
   if not fileExists(path): return
-  if getFileSize(path) > 2_000_000: return  # skip very large files
+  let nbytes = int(getFileSize(path))
+  if nbytes > 2_000_000: return  # skip very large files
   var content: string
   try:
     content = readFile(path)
@@ -765,7 +766,7 @@ proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
     if line.len > 2000: continue
     for (name, rx) in rules:
       if line.contains(rx):
-        result.add((path, name, "[redacted]", lineNo))
+        result.add((path, name, lineNo, nbytes))
         break  # one hit per line is enough
 
 proc scan*(repo: string, target: string, cfg: GpgConfig) =
@@ -821,13 +822,12 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   if not nvQuiet:
     banner(&"Unvaulted secrets found ({hits.len})")
     for h in hits:
-      styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line}"
-      echo &"    {h.snippet}"
+      styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line} bytes={h.bytes}"
     echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
     echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
   var report = &"Unvaulted secrets found ({hits.len})\n"
   for h in hits:
-    report.add &"  [{h.rule}] {h.file}:{h.line}\n    {h.snippet}\n"
+    report.add &"  [{h.rule}] {h.file}:{h.line} bytes={h.bytes}\n"
   report.add &"\nscanned {scanned} file(s); {hits.len} potential secret(s).\n"
   report.add "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
   nvRaise(report)

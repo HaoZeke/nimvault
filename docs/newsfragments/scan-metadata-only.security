@@ -1,0 +1,2 @@
+`scan` reports path, rule, line and byte size. It does not print the
+matching line.
