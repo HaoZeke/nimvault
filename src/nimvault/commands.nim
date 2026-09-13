@@ -84,13 +84,21 @@ proc persistDeks(repo: string, cfg: GpgConfig, deks: DekTable,
 
 proc trackGitignore(repo, absPath, storedPath: string, cfg: GpgConfig,
                     noGitignore: bool) =
-  let checkPath = if cfg.root.len > 0: storedPath else: absPath
-  let (_, lsCode) = execCmdEx(&"git ls-files --error-unmatch {checkPath.quoteShell}",
+  var gitPath = storedPath
+  if gitPath.startsWith("~/") or isAbsolute(gitPath):
+    try:
+      gitPath = relativePath(absPath, repo)
+    except ValueError:
+      gitPath = absPath.extractFilename
+  if gitPath.startsWith(".."):
+    gitPath = absPath.extractFilename
+  let checkPath = gitPath
+  let (_, lsCode) = execCmdEx(&"git ls-files --error-unmatch -- {checkPath.quoteShell}",
     workingDir = repo)
   if lsCode == 0:
     stderr.writeLine &"FATAL: {storedPath} is already tracked by git"
-    nvRaise(&"  Run 'git rm --cached {checkPath.quoteShell}' to untrack it first.")
-  let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q {checkPath.quoteShell}",
+    nvRaise(&"  Run 'git rm --cached -- {checkPath.quoteShell}' to untrack it first.")
+  let (_, gitCheckCode) = execCmdEx(&"git check-ignore -q -- {checkPath.quoteShell}",
     workingDir = repo)
   if gitCheckCode != 0:
     if noGitignore:
@@ -99,9 +107,9 @@ proc trackGitignore(repo, absPath, storedPath: string, cfg: GpgConfig,
       let gitignorePath = repo / ".gitignore"
       var f: File
       if open(f, gitignorePath, fmAppend):
-        f.writeLine(storedPath)
+        f.writeLine(gitPath)
         f.close()
-        stderr.writeLine &"Added {storedPath} to .gitignore"
+        stderr.writeLine &"Added {gitPath} to .gitignore"
       else:
         stderr.writeLine &"WARNING: {storedPath} is NOT gitignored -- could not write .gitignore"
 
@@ -588,6 +596,9 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
       nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
 
+    for ch in e.id:
+      if ch notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+        nvRaise(&"FATAL: malformed entry id: {e.id}")
     let deks = loadDeks(repo, cfg)
     if deks.hasKey(e.id):
       # v6: no in-band signature to verify, exactly as for age. Authenticity
@@ -742,8 +753,7 @@ proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
     if line.len > 2000: continue
     for (name, rx) in rules:
       if line.contains(rx):
-        let snip = if line.len > 120: line[0..117] & "..." else: line
-        result.add((path, name, snip.strip(), lineNo))
+        result.add((path, name, "[redacted]", lineNo))
         break  # one hit per line is enough
 
 proc scan*(repo: string, target: string, cfg: GpgConfig) =
@@ -1161,6 +1171,8 @@ proc initVault*(repo, recipient: string) =
     rec = getEnv("NIMVAULT_GPG_RECIPIENT").strip()
   if rec.len == 0:
     nvRaise("FATAL: init needs --recipient or NIMVAULT_GPG_RECIPIENT")
+  if '\n' in rec or '\r' in rec:
+    nvRaise("FATAL: recipient must be a single line")
   writeFile(cfgPath, &"recipient = {rec}\n")
   setFilePermissions(cfgPath, {fpUserRead, fpUserWrite})
   nvEcho(&"initialised {cfgPath}")

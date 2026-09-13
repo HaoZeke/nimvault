@@ -1,0 +1,1 @@
+`.gitignore` lines are repo-relative and passed to git after `--`.

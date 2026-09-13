@@ -1,0 +1,2 @@
+Wrap patterns are globs. `?|+()` are literals. A `~/` rule matches a
+`root = repo` stored path.

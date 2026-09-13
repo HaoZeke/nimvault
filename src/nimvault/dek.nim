@@ -71,6 +71,31 @@ proc groupId*(recips: seq[string]): string =
     return "default"
   sha256sumBytes(norm.join("\n"))[0 ..< 16]
 
+proc globToRe(pat: string): string =
+  ## Glob, not PCRE. Only `*` and `**` are special.
+  result = "^"
+  var i = 0
+  while i < pat.len:
+    if i + 1 < pat.len and pat[i] == '*' and pat[i + 1] == '*':
+      if i + 2 < pat.len and pat[i + 2] == '/':
+        result.add("(.*/)?")
+        i += 3
+      else:
+        result.add(".*")
+        i += 2
+    elif pat[i] == '*':
+      result.add("[^/]*")
+      inc i
+    elif pat[i] in {'.', '+', '?', '(', ')', '|', '[', ']', '{', '}',
+                    '^', '$', '\\'}:
+      result.add('\\')
+      result.add(pat[i])
+      inc i
+    else:
+      result.add(pat[i])
+      inc i
+  result.add("$")
+
 proc matchesGlob(pattern, path: string): bool =
   ## `**` spans separators, `*` does not, and a pattern ending in `/` or `/**`
   ## matches everything beneath it. Deliberately small: a rule that is hard to
@@ -80,17 +105,7 @@ proc matchesGlob(pattern, path: string): bool =
     return false
   if pat.endsWith("/"):
     pat.add("**")
-  # Anchored at both ends: an unanchored pattern matches a prefix, so `~/x/*`
-  # would quietly cover `~/x/deep/one` and send it to the wrong machine.
-  # `**/foo` must match `foo` as well as `a/foo`. Turning `**` into `.*`
-  # and leaving the slash required would send a root-level "machine-only"
-  # file to the catch-all recipients.
-  let rx = "^" & pat.replace(".", "\\.")
-                    .replace("**", "\u0001")
-                    .replace("*", "[^/]*")
-                    .replace("\u0001/", "(.*/)?")
-                    .replace("\u0001", ".*") & "$"
-  return path.match(re(rx))
+  return path.match(re(globToRe(pat)))
 
 proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
   ## Recipients for one entry: the first matching `wrap` rule wins, and the
@@ -102,7 +117,14 @@ proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
       continue
     let pat = rule[0 ..< idx].strip()
     let recips = rule[idx + 1 .. ^1].split(',')
-    if matchesGlob(pat, path):
+    var hit = matchesGlob(pat, path)
+    # Documented `~/…` rules must still match a `root = repo` stored path.
+    if not hit and cfg.root.len > 0 and pat.startsWith("~/"):
+      hit = matchesGlob(pat[2 .. ^1], path)
+    if not hit and cfg.root.len == 0 and path.startsWith("~/") and
+       not pat.startsWith("~/"):
+      hit = matchesGlob(pat, path[2 .. ^1])
+    if hit:
       return normalizedRecipients(recips)
   return normalizedRecipients(@[cfg.recipient])
 

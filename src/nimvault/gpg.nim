@@ -48,18 +48,30 @@ proc parseVaultConfig(configFile: string): VaultConfigFile =
     if parts.len == 2:
       let key = parts[0].strip()
       let val = parts[1].strip()
-      if val.len > 0:
-        case key
-        of "recipient": result.recipient = val
-        of "root": result.root = val
-        of "backend": result.backend = val
-        of "identity": result.identity = val
-        of "signer": result.signer = val
-        of "sign_key": result.signKey = val
-        of "allowed_signers": result.allowedSigners = val
-        of "signer_identity": result.signerIdentity = val
-        of "wrap": result.wraps.add(val)
-        else: discard
+      if val.len == 0:
+        continue
+      if '\n' in val or '\r' in val:
+        nvRaise(&"FATAL: {key} in .vault/config must be a single line")
+      case key
+      of "recipient":
+        if result.recipient.len > 0 and result.recipient != val:
+          nvRaise("FATAL: .vault/config has more than one recipient line")
+        result.recipient = val
+      of "root":
+        if result.root.len > 0 and result.root != val:
+          nvRaise("FATAL: .vault/config has more than one root line")
+        result.root = val
+      of "backend":
+        if result.backend.len > 0 and result.backend != val:
+          nvRaise("FATAL: .vault/config has more than one backend line")
+        result.backend = val
+      of "identity": result.identity = val
+      of "signer": result.signer = val
+      of "sign_key": result.signKey = val
+      of "allowed_signers": result.allowedSigners = val
+      of "signer_identity": result.signerIdentity = val
+      of "wrap": result.wraps.add(val)
+      else: discard
 
 proc resolveRecipient*(cli, env, configRecipient: string): string =
   ## 3-tier recipient lookup:

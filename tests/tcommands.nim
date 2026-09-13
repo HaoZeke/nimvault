@@ -649,6 +649,17 @@ block wrapRulesSelectRecipients:
   c4.wraps = @["**/mine.txt:LAPTOP", "**:BOTH"]
   doAssert recipientsFor(c4, "mine.txt") == @["LAPTOP"]
   doAssert recipientsFor(c4, "dir/mine.txt") == @["LAPTOP"]
+
+  # `?` is a literal, not a regex optional.
+  var c5 = GpgConfig(recipient: "DEFAULT")
+  c5.wraps = @["file?.txt:A", "**:B"]
+  doAssert recipientsFor(c5, "file?.txt") == @["A"]
+  doAssert recipientsFor(c5, "fil.txt") == @["B"]
+
+  # Documented ~/ wrap still matches a root-relative stored path.
+  var c6 = GpgConfig(recipient: "DEFAULT", root: "/tmp/repo")
+  c6.wraps = @["~/.ssh/**:LAPTOP", "**:LAPTOP,TERRA"]
+  doAssert recipientsFor(c6, ".ssh/id_ed25519") == @["LAPTOP"]
   echo "PASS: wrap rules select recipients by path"
 
 block groupIdDependsOnTheSetNotTheSpelling:
