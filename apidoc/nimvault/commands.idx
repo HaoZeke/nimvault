@@ -8,7 +8,7 @@ nim	get	nimvault/commands.html#get,string,string,GpgConfig	proc get(repo, path: 
 nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		632
 nim	listReport	nimvault/commands.html#listReport,string,GpgConfig	proc listReport(repo: string; cfg: GpgConfig): string		679
 nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		687
-nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		771
+nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		772
 nim	statusReport	nimvault/commands.html#statusReport,string,GpgConfig	proc statusReport(repo: string; cfg: GpgConfig): string		835
 nim	rotate	nimvault/commands.html#rotate,string,GpgConfig	proc rotate(repo: string; cfg: GpgConfig; rekey = false)		905
 nim	orphans	nimvault/commands.html#orphans,string,GpgConfig	proc orphans(repo: string; cfg: GpgConfig): seq[string]		957
