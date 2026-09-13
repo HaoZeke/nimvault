@@ -12,4 +12,4 @@ nim	newDek	nimvault/dek.html#newDek,GpgConfig	proc newDek(cfg: GpgConfig): strin
 nim	loadDeks	nimvault/dek.html#loadDeks,string,GpgConfig	proc loadDeks(repo: string; cfg: GpgConfig): DekTable		185
 nim	saveDeksGrouped	nimvault/dek.html#saveDeksGrouped,string,GpgConfig,DekTable,Table[string,string],Table[string,seq[string]]	proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;\n                groupOf: Table[string, string];\n                recipsOf: Table[string, seq[string]])		237
 nim	encryptWithDek	nimvault/dek.html#encryptWithDek,GpgConfig,string,string,string	proc encryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		296
-nim	decryptWithDek	nimvault/dek.html#decryptWithDek,GpgConfig,string,string,string	proc decryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		325
+nim	decryptWithDek	nimvault/dek.html#decryptWithDek,GpgConfig,string,string,string	proc decryptWithDek(cfg: GpgConfig; dek, inPath, outPath: string)		333
