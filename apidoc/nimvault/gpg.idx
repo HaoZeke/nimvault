@@ -6,9 +6,10 @@ nim	nvQuiet	nimvault/gpg.html#nvQuiet	var nvQuiet		28
 nim	VaultConfigFile	nimvault/gpg.html#VaultConfigFile	tuple VaultConfigFile		30
 nim	resolveRecipient	nimvault/gpg.html#resolveRecipient,string,string,string	proc resolveRecipient(cli, env, configRecipient: string): string		64
 nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		78
-nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		122
-nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,string,string	proc gpgDecrypt(inPath, outPath: string; verifySig = false)		135
-nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,string	proc gpgDecryptToString(inPath: string; verifySig = false): string		153
-nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		169
-nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		180
-nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		201
+nim	gpgStatusHas	nimvault/gpg.html#gpgStatusHas,string,string	proc gpgStatusHas(status, token: string): bool		122
+nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		133
+nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,string,string	proc gpgDecrypt(inPath, outPath: string; verifySig = false)		147
+nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,string	proc gpgDecryptToString(inPath: string; verifySig = false): string		164
+nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		179
+nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		190
+nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		211

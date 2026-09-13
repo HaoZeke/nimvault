@@ -107,6 +107,10 @@
   <li><a class="reference" href="#gpgParallelism" title="gpgParallelism(): int">gpgParallelism(): int</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gpgStatusHas
+  <li><a class="reference" href="#gpgStatusHas%2Cstring%2Cstring" title="gpgStatusHas(status, token: string): bool">gpgStatusHas(status, token: string): bool</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">initGpgConfig
   <li><a class="reference" href="#initGpgConfig%2Cstring%2Cstring" title="initGpgConfig(cliRecipient: string; repo: string): GpgConfig">initGpgConfig(cliRecipient: string; repo: string): GpgConfig</a></li>
 
@@ -256,6 +260,18 @@
 </div>
 
 </div>
+<div id="gpgStatusHas-procs-all">
+  <div id="gpgStatusHas,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgStatusHas%2Cstring%2Cstring"><span class="Identifier">gpgStatusHas</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">,</span> <span class="Identifier">token</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    True when a <tt class="docutils literal"><span class="pre"><span class="Punctuation">[</span><span class="Identifier">GNUPG</span><span class="Punctuation">:</span><span class="Punctuation">]</span> <span class="Identifier">TOKEN</span></span></tt> field is present. A UID that happens to contain the letters GOODSIG is not a status token.
+    
+  </dd>
+</div>
+
+</div>
 <div id="initGpgConfig-procs-all">
   <div id="initGpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#initGpgConfig%2Cstring%2Cstring"><span class="Identifier">initGpgConfig</span></a><span class="Other">(</span><span class="Identifier">cliRecipient</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> {.
@@ -329,7 +345,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-12 20:56:17 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-13 06:28:44 UTC</small>
       </div>
     </div>
   </div>
