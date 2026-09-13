@@ -1,0 +1,1 @@
+add and seal leave an unchanged per-entry record on disk. Two machines that each add a different file no longer rewrite a shared stem, so git can merge them.

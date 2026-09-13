@@ -1229,6 +1229,63 @@ block twoAddsMergeWithoutManifestClash:
   removeDir(b)
   echo "PASS: two adds merge without rewriting a shared manifest"
 
+block twoAddsDoNotRewriteSharedRecord:
+  ## A adds one and commits. Two clones each add a different file.
+  ## The shared e/<one-id> bytes must stay the base ciphertext, or git
+  ## merge conflicts on that stem (encryption is not deterministic).
+  let a = setupTestRepo()
+  let c = GpgConfig(recipient: keyId)
+  let da = a / "secrets"
+  createDir(da)
+  writeFile(da / "one.txt", "alpha")
+  add(a, da / "one.txt", c)
+  var oneId = ""
+  for e in loadManifest(a, cfg = c):
+    if e.path.endsWith("one.txt"):
+      oneId = e.id
+  doAssert oneId.len > 0
+  let onePath = findEntryFile(a, c, oneId)
+  doAssert onePath.len > 0
+  let oneBytes = readFile(onePath)
+  discard execCmdEx("git add -A && git commit -m one", workingDir = a)
+
+  let b = createTempDir("nimvault_repo_", "_clone")
+  let (cloneOut, cloneCode) = execCmdEx(&"git clone -- {a.quoteShell} {b.quoteShell}")
+  doAssert cloneCode == 0, cloneOut
+  createDir(b / "secrets")
+  writeFile(b / "secrets" / "two.txt", "beta")
+  add(b, b / "secrets" / "two.txt", c)
+  let bOne = findEntryFile(b, c, oneId)
+  doAssert bOne.len > 0
+  doAssert readFile(bOne) == oneBytes, "add two must not rewrite e/<one-id>"
+
+  writeFile(a / "secrets" / "three.txt", "gamma")
+  add(a, a / "secrets" / "three.txt", c)
+  doAssert readFile(findEntryFile(a, c, oneId)) == oneBytes,
+    "add three must not rewrite e/<one-id>"
+  discard execCmdEx("git add -A && git commit -m three", workingDir = a)
+  discard execCmdEx("git add -A && git commit -m two", workingDir = b)
+
+  let (fetchOut, fetchCode) = execCmdEx("git fetch -- origin", workingDir = b)
+  doAssert fetchCode == 0, fetchOut
+  let (brOut, _) = execCmdEx("git rev-parse --abbrev-ref HEAD", workingDir = a)
+  let br = brOut.strip()
+  let (mergeOut, mergeCode) = execCmdEx(&"git merge --no-edit origin/{br}",
+    workingDir = b)
+  let unmerged = execCmdEx("git diff --name-only --diff-filter=U",
+    workingDir = b)[0]
+  doAssert ("e/" & oneId) notin unmerged,
+    "git merge must not conflict on e/<one-id>:\n" & mergeOut & "\n" & unmerged
+  # A keys.* rewrite can still clash; the record stem must not.
+  if mergeCode != 0:
+    doAssert ("e/" & oneId) notin mergeOut, mergeOut
+  else:
+    let merged = loadManifest(b, cfg = c)
+    doAssert merged.len == 3, "union after merge: " & $merged.len
+  removeDir(a)
+  removeDir(b)
+  echo "PASS: two adds leave e/<one-id> untouched so git merge does not clash"
+
 block addDirRejectsEmpty:
   let r = setupTestRepo()
   let c = GpgConfig(recipient: keyId)

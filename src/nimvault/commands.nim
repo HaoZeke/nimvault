@@ -942,7 +942,7 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
   persistDeks(repo, cfg, deks, entries)
-  saveSplitEntries(repo, cfg, entries, deks)
+  saveSplitEntries(repo, cfg, entries, deks, force = true)
 
   var enveloped = 0
   for e in entries:

@@ -215,13 +215,32 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   syncParentDir(dest)
   signManifest(cfg, dest)
 
+proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
+                          dek: string): bool =
+  ## True when the on-disk record already carries this plaintext. GPG/age
+  ## ciphertext is not stable, so add/seal must not rewrite that file or
+  ## two machines that each add a different id clash on the shared stem.
+  let path = findEntryFile(repo, cfg, e.id)
+  if path.len == 0:
+    return false
+  try:
+    let parsed = parseEntryPlain(decryptToString(cfg, path, false))
+    parsed.ok and parsed.entry == e and parsed.dek == dek
+  except CatchableError:
+    false
+
 proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
-                       deks: DekTable) =
-  ## Rewrite the records this identity can open. Unread stems stay;
-  ## `dropEntryRecord` is the only remover.
+                       deks: DekTable, force = false) =
+  ## Write the records this identity can open. Unchanged stems stay as
+  ## they are on disk so a sibling add is a new path, not a rewrite.
+  ## `force` is for rotate, which must rewrap even when the fields match.
+  ## Unread stems stay; `dropEntryRecord` is the only remover.
   createDir(entryDir(repo))
   for e in entries:
-    saveEntryRecord(repo, cfg, e, deks.getOrDefault(e.id))
+    let dek = deks.getOrDefault(e.id)
+    if not force and entryRecordUnchanged(repo, cfg, e, dek):
+      continue
+    saveEntryRecord(repo, cfg, e, dek)
   # Do not delete stems that are missing from `entries`. That list is
   # only what this identity could open; unread wrap-private records
   # stay until dropEntryRecord names them.
