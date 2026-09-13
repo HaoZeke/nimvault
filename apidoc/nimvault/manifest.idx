@@ -22,8 +22,8 @@ nim	dropEntryRecord	nimvault/manifest.html#dropEntryRecord,string,GpgConfig,stri
 nim	sealKey	nimvault/manifest.html#sealKey,GpgConfig	proc sealKey(cfg: GpgConfig): string		130
 nim	loadSplitEntries	nimvault/manifest.html#loadSplitEntries,string,GpgConfig	proc loadSplitEntries(repo: string; cfg: GpgConfig; verifySig = false): tuple[\n    entries: seq[VaultEntry], deks: DekTable]		161
 nim	saveEntryRecord	nimvault/manifest.html#saveEntryRecord,string,GpgConfig,VaultEntry,string	proc saveEntryRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)		195
-nim	saveSplitEntries	nimvault/manifest.html#saveSplitEntries,string,GpgConfig,seq[VaultEntry],DekTable	proc saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];\n                 deks: DekTable)		218
-nim	loadManifestMeta	nimvault/manifest.html#loadManifestMeta,string	proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[\n    entries: seq[VaultEntry], sealKey: string, envelope: bool]		229
-nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		293
-nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig,string	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n             sealKey = ""; envelope = false)		298
-nim	saveManifestKeep	nimvault/manifest.html#saveManifestKeep,string,seq[VaultEntry],GpgConfig	proc saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n                 envelope = false)		354
+nim	saveSplitEntries	nimvault/manifest.html#saveSplitEntries,string,GpgConfig,seq[VaultEntry],DekTable	proc saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];\n                 deks: DekTable; force = false)		232
+nim	loadManifestMeta	nimvault/manifest.html#loadManifestMeta,string	proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig()): tuple[\n    entries: seq[VaultEntry], sealKey: string, envelope: bool]		248
+nim	loadManifest	nimvault/manifest.html#loadManifest,string	proc loadManifest(repo: string; verifySig = false; cfg = GpgConfig()): seq[VaultEntry]		312
+nim	saveManifest	nimvault/manifest.html#saveManifest,string,seq[VaultEntry],GpgConfig,string	proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n             sealKey = ""; envelope = false)		317
+nim	saveManifestKeep	nimvault/manifest.html#saveManifestKeep,string,seq[VaultEntry],GpgConfig	proc saveManifestKeep(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;\n                 envelope = false)		373

@@ -153,8 +153,8 @@
 </ul>
 <ul class="simple nested-toc-section">saveSplitEntries
   <li><a class="reference" href="#saveSplitEntries%2Cstring%2CGpgConfig%2Cseq%5BVaultEntry%5D%2CDekTable" title="saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
-                 deks: DekTable)">saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
-                 deks: DekTable)</a></li>
+                 deks: DekTable; force = false)">saveSplitEntries(repo: string; cfg: GpgConfig; entries: seq[VaultEntry];
+                 deks: DekTable; force = false)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">sealKey
@@ -461,13 +461,13 @@
 <div id="saveSplitEntries-procs-all">
   <div id="saveSplitEntries,string,GpgConfig,seq[VaultEntry],DekTable">
   <dt><pre><span class="Keyword">proc</span> <a href="#saveSplitEntries%2Cstring%2CGpgConfig%2Cseq%5BVaultEntry%5D%2CDekTable"><span class="Identifier">saveSplitEntries</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span>
-                      <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">,</span>
-    <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
-    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+                      <span class="Identifier">deks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a><span class="Other">;</span> <span class="Identifier">force</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span>
+    <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">RegexError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Rewrite the records this identity can open. Unread stems stay; <tt class="docutils literal"><span class="pre"><span class="Identifier">dropEntryRecord</span></span></tt> is the only remover.
+    Write the records this identity can open. Unchanged stems stay as they are on disk so a sibling add is a new path, not a rewrite. <tt class="docutils literal"><span class="pre"><span class="Identifier">force</span></span></tt> is for rotate, which must rewrap even when the fields match. Unread stems stay; <tt class="docutils literal"><span class="pre"><span class="Identifier">dropEntryRecord</span></span></tt> is the only remover.
     
   </dd>
 </div>
@@ -532,7 +532,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-13 07:22:52 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-13 07:36:53 UTC</small>
       </div>
     </div>
   </div>
