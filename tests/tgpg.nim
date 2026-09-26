@@ -4,6 +4,7 @@
 
 import std/[os, osproc, strutils, strformat, tempfiles]
 import nimvault/gpg
+from nimvault/crypto import decryptManyToString
 
 proc setupTestGpgHome(): string =
   ## Create a temporary GNUPGHOME with a throwaway key.
@@ -127,6 +128,35 @@ block sha256sumTest:
   doAssert h == h2, "SHA-256 should be deterministic"
   removeDir(tmpDir)
   echo "PASS: sha256sum"
+
+block decryptManyKeepsOrderAndReportsFailures:
+  ## Twenty records decrypt four at a time, in the order asked; a file gpg
+  ## cannot open comes back as its message instead of raising.
+  let tmpDir = createTempDir("nimvault_many_", "_test")
+  let cfg = GpgConfig(recipient: keyId)
+  putEnv("NIMVAULT_GPG_PARALLEL", "4")
+  var paths: seq[string] = @[]
+  for i in 0 ..< 20:
+    let plain = tmpDir / &"r{i}.txt"
+    writeFile(plain, &"record {i}\n")
+    let enc = tmpDir / &"r{i}.gpg"
+    gpgEncrypt(cfg, plain, enc)
+    paths.add(enc)
+  let junk = tmpDir / "junk.gpg"
+  writeFile(junk, "not a gpg file\n")
+  paths.insert(junk, 7)
+  let got = decryptManyToString(cfg, paths, verifySig = true)
+  doAssert got.len == 21
+  for i, path in paths:
+    if path == junk:
+      doAssert got[i].plain.len == 0 and "gpg decrypt failed" in got[i].err, got[i].err
+    else:
+      let n = if i < 7: i else: i - 1
+      doAssert got[i].err.len == 0, got[i].err
+      doAssert got[i].plain == &"record {n}\n", got[i].plain
+  delEnv("NIMVAULT_GPG_PARALLEL")
+  removeDir(tmpDir)
+  echo "PASS: decryptManyToString order and failures"
 
 cleanupTestGpgHome(gpgHome)
 echo "All GPG tests passed."

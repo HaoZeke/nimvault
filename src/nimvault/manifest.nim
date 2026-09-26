@@ -1,6 +1,6 @@
 ## Vault manifest operations: entry types, load/save, ID generation.
 
-import std/[os, strutils, strformat, sysrand, tables, sets]
+import std/[os, strutils, strformat, sysrand, tables, sets, times]
 import ./gpg
 import ./crypto
 import ./dek
@@ -158,6 +158,28 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
   if not got:
     result.ok = false
 
+var recordCache {.threadvar.}: Table[string, tuple[mtime: Time, plain: string]]
+  ## Plaintext of the split records this process decrypted, by path, with
+  ## the modification time it was read at. A record rewritten since is read
+  ## again.
+
+proc rememberRecord(path, plain: string) =
+  try:
+    recordCache[path] = (getLastModificationTime(path), plain)
+  except OSError:
+    discard
+
+proc recalledRecord(path: string): string =
+  ## The cached plaintext of `path` when the file has not moved since it
+  ## was read; empty otherwise.
+  if not recordCache.hasKey(path):
+    return ""
+  let (mtime, plain) = recordCache[path]
+  try:
+    if getLastModificationTime(path) == mtime: plain else: ""
+  except OSError:
+    ""
+
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
                        verifySig = false): tuple[entries: seq[VaultEntry],
                                                  deks: DekTable] =
@@ -165,6 +187,14 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
   let dir = entryDir(repo)
   if not dirExists(dir):
     return
+  # A bad or missing signature is fatal; a record this identity cannot
+  # decrypt is skippable. The first is a replaced trust root, the second is
+  # "not for us".
+  template sigFailure(msg: string): bool =
+    verifySig and ("signature verification failed" in msg or
+                   "missing signature" in msg or
+                   "signature required" in msg)
+  var paths: seq[string] = @[]
   for kind, path in walkDir(dir):
     if kind != pcFile:
       continue
@@ -173,24 +203,27 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
-    try:
-      if verifySig:
+    if verifySig:
+      try:
         verifyManifest(cfg, path, true)
-      let plain = decryptToString(cfg, path, verifySig)
-      let parsed = parseEntryPlain(plain)
-      if parsed.ok:
-        result.entries.add(parsed.entry)
-        if parsed.dek.len > 0:
-          result.deks[parsed.entry.id] = parsed.dek
-    except CatchableError:
-      # A record this identity cannot decrypt is skippable. A bad or
-      # missing signature is not: that is a replaced trust root, not
-      # "not for us".
-      let msg = getCurrentExceptionMsg()
-      if verifySig and ("signature verification failed" in msg or
-                        "missing signature" in msg or
-                        "signature required" in msg):
-        raise
+      except CatchableError:
+        if sigFailure(getCurrentExceptionMsg()):
+          raise
+        continue
+    paths.add(path)
+  let plains = decryptManyToString(cfg, paths, verifySig)
+  for i, path in paths:
+    let (plain, err) = plains[i]
+    if err.len > 0:
+      if sigFailure(err):
+        nvRaise(err)
+      continue
+    rememberRecord(path, plain)
+    let parsed = parseEntryPlain(plain)
+    if parsed.ok:
+      result.entries.add(parsed.entry)
+      if parsed.dek.len > 0:
+        result.deks[parsed.entry.id] = parsed.dek
 
 proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
   ## Write one signed encrypted record. A different id is a different path,
@@ -217,6 +250,9 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =
+  ## The plaintext comes from what this command already decrypted when the
+  ## file has not moved since; a seal loads every record and then asks this
+  ## of each, and decrypting twice doubled its gpg calls.
   ## True when the on-disk record already carries this plaintext. GPG/age
   ## ciphertext is not stable, so add/seal must not rewrite that file or
   ## two machines that each add a different id clash on the shared stem.
@@ -224,7 +260,9 @@ proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
   if path.len == 0:
     return false
   try:
-    let parsed = parseEntryPlain(decryptToString(cfg, path, false))
+    let plain = recalledRecord(path)
+    let parsed = parseEntryPlain(
+      if plain.len > 0: plain else: decryptToString(cfg, path, false))
     parsed.ok and parsed.entry == e and parsed.dek == dek
   except CatchableError:
     false
