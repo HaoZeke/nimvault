@@ -186,9 +186,9 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   ## Merge every data-key this machine can actually open.
   ##
   ## Per-entry records under `.vault/e/` are the mergeable source. Grouped
-  ## `keys.*` files still fill ids that have no record yet (a v6 vault
-  ## mid-migration). A file that will not decrypt is not an error: it
-  ## belongs to a group this machine is not in.
+  ## `keys.*` files still fill ids whose record carries no data key, or that
+  ## have no record yet (a v6 vault mid-migration). A file that will not
+  ## decrypt is not an error: it belongs to a group this machine is not in.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
@@ -232,8 +232,11 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
         continue
       let parts = s.split('\t')
       if parts.len >= 2 and parts[0] notin result:
-        # The signed per-entry record is the trust root. A key file is not
-        # signed, so it may only fill an id that has no record yet.
+        # A key file is not signed, so a data key in a record wins. The key
+        # file fills any id the records left without one: an id with no
+        # record (a v6 vault mid-migration) and a record whose data-key field
+        # is empty. The records above are read without checking signatures;
+        # callers verify them when they load the manifest.
         result[parts[0]] = parts[1]
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
