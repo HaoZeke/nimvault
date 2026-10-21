@@ -1,6 +1,6 @@
 ## Vault manifest operations: entry types, load/save, ID generation.
 
-import std/[os, strutils, strformat, sysrand, tables, sets, times]
+import std/[os, strutils, strformat, sysrand, tables, sets]
 import ./gpg
 import ./crypto
 import ./dek
@@ -163,27 +163,30 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
   if not got:
     result.ok = false
 
-var recordCache {.threadvar.}: Table[string, tuple[mtime: Time, plain: string]]
-  ## Plaintext of the split records this process decrypted, by path, with
-  ## the modification time it was read at. A record rewritten since is read
+var recordCache {.threadvar.}: Table[string, tuple[cipherHash, plain: string]]
+  ## Plaintext of split records this process decrypted, by path, with the
+  ## ciphertext digest seen at read time. A record rewritten since is read
   ## again.
 
-proc rememberRecord(path, plain: string) =
+proc recordCipherHash(path: string): string =
+  ## Hash of the encrypted record bytes; empty when unreadable.
   try:
-    recordCache[path] = (getLastModificationTime(path), plain)
-  except OSError:
-    discard
+    sha256sum(path)
+  except CatchableError:
+    ""
+
+proc rememberRecord(path, plain: string) =
+  let digest = recordCipherHash(path)
+  if digest.len > 0:
+    recordCache[path] = (digest, plain)
 
 proc recalledRecord(path: string): string =
-  ## The cached plaintext of `path` when the file has not moved since it
-  ## was read; empty otherwise.
+  ## The cached plaintext of `path` when its ciphertext bytes still match what
+  ## this process verified and decrypted; empty otherwise.
   if not recordCache.hasKey(path):
     return ""
-  let (mtime, plain) = recordCache[path]
-  try:
-    if getLastModificationTime(path) == mtime: plain else: ""
-  except OSError:
-    ""
+  let (digest, plain) = recordCache[path]
+  if digest == recordCipherHash(path): plain else: ""
 
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
                        verifySig = false,
@@ -278,13 +281,15 @@ proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
   let path = findEntryFile(repo, cfg, e.id)
   if path.len == 0:
     return false
-  try:
-    let plain = recalledRecord(path)
-    let parsed = parseEntryPlain(
-      if plain.len > 0: plain else: decryptToString(cfg, path, false))
-    parsed.ok and parsed.entry == e and parsed.dek == dek
-  except CatchableError:
-    false
+  let plain = recalledRecord(path)
+  let checked =
+    if plain.len > 0:
+      plain
+    else:
+      verifyAndDecryptToString(cfg, path, verifySig = cfg.effectiveSigner != "none",
+                               checkPresent = true)
+  let parsed = parseEntryPlain(checked)
+  parsed.ok and parsed.entry == e and parsed.dek == dek
 
 proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
                        deks: DekTable, force = false) =
@@ -407,7 +412,8 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     # stub: seal-key plus envelope mark, no rows. Rewriting it on every add
     # would recreate the last-writer-wins hole, so the stub is only written
     # when it is missing or the seal key changed.
-    let existing = loadManifestMeta(repo, cfg = cfg)
+    let existing = loadManifestMeta(repo, verifySig = cfg.effectiveSigner != "none",
+                                    cfg = cfg, checkPresent = true)
     let deks = if haveDeks: knownDeks else: loadDeks(repo, cfg)
     saveSplitEntries(repo, cfg, entries, deks)
     if existing.sealKey == sealKey and findManifest(repo, cfg).len > 0 and
@@ -443,5 +449,6 @@ proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   ## Rewrite the entry list without dropping the seal key or the envelope
   ## mark. add/rm/mv/addDir used to call `saveManifest` with the defaults
   ## and so forced the next seal to re-encrypt every blob.
-  let meta = loadManifestMeta(repo, cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = cfg.effectiveSigner != "none",
+                              cfg = cfg, checkPresent = true)
   saveManifest(repo, entries, cfg, meta.sealKey, meta.envelope or envelope)

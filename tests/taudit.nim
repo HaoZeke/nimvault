@@ -664,6 +664,29 @@ fi
 exec """ & realGpg.quoteShell & """ "$@"
 """
 
+proc secondRecordDecryptSwapHook(realGpg, targetRecord, replacement,
+                                 marker, seen: string): string =
+  ## Swap one record just before the second decrypt of that record path.
+  ## `add` first verifies the record while loading the manifest, then loads
+  ## data keys. A swap in between must not be re-signed.
+  """#!/bin/sh
+set -eu
+last=""
+for arg in "$@"; do last="$arg"; done
+case " $* " in
+  *" -d "*|*" --decrypt "*) decrypt=1 ;;
+  *) decrypt="" ;;
+esac
+if [ -n "$decrypt" ] && [ "$last" = """ & targetRecord.quoteShell & """ ]; then
+  if [ -e """ & seen.quoteShell & """ ] && [ ! -e """ & marker.quoteShell & """ ]; then
+    cat """ & replacement.quoteShell & """ > """ & targetRecord.quoteShell & """
+    : >""" & marker.quoteShell & """
+  fi
+  : >""" & seen.quoteShell & """
+fi
+exec """ & realGpg.quoteShell & """ "$@"
+"""
+
 block unsealUsesDescriptorAnchoredStaging:
   ## A parent swapped after path checks must now fail before placement.
   let r = setupRepo()
@@ -1187,6 +1210,56 @@ block recordDekWinsOverKeyFile:
   removeDir(work)
   removeDir(r)
   echo "PASS: the signed record's data key wins over a key file"
+
+block addRefusesARecordDekSwappedAfterVerify:
+  ## A record swapped after the verified load must not be re-signed with its
+  ## attacker data key on a later write.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "record-dek-original")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let goodDek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_recordswap")
+  let plain = forged / "record.plain"
+  let badDek = repeat('b', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let marker = wrapBin / "swapped"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, secondRecordDecryptSwapHook(realGpg,
+                                                 entryFile(r, c, entry.id),
+                                                 badRec, marker, seen))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  writeFile(r / "later.txt", "record-dek-later")
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  var raised = false
+  try:
+    try:
+      add(r, r / "later.txt", c)
+    except CatchableError:
+      raised = true
+  finally:
+    putEnv("PATH", oldPath)
+  if fileExists(marker):
+    doAssert raised, "a split-record swap after verify must fail"
+  doAssert loadDeks(r, c)[entry.id] == goodDek,
+    "the verified record DEK must stay authoritative"
+  doAssert checkVault(r, c).problems.len == 0
+  removeDir(forged)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add refuses record-DEK swaps after verify"
 
 block gitignoreLineIsLiteral:
   let r = setupRepo()

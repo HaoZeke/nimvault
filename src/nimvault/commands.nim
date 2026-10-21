@@ -818,7 +818,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # A fresh key per re-encryption rather than a reused one: the key file is
   # small, and a key that never outlives the bytes it protects is the cheaper
   # thing to reason about.
-  var deks = loadDeks(repo, cfg)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   # Which recipients may open each entry. With no `wrap` rules every entry
   # lands in one group holding the configured recipient, which is byte for
   # byte the behaviour before groups existed.
@@ -931,8 +931,9 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
 
   banner(&"Adding {storePath(cfg, absPath, repo)} to vault ...")
   ensureVaultDir(repo)
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  var deks = loadDeks(repo, cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   addOneFile(repo, absPath, cfg, noGitignore, entries, deks)
   persistDeks(repo, cfg, deks, entries)
   saveManifestKeep(repo, entries, cfg, envelope = true)
@@ -979,8 +980,9 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   ensureVaultDir(repo)
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  var deks = loadDeks(repo, cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   for filePath in filesToAdd:
     addOneFile(repo, filePath, cfg, noGitignore, entries, deks)
 
@@ -1001,10 +1003,11 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   else:
     expandHome(path)
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
   var found = false
   var newEntries: seq[VaultEntry] = @[]
-  var deks = loadDeks(repo, cfg)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   var droppedId = ""
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
@@ -1153,7 +1156,8 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   if symlinkExists(newAbs):
     nvRaise(&"FATAL: refusing destination symlink: {newAbs}")
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
   var found = false
   for e in entries.mitems:
     if resolvePath(cfg, e.path) == oldAbs:
@@ -1171,7 +1175,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   if not found:
     nvRaise(&"Not in vault: {oldPath}")
 
-  persistDeks(repo, cfg, loadDeks(repo, cfg), entries)
+  persistDeks(repo, cfg, deksForEntries(repo, cfg, entries, meta.deks), entries)
   saveManifestKeep(repo, entries, cfg)
   nvEcho(&"  Updated manifest (blob unchanged)")
 
