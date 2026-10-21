@@ -453,30 +453,14 @@ block sealLeavesManifestAloneWhenNothingChanged:
 
 block vaultLockExcludesAnotherProcess:
   ## fcntl records are per process, so this has to fork to mean anything.
-  var ready: array[2, cint]
-  var releaseSig: array[2, cint]
-  doAssert pipe(ready) == 0, "ready pipe failed"
-  doAssert pipe(releaseSig) == 0, "release pipe failed"
   let pid = fork()
   if pid == 0:
-    discard close(ready[0])
-    discard close(releaseSig[1])
     var held = acquire(incRepo)
-    var token: char = '1'
-    doAssert write(ready[1], addr token, 1) == 1
-    discard close(ready[1])
-    var releaseToken: char
-    doAssert read(releaseSig[0], addr releaseToken, 1) == 1
-    discard close(releaseSig[0])
+    sleep(1500)
     release(held)
     quit(0)
   doAssert pid > 0, "fork failed"
-  discard close(ready[1])
-  discard close(releaseSig[0])
-  var got: char
-  doAssert read(ready[0], addr got, 1) == 1,
-    "child did not signal that it acquired the lock"
-  discard close(ready[0])
+  sleep(400)          # let the child take the lock first
 
   var raised = false
   try:
@@ -484,9 +468,6 @@ block vaultLockExcludesAnotherProcess:
     release(mine)
   except CatchableError:
     raised = true
-  var releaseByte: char = '1'
-  doAssert write(releaseSig[1], addr releaseByte, 1) == 1
-  discard close(releaseSig[1])
   var status: cint
   discard waitpid(pid, status, 0)
   doAssert raised, "a second process must not get the lock while it is held"
