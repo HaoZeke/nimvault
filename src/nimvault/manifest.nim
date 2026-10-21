@@ -246,10 +246,7 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
     encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
   finally:
     discardPrivate(work)
-  syncPath(tmp)
-  moveFile(tmp, dest)
-  syncParentDir(dest)
-  signManifest(cfg, dest)
+  publishSigned(cfg, tmp, dest)
   rememberRecord(dest, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
@@ -405,12 +402,9 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   # Durability, which rename alone does not give: flush the bytes before the
   # rename that points at them, and the directory entry after, or a crash can
   # leave the trust root present and empty. See `syncPath`.
-  syncPath(tmpEnc)
-  moveFile(tmpEnc, encPath)
-  syncParentDir(encPath)
   # The manifest is the trust root: its hashes are what vouch for every blob,
   # so it is the one thing that has to be signed when the backend cannot.
-  signManifest(cfg, encPath)
+  publishSigned(cfg, tmpEnc, encPath)
 
 proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                        envelope = false) =

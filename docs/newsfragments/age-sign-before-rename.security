@@ -1,0 +1,1 @@
+A record or stub manifest is signed while it is still a temporary file, and the signature and the file are then renamed into place. A signing failure used to leave the new ciphertext under the old signature, or under none, so the vault no longer verified.
