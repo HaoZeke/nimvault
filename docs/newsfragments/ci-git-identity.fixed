@@ -1,0 +1,1 @@
+CI sets a git user.name and user.email so tests that commit in a scratch repository have a history.

@@ -21,7 +21,7 @@ This is the threat model for the CLI, not a third-party audit.
 * What the commands buy
 
 | Command | Gives | Does not give |
-| ~check~ | blob digests still match the signed manifest; no key needed | that you can decrypt; that git history is gone |
+| ~check~ | with a key, blob digests match the records it can open; without a key, payload ids match ~.vault/blob-index~; ~--digests~ diffs a previous ciphertext snapshot | that a new fragment was written by a recipient; that git history is gone |
 | ~rotate~ | a removed recipient can no longer unwrap the data keys | post-compromise secrecy for a leaked data key |
 | ~rotate --rekey~ | new data keys and new payloads | erasure of old objects on the remote |
 | ~status~ | local plaintext vs the recorded content hash | blob integrity |
@@ -36,6 +36,16 @@ check before decrypting.
 
 Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.
+
+~.vault/a/<id>.gpg~ is an unsigned fragment encrypted to the entry's
+recipients. A writer with only those public keys can append one without
+opening ~.vault/e/~. Anyone else with those public keys can plant one too.
+~unseal~ and ~get~ do not write it unless ~--allow-unsigned~ is passed, and
+a path that matches a signed record is refused even then. ~adopt~ signs the
+fragment into ~.vault/e/~. A bad or missing signature on ~.vault/e/~ is still
+fatal. An unsigned fragment does not replace the data key in a signed
+record. ~check --digests~ against a snapshot from outside the change is the
+keyless detector.
 
 * Limits that stay
 
@@ -97,10 +107,14 @@ Accepted:
 - A tab or newline in a path was stored in the record and shifted its columns.
 - ~scan~ skipped every directory named ~tmp~. That skip now applies only
   under ~.claude~ or ~.codex~.
-- The docs called ~check~ keyless. The blob digests are inside the encrypted
-  records. With only the public key imported, ~check~ reports that this
-  identity cannot open the records and does not compare the blobs. It does
-  not decrypt the payloads.
+- The docs called ~check~ keyless. With a secret key, ~check~ reads blob
+  digests from the encrypted records and does not decrypt payloads. Without
+  a secret key it compares payload ids to ~.vault/blob-index~ and does not
+  open the records.
+- An unsigned ~.vault/a/~ fragment is not written by ~unseal~ or ~get~
+  unless ~--allow-unsigned~ is passed. A path that matches a signed record
+  is refused even then. ~adopt~ signs the fragment into ~.vault/e/~. An
+  unsigned fragment does not replace the data key in a signed record.
 
 Still accepted:
 
@@ -108,7 +122,9 @@ Still accepted:
 - Old git objects survive ~rotate --rekey~. Nothing here rewrites history.
 - ~scan~ matches a fixed pattern list. It skips binaries, files over 2MB,
   lines over 2000 characters, and dependency directories on a worktree walk.
-- ~--allow-unsigned~ remains a migration hatch.
+- ~--allow-unsigned~ reads a legacy unsigned manifest and writes an
+  unadopted ~.vault/a/~ fragment. A fragment whose path matches a signed
+  record is refused either way.
 - Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
 - Key files stay unsigned.
 - Overwriting a file does not erase every copy a filesystem keeps.

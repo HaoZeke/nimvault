@@ -128,5 +128,59 @@ block tamperedRecordIsRefused:
   writeFile(rec, original)
   echo "PASS: age refuses a tampered entry record"
 
+block ageWriterHasNoSigningKey:
+  ## Sealing an age vault signs with ssh, and check opens the records to
+  ## read the digests. A process that holds only the recipient public key
+  ## has neither the identity nor the ssh key. It must still append, and
+  ## check must compare ciphertext to a digest list.
+  let ownerCfg = cfg
+  let sealed = loadManifest(work, cfg = ownerCfg)
+  doAssert sealed.len >= 1
+  let oldId = sealed[0].id
+  let oldRecPath = findEntryFile(work, ownerCfg, oldId)
+  let oldRec = readFile(oldRecPath)
+  let oldSig = readFile(oldRecPath & ".sig")
+  let oldBlob = readFile(findBlob(work, ownerCfg, oldId))
+
+  let dig = work / "cipher-digests.txt"
+  writeDigestFile(dig, vaultCipherDigests(work))
+  let writer = GpgConfig(recipient: recipient, root: work, backend: "age")
+  let clean = checkVault(work, writer, dig)
+  doAssert clean.keyless, "check with no age identity must not decrypt records"
+  doAssert clean.problems.len == 0, $clean.problems
+
+  let blob = findBlob(work, ownerCfg, oldId)
+  let good = readFile(blob)
+  writeFile(blob, good & "x")
+  let drifted = checkVault(work, writer, dig)
+  doAssert drifted.digestChanged.len > 0, $drifted.problems
+  writeFile(blob, good)
+  doAssert checkVault(work, writer, dig).problems.len == 0
+
+  let note = work / "secrets" / "stance.txt"
+  writeFile(note, "age-public-stance")
+  add(work, note, writer)
+  seal(work, writer)
+  doAssert readFile(oldRecPath) == oldRec
+  doAssert readFile(oldRecPath & ".sig") == oldSig
+  doAssert readFile(findBlob(work, ownerCfg, oldId)) == oldBlob
+
+  var appendPath = ""
+  for kind, path in walkDir(work / ".vault" / "a"):
+    if kind == pcFile and path.endsWith(".age"):
+      appendPath = path
+  doAssert appendPath.len > 0, "encrypt-only add must write .vault/a/<id>.age"
+  doAssert not fileExists(appendPath & ".sig"),
+    "an encrypt-only fragment is not signed"
+  var ageRefused = false
+  try:
+    discard get(work, note, ownerCfg)
+  except CatchableError as e:
+    ageRefused = true
+    doAssert "unsigned" in e.msg, e.msg
+  doAssert ageRefused, "an unadopted age fragment must not be returned"
+  doAssert get(work, note, ownerCfg, allowUnsigned = true) == "age-public-stance"
+  echo "PASS: age public-key writer seals without an ssh key"
+
 removeDir(work)
 echo "All age backend tests passed."

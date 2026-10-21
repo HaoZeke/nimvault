@@ -5,7 +5,8 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism, sha256sum
+                  gpgStatusHas, gpgParallelism, sha256sum, pinentryInsert,
+                  gpgFailureCode
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 
@@ -253,9 +254,10 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
     let stop = min(start + batch - 1, paths.high)
     var procs: seq[(int, Process)] = @[]
     for i in start .. stop:
-      procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]],
-        options = {poUsePath})))
+      var args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                   "-d", "--", paths[i]]
+      pinentryInsert(args)
+      procs.add((i, startProcess("gpg", args = args, options = {poUsePath})))
     for (i, p) in procs:
       let plain = p.outputStream.readAll()
       let status = p.errorStream.readAll()
@@ -321,10 +323,10 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, "--", inPath],
       options = {poUsePath})
   else:
-    startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", outPath, "--", inPath],
-      options = {poUsePath})
+    var args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "-o", outPath, "--", inPath]
+    pinentryInsert(args)
+    startProcess("gpg", args = args, options = {poUsePath})
 
 proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
                     inPath, outPath: string, sign = true) =
@@ -368,23 +370,33 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
         nvRaise("FATAL: invalid recipient")
       args.add("--recipient=" & r)
     args.add(@["--set-filename", "", "-o", outPath, "--", inPath])
+    pinentryInsert(args)
     let p = startProcess("gpg", args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
     let code = p.waitForExit()
     p.close()
     if code != 0:
-      nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
+      nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}",
+              gpgFailureCode(output))
 
 proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   if cfg.usesAge:
+    if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
+       '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
+      nvRaise("FATAL: invalid recipient")
     startProcess(ageBinary(),
       args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
   else:
-    startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
-               "--trust-model", "always",
-               "--sign", "-e", "--recipient=" & cfg.recipient,
-               "--set-filename", "", "-o", outPath, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
+    if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
+       '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
+      nvRaise("FATAL: invalid recipient")
+    var args = @[
+      "--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+      "--trust-model", "always",
+      "--sign", "-e", "--recipient=" & cfg.recipient,
+      "--set-filename", "", "-o", outPath, "--", inPath]
+    pinentryInsert(args)
+    startProcess("gpg", args = args,
+                 options = {poUsePath, poStdErrToStdOut})

@@ -83,6 +83,22 @@ Order in the file is precedence, so the narrow rules go above the general one.
 An entry matching no rule uses ~recipient~, which is why a config with no
 ~wrap~ lines behaves exactly as it did before rules existed.
 
+A path can be sealed to a subset. This keeps one persona's notes to that
+persona and the owner:
+
+#+begin_src ini
+recipient = OWNER
+wrap = personas/mosswell/**:MOSSWELL,OWNER
+wrap = **:OWNER
+#+end_src
+
+A rule that matches and names no recipient is an error. The entry is not
+sealed to ~recipient~ instead, and nothing is written.
+
+~nimvault who PATH~ prints the path, the recipients and the glob that
+matched, without decrypting. With no path it lists the entries this identity
+can open. See [[file:../howto/machine-writers.org][machine writers]].
+
 ** How it works
 
 Each entry's payload is encrypted under its own data key (see the manifest
@@ -129,6 +145,16 @@ The recipient value is any string GPG accepts as a recipient identifier:
 - Email: ~user@example.com~
 
 Long key IDs are recommended for unambiguous matching.
+
+* CI switches
+
+- ~NIMVAULT_NONINTERACTIVE=1~ :: same as ~--noninteractive~. gpg is not
+  allowed to prompt. A prompt exits 3.
+- ~NIMVAULT_PUBLIC_ONLY=1~ :: same as ~--public-only~ on the commands that
+  take it. Do not use a secret key, even if this home has one.
+
+A gpg home with no secret key, or an age config whose identity file is not
+on this machine, takes that lane without the switch.
 
 ** Finding your key ID
 

@@ -107,10 +107,12 @@ proc matchesGlob(pattern, path: string): bool =
     pat.add("**")
   return path.match(re(globToRe(pat)))
 
-proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
-  ## Recipients for one entry: the first matching `wrap` rule wins, and the
-  ## configured recipient is the fallback. Order in the file is the precedence,
-  ## so the specific rules go above the general one.
+proc wrapMatch*(cfg: GpgConfig, path: string): tuple[recipients: seq[string],
+                                                     rule: string] =
+  ## First matching `wrap` rule wins. `rule` is the glob, empty when the
+  ## configured recipient is the fallback. A match that names nobody is an
+  ## error: falling through would seal the entry to the owner, which is a
+  ## different set from the one the rule wrote down.
   for rule in cfg.wraps:
     let idx = rule.rfind(':')
     if idx <= 0:
@@ -125,8 +127,16 @@ proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
        not pat.startsWith("~/"):
       hit = matchesGlob(pat, path[2 .. ^1])
     if hit:
-      return normalizedRecipients(recips)
-  return normalizedRecipients(@[cfg.recipient])
+      let norm = normalizedRecipients(recips)
+      if norm.len == 0:
+        nvRaise(&"FATAL: wrap rule '{pat}' matches {path} but names no recipient")
+      return (norm, pat)
+  (normalizedRecipients(@[cfg.recipient]), "")
+
+proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
+  ## Recipients for one entry. Order in the file is the precedence, so the
+  ## specific rules go above the general one.
+  wrapMatch(cfg, path).recipients
 
 proc groupKeysPath*(repo: string, cfg: GpgConfig, gid: string): string =
   repo / ".vault" / (KeysFileStem & "." & gid & cfg.blobExt)
@@ -185,15 +195,22 @@ proc newDek*(cfg: GpgConfig): string =
 proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   ## Merge every data-key this machine can actually open.
   ##
-  ## Per-entry records under `.vault/e/` are the mergeable source. Grouped
-  ## `keys.*` files still fill ids that have no record yet (a v6 vault
-  ## mid-migration). A file that will not decrypt is not an error: it
-  ## belongs to a group this machine is not in.
+  ## Signed records under `.vault/e/` are the trust root. `.vault/a/` holds
+  ## the same line, written by a public-key writer that could not sign, and
+  ## may only fill an id that has no signed record. Grouped `keys.*` files
+  ## are unsigned too, so they fill ids that still have no record. A file
+  ## that will not decrypt is not an error: it belongs to a group this
+  ## machine is not in.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
-  let edir = dir / "e"
-  if dirExists(edir):
+  # `e/` first. `a/` must not replace a data key the signed record already
+  # named, including when both files use the same id.
+  for sub in ["e", "a"]:
+    let onlyMissing = sub == "a"
+    let edir = dir / sub
+    if not dirExists(edir):
+      continue
     for kind, path in walkDir(edir):
       if kind != pcFile:
         continue
@@ -211,6 +228,8 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
           continue
         let parts = s.split('\t')
         if parts.len >= 6 and parts[5].len > 0:
+          if onlyMissing and parts[0] in result:
+            continue
           result[parts[0]] = parts[5]
   var candidates: seq[string] = @[]
   for kind, path in walkDir(dir):
@@ -232,8 +251,8 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
         continue
       let parts = s.split('\t')
       if parts.len >= 2 and parts[0] notin result:
-        # The signed per-entry record is the trust root. A key file is not
-        # signed, so it may only fill an id that has no record yet.
+        # Unsigned. A key file may not override a signed record or an
+        # `a/` fragment that already named this id.
         result[parts[0]] = parts[1]
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,

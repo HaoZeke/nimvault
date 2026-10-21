@@ -2,7 +2,7 @@
 ##
 ## Throwaway GPG home. No long-lived key material.
 
-import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles]
+import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles, sets]
 import nimvault/[gpg, manifest, commands, crypto, dek, lock]
 
 proc setupGpg(): tuple[home, key: string] =
@@ -473,8 +473,8 @@ block hookScansIndexAndPushedCommits:
   echo "PASS: hooks scan the index and the pushed commits"
 
 block checkWithoutSecretKey:
-  ## The blob digests are inside the encrypted records. A public key can
-  ## verify a signature; it cannot read those digests.
+  ## A public key cannot open the records. check compares payload ids to
+  ## the blob-index and does not decrypt.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let f = r / "secret.txt"
@@ -501,22 +501,17 @@ block checkWithoutSecretKey:
     let (secs, _) = execCmdEx("gpg --list-secret-keys --with-colons")
     doAssert "sec:" notin secs and "ssb:" notin secs, secs
     let looked = checkVault(r, c)
-    doAssert looked.problems == @[
-      "no records this identity can open; unread wrap groups remain"],
-      "check without a secret key returned: " & $looked.problems
-    var raised = false
-    try:
-      check(r, c)
-    except CatchableError as e:
-      raised = true
-      doAssert "check-needs-the-secret" notin e.msg
-      doAssert "entries consistent with the manifest" notin e.msg
-    doAssert raised, "check must not succeed without the secret key"
+    doAssert looked.keyless, "a public key must not open the records"
+    doAssert looked.anchor == "blob-index", looked.anchor
+    doAssert looked.problems.len == 0, $looked.problems
+    doAssert "check-needs-the-secret" notin checkReport(r, c)
+    doAssert "entries consistent with the manifest" notin checkReport(r, c)
+    doAssert check(r, c) == 0
   finally:
     putEnv("GNUPGHOME", home)
     removeDir(pubHome)
   removeDir(r)
-  echo "PASS: check cannot read the digests without the secret key"
+  echo "PASS: check without a secret key uses the blob-index"
 
 block getDoesNotWritePlaintextToTheRuntimeDir:
   let shm = "/dev/shm/nimvault-get-" & $getCurrentProcessId()
@@ -594,6 +589,153 @@ block movedLockDoesNotCloseStdin:
   doAssert fcntl(0.cint, F_GETFD) != -1, "moving a vault lock must not close stdin"
   removeDir(r)
   echo "PASS: moving a vault lock does not close stdin"
+
+block appendDekDoesNotOverrideSignedRecord:
+  ## An unsigned `.vault/a/` copy of an id must not replace the data key
+  ## stored in the signed record. The same rule as an unsigned key file.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "dek-secret")
+  add(r, f, c)
+  seal(r, c)
+  let e = loadManifest(r, cfg = c)[0]
+  let good = loadDeks(r, c)[e.id]
+  saveAppendRecord(r, c, e, repeat('b', 64))
+  doAssert findAppendFile(r, c, e.id).len > 0
+  doAssert loadDeks(r, c)[e.id] == good,
+    "an unsigned fragment must not override the data key in the signed record"
+  doAssert get(r, f, c) == "dek-secret"
+  removeDir(r)
+  echo "PASS: an unsigned fragment does not override a signed record's data key"
+
+block unsignedFragmentIsNotMaterialized:
+  ## A writer with only the recipient public key can plant ~/.bashrc and
+  ## ~/.ssh/authorized_keys. unseal and get must not write those bytes unless
+  ## --allow-unsigned is passed, and a path that matches a signed record is
+  ## refused even then. adopt signs a fragment that does not collide.
+  let ownerHome = getEnv("GNUPGHOME")
+  let savedHome = getEnv("HOME")
+  var pubHome = ""
+  var home = ""
+  var r = ""
+  try:
+    let pubFile = ownerHome / "owner.pub"
+    let (expOut, expCode) = execCmdEx(
+      &"gpg --batch --yes --export --armor -o {pubFile.quoteShell} {keyId}")
+    doAssert expCode == 0, expOut
+    pubHome = createTempDir("nimvault_plant_", "_gpg")
+    setFilePermissions(pubHome, {fpUserRead, fpUserWrite, fpUserExec})
+    putEnv("GNUPGHOME", pubHome)
+    let (impOut, impCode) = execCmdEx(
+      &"gpg --batch --import {pubFile.quoteShell}")
+    doAssert impCode == 0, impOut
+    doAssert not gpgSecretKeyPresent(), "the plant home must not hold a secret key"
+
+    home = createTempDir("nimvault_plant_", "_home")
+    r = setupRepo()
+    putEnv("HOME", home)
+    putEnv("GNUPGHOME", ownerHome)
+    let c = GpgConfig(recipient: keyId)
+    createDir(home / ".ssh")
+    let bashrc = home / ".bashrc"
+    let ak = home / ".ssh" / "authorized_keys"
+    writeFile(bashrc, "owner-bashrc\n")
+    add(r, bashrc, c)
+    seal(r, c)
+    doAssert not dirExists(r / ".vault" / "a"), "a secret-key add is a signed record"
+    var signedBash = ""
+    for e in loadManifest(r, cfg = c):
+      if e.path.endsWith(".bashrc"):
+        signedBash = e.id
+    doAssert signedBash.len == 16
+
+    removeFile(bashrc)
+    writeFile(bashrc, "evil-bashrc\n")
+    writeFile(ak, "evil-keys\n")
+    putEnv("GNUPGHOME", pubHome)
+    add(r, bashrc, c)
+    add(r, ak, c)
+    putEnv("GNUPGHOME", ownerHome)
+    removeFile(bashrc)
+    removeFile(ak)
+
+    var plantedBash = ""
+    var plantedAk = ""
+    let unsigned = appendOnlyIds(r)
+    doAssert unsigned.len == 2
+    for e in loadManifest(r, cfg = c):
+      if e.id notin unsigned:
+        continue
+      if e.path.endsWith(".bashrc"):
+        plantedBash = e.id
+      elif "authorized_keys" in e.path:
+        plantedAk = e.id
+    doAssert plantedBash.len == 16 and plantedBash != signedBash
+    doAssert plantedAk.len == 16
+
+    var refused = false
+    try:
+      unseal(r, c)
+    except CatchableError as err:
+      refused = true
+      doAssert "unsigned" in err.msg, err.msg
+    doAssert refused, "unseal must refuse an unadopted fragment"
+    doAssert not fileExists(bashrc), "unseal must not write ~/.bashrc"
+    doAssert not fileExists(ak), "unseal must not write authorized_keys"
+
+    var getRefused = false
+    try:
+      discard get(r, ak, c)
+    except CatchableError as err:
+      getRefused = true
+      doAssert "unsigned" in err.msg, err.msg
+    doAssert getRefused, "get must refuse an unadopted fragment"
+    doAssert not fileExists(ak)
+    doAssert get(r, bashrc, c) == "owner-bashrc\n"
+
+    var collided = false
+    try:
+      unseal(r, c, allowUnsigned = true, only = @[bashrc])
+    except CatchableError as err:
+      collided = true
+      doAssert "matches a signed" in err.msg, err.msg
+    doAssert collided, "--allow-unsigned must refuse a path that matches a signed record"
+    doAssert not fileExists(bashrc), "a colliding fragment must not be written"
+    doAssert get(r, bashrc, c, allowUnsigned = true) == "owner-bashrc\n"
+
+    unseal(r, c, allowUnsigned = true, only = @[ak])
+    doAssert readFile(ak) == "evil-keys\n"
+    removeFile(ak)
+    doAssert get(r, ak, c, allowUnsigned = true) == "evil-keys\n"
+    doAssert not fileExists(ak), "get returns the fragment and does not write it"
+
+    var adoptNo = false
+    try:
+      adopt(r, c, @[bashrc])
+    except CatchableError as err:
+      adoptNo = true
+      doAssert "matches a signed" in err.msg, err.msg
+    doAssert adoptNo, "adopt must refuse a path that matches a signed record"
+    doAssert plantedBash in appendOnlyIds(r)
+    doAssert findEntryFile(r, c, plantedBash).len == 0
+
+    adopt(r, c, @[ak])
+    doAssert plantedAk notin appendOnlyIds(r)
+    let signedAk = findEntryFile(r, c, plantedAk)
+    doAssert signedAk.len > 0, "adopt writes a signed .vault/e/ record"
+    discard decryptToString(c, signedAk, true)
+    removeFile(ak)
+    unseal(r, c, allowUnsigned = false, only = @[ak])
+    doAssert readFile(ak) == "evil-keys\n"
+
+    echo "PASS: plants are refused, collisions stay refused, adopt signs the rest"
+  finally:
+    putEnv("GNUPGHOME", ownerHome)
+    if savedHome.len > 0: putEnv("HOME", savedHome) else: delEnv("HOME")
+    if r.len > 0 and dirExists(r): removeDir(r)
+    if home.len > 0 and dirExists(home): removeDir(home)
+    if pubHome.len > 0 and dirExists(pubHome): removeDir(pubHome)
 
 removeDir(creds.home)
 delEnv("GNUPGHOME")
