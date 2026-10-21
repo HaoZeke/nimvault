@@ -125,23 +125,15 @@ proc assertReadPath(cfg: GpgConfig, repo, src: string) =
   assertResolvedWithinBoundary(cfg, src)
 
 type StagedPath = ref object
-  ## Plaintext staged beside a destination, anchored to one opened parent dir.
+  ## One entry's plaintext staged beside its destination: the opened parent
+  ## directory and the staging file created in it. Both stay open only until
+  ## that entry is placed or discarded.
   dirFd: cint
-  fd: cint  ## the staging file, open from its creation until it is written
+  fd: cint
   dirPath: string
   destName: string
   tmpName: string
-
-proc closeStagedFile(sp: StagedPath) =
-  if sp.fd >= 0:
-    discard posix.close(sp.fd)
-    sp.fd = -1
-
-proc closeStage(sp: StagedPath) =
-  closeStagedFile(sp)
-  if sp.dirFd >= 0:
-    discard posix.close(sp.dirFd)
-    sp.dirFd = -1
+  placed: bool
 
 proc resolvedParentForWrite(path: string): string =
   ## Resolve the existing prefix of `path.parentDir` once, then append any
@@ -216,39 +208,79 @@ proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
     destName: dest.extractFilename,
     tmpName: tmpName)
 
-proc shredStaged(sp: StagedPath) =
-  ## Overwrite then unlink a staged plaintext file by descriptor-relative name.
-  if sp.dirFd < 0:
-    return
+proc stillNamed(sp: StagedPath): bool =
+  ## Whether the staging name still refers to the file this process created.
+  var mine, named: Stat
+  fstat(sp.fd, mine) == 0 and
+    fstatAt(sp.dirFd, sp.tmpName.cstring, named, AtSymlinkNoFollow) == 0 and
+    sameFile(mine, named)
+
+proc discardStaged(sp: StagedPath) =
+  ## Close the entry's descriptors. A staging file that was not placed is
+  ## overwritten through its own descriptor, then unlinked while its name
+  ## still refers to it. Unlink alone is not enough; the bytes are the
+  ## plaintext.
   if sp.fd >= 0:
-    overwriteFd(sp.fd)
-  else:
-    let fd = openAt(sp.dirFd, sp.tmpName.cstring,
-                    posix.O_WRONLY or O_CLOEXEC or ONoFollow)
-    if fd >= 0:
-      overwriteFd(fd)
-      discard posix.close(fd)
-  discard unlinkAt(sp.dirFd, sp.tmpName.cstring, 0)
+    if not sp.placed:
+      overwriteFd(sp.fd)
+      if stillNamed(sp):
+        discard unlinkAt(sp.dirFd, sp.tmpName.cstring, 0)
+    discard posix.close(sp.fd)
+    sp.fd = -1
+  if sp.dirFd >= 0:
+    discard posix.close(sp.dirFd)
+    sp.dirFd = -1
 
-proc renameIntoPlace(sp: StagedPath) =
-  if renameAt(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
-    shredStaged(sp)
-    nvRaise(&"FATAL: could not place plaintext at {sp.dirPath / sp.destName}")
-
-proc finishStaged(sp: StagedPath, job: Drain): tuple[status: string, code: int] =
-  ## Close the staging file once its decryption has ended, mode 0600, or 0700
-  ## for a shebang script. A short write fails the entry: the staged bytes are
-  ## not the plaintext.
-  result = (job.err, job.code)
-  if job.writeErr != 0:
-    result.status.add("\nFATAL: cannot write the staging file: " &
-                      osErrorMsg(OSErrorCode(job.writeErr)))
-    if result.code == 0:
-      result.code = 1
+proc placeStaged(sp: StagedPath, job: Drain) =
+  ## Mode 0600, or 0700 for a shebang script, then rename the staging file
+  ## over the destination through the descriptor it was created under. One
+  ## directory, so a symlink at the destination is replaced, not followed.
+  let dest = sp.dirPath / sp.destName
   let mode = if job.head == "#!": 0o700.Mode else: 0o600.Mode
-  if result.code == 0 and posix.fchmod(sp.fd, mode) != 0:
-    result = (job.err & "\nFATAL: cannot set the staging file mode", 1)
-  closeStagedFile(sp)
+  if posix.fchmod(sp.fd, mode) != 0:
+    nvRaise(&"FATAL: cannot set the mode of the plaintext for {dest}")
+  if not stillNamed(sp):
+    nvRaise(&"FATAL: the staging file for {dest} was replaced")
+  if renameAt(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
+    nvRaise(&"FATAL: could not place plaintext at {dest}")
+  sp.placed = true
+
+proc startAll(n: int, start: proc (i: int): Drain {.closure.}): seq[Drain] =
+  ## Start `n` decryptions. When one cannot start, those already running are
+  ## killed and reaped before the error goes on.
+  try:
+    for i in 0 ..< n:
+      result.add(start(i))
+  except CatchableError:
+    for j in result.mitems:
+      j.p.kill()
+    drain(result)
+    raise
+
+proc decryptFailure(e: VaultEntry, job: Drain): string =
+  ## Why one entry's decryption is refused, or "".
+  if job.code != 0:
+    return &"FATAL: failed to unseal {e.path}\n{job.err.strip}"
+  if job.writeErr != 0:
+    return &"FATAL: failed to unseal {e.path}\n  cannot write the staging " &
+           "file: " & osErrorMsg(OSErrorCode(job.writeErr))
+  ""
+
+proc inBandProblem(e: VaultEntry, status: string, requireSig: bool,
+                   signers: seq[string]): string =
+  ## Why the signature inside a direct gpg blob is refused, or "". A bad
+  ## signature is fatal with --allow-unsigned as without it, and so is a
+  ## good one from a key the config does not name.
+  if gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG"):
+    return &"FATAL: bad signature on blob for {e.path}\n" &
+           "  The vault may have been tampered with."
+  if requireSig and not gpgStatusHas(status, "GOODSIG"):
+    return &"FATAL: missing signature on blob for {e.path}\n" &
+           "  Pass --allow-unsigned to accept unsigned vaults."
+  if requireSig or gpgStatusHas(status, "GOODSIG") or
+     validSigners(status).len > 0:
+    return gpgSignerProblem(status, e.path, signers)
+  ""
 
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
@@ -442,107 +474,90 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # The staging file is created 0600 here and gpg or age only writes to a
   # pipe. umask 077 keeps a missing parent directory owner-only as well.
   let batchSize = gpgParallelism()
-  var staged: seq[StagedPath] = @[]
-  type DecryptResult = tuple[entry: VaultEntry, staged: StagedPath,
-                             status: string, code: int, enveloped: bool]
-  var results: seq[DecryptResult] = @[]
 
   # A vault may hold both formats while a migration drains: an entry with a
   # data key is v6, one without is encrypted straight to the recipient. The
   # key file is the discriminator, and it cannot disagree with the blob because
   # a key is only ever written by the encryption that used it.
   let deks = loadDeks(repo, cfg)
+  var enveloped, direct: seq[VaultEntry]
+  for e in entries:
+    if deks.hasKey(e.id): enveloped.add(e) else: direct.add(e)
 
-  var direct: seq[VaultEntry] = @[]
-  withPrivateUmask:
-    for e in entries:
-      let dest = resolvePath(cfg, e.path)
-      let stagedPath = stageBeside(dest, cfg)
-      staged.add(stagedPath)
-      if deks.hasKey(e.id):
-        var work = ""
-        var jobs = newSeq[Drain](1)
-        try:
-          jobs[0] = Drain(p: decryptWithDekStream(cfg, deks[e.id],
-                            resolveBlob(repo, cfg, e.id, e.hash), work),
-                          outFd: stagedPath.fd)
-          drain(jobs)
-          let (status, code) = finishStaged(stagedPath, jobs[0])
-          results.add((e, stagedPath, status, code, true))
-        except CatchableError as err:
-          results.add((e, stagedPath, err.msg, 1, true))
-        finally:
-          discardPrivate(work)
-      else:
-        direct.add(e)
-
-  withPrivateUmask:
-    for batchStart in countup(0, direct.high, batchSize):
-      let batchEnd = min(batchStart + batchSize - 1, direct.high)
-      var procs: seq[(VaultEntry, StagedPath)] = @[]
-      var jobs: seq[Drain] = @[]
-      for i in batchStart .. batchEnd:
-        let e = direct[i]
-        let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-        let stagedPath = stageBeside(resolvePath(cfg, e.path), cfg)
-        staged.add(stagedPath)
-        procs.add((e, stagedPath))
-        jobs.add(Drain(p: decryptStream(cfg, inPath), outFd: stagedPath.fd))
+  # A direct gpg blob signs its plaintext inside the ciphertext, so reading
+  # the signature means decrypting. Do that first with the output discarded:
+  # nothing is written until every signature has passed. age blobs and v6
+  # enveloped blobs carry none; the signed record and the digest checked
+  # above vouch for them.
+  let inBand = cfg.signaturesInBand and direct.len > 0
+  let signers = if inBand: vaultSigners(cfg) else: @[]
+  if inBand:
+    for first in countup(0, direct.high, batchSize):
+      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
+      var jobs = startAll(batch.len, proc (i: int): Drain =
+        Drain(p: decryptStream(cfg, resolveBlob(repo, cfg, batch[i].id,
+                                                batch[i].hash)), outFd: -1))
       drain(jobs)
-      for k, (e, stagedPath) in procs:
-        let (status, code) = finishStaged(stagedPath, jobs[k])
-        results.add((e, stagedPath, status, code, false))
+      for k, e in batch:
+        var problem = decryptFailure(e, jobs[k])
+        if problem.len == 0:
+          problem = inBandProblem(e, jobs[k].err, requireSig, signers)
+        if problem.len > 0:
+          nvRaise(problem)
 
-  # Abort helper: shred every temp before exiting. Unlink is not enough;
-  # the bytes are the plaintext.
-  template abortUnseal(msgs: varargs[string]) =
-    for sp in staged:
-      shredStaged(sp)
-    var acc = ""
-    for msg in msgs:
-      acc.add msg & "\n"
-    nvRaise(acc.strip())
+  # Then each entry is staged, decrypted, checked and placed before the next
+  # is staged (direct blobs a batch at a time), so the descriptors held do not
+  # grow with the vault. A failure here stops the run; what was already
+  # placed passed every check above.
+  var placed = 0
+  template refuse(problem: string) =
+    nvRaise(if placed == 0: problem
+            else: problem & &"\n  {placed} of {entries.len} file(s) were " &
+                  "restored before this one.")
 
-  # Verify all decryption results and signatures
-  let signers = if cfg.signaturesInBand and direct.len > 0: vaultSigners(cfg)
-                else: @[]
-  for r in results:
-    if r.code != 0:
-      abortUnseal(&"FATAL: failed to unseal {r.entry.path}", r.status)
-    # Bad signatures are always fatal (even with --allow-unsigned).
-    #
-    # Only gpg reports this while decrypting. age blobs carry no signature at
-    # all, and their authenticity comes from the signed manifest plus the blob
-    # digest already checked above; demanding GOODSIG here would reject every
-    # one of them.
-    if cfg.signaturesInBand and not r.enveloped and
-       (gpgStatusHas(r.status, "BADSIG") or gpgStatusHas(r.status, "ERRSIG")):
-      abortUnseal(&"FATAL: bad signature on blob for {r.entry.path}",
-        "  The vault may have been tampered with.")
-    # Missing signatures: fatal unless --allow-unsigned
-    if cfg.signaturesInBand and not r.enveloped and requireSig and
-       not gpgStatusHas(r.status, "GOODSIG"):
-      abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
-        "  Pass --allow-unsigned to accept unsigned vaults.")
-    # A signature that is there must come from a configured signer, with or
-    # without --allow-unsigned.
-    if cfg.signaturesInBand and not r.enveloped and
-       (requireSig or gpgStatusHas(r.status, "GOODSIG") or
-        validSigners(r.status).len > 0):
-      let problem = gpgSignerProblem(r.status, r.entry.path, signers)
-      if problem.len > 0:
-        abortUnseal(problem)
+  withPrivateUmask:
+    for e in enveloped:
+      let sp = stageBeside(resolvePath(cfg, e.path), cfg)
+      var work = ""
+      try:
+        var jobs = @[Drain(p: decryptWithDekStream(cfg, deks[e.id],
+                             resolveBlob(repo, cfg, e.id, e.hash), work),
+                           outFd: sp.fd)]
+        drain(jobs)
+        let problem = decryptFailure(e, jobs[0])
+        if problem.len > 0:
+          refuse(problem)
+        placeStaged(sp, jobs[0])
+      finally:
+        discardStaged(sp)
+        discardPrivate(work)
+      inc placed
+      nvEcho(&"  {e.path}")
 
-  # All verified: rename temps onto the final paths. Same directory, so this
-  # does not fall back to a copy that follows a symlink.
-  try:
-    for r in results:
-      renameIntoPlace(r.staged)
-      nvEcho(&"  {r.entry.path}")
-  finally:
-    for sp in staged:
-      shredStaged(sp)
-      closeStage(sp)
+    for first in countup(0, direct.high, batchSize):
+      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
+      var sps: seq[StagedPath] = @[]
+      try:
+        for e in batch:
+          sps.add(stageBeside(resolvePath(cfg, e.path), cfg))
+        var jobs = startAll(batch.len, proc (i: int): Drain =
+          Drain(p: decryptStream(cfg, resolveBlob(repo, cfg, batch[i].id,
+                                                  batch[i].hash)),
+                outFd: sps[i].fd))
+        drain(jobs)
+        for k, e in batch:
+          var problem = decryptFailure(e, jobs[k])
+          if problem.len == 0 and inBand:
+            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
+          if problem.len > 0:
+            refuse(problem)
+        for k, e in batch:
+          placeStaged(sps[k], jobs[k])
+          inc placed
+          nvEcho(&"  {e.path}")
+      finally:
+        for sp in sps:
+          discardStaged(sp)
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 

@@ -165,10 +165,11 @@ Still accepted:
   and ~mv~ source reads) keep a check-to-use race if another writer can replace
   a writable parent between the check and the open.
 - ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
-  mode 0600. A rename on one filesystem is what keeps a destination symlink
-  from being followed. The price is plaintext in that directory until the
-  batch is checked (for a blob signed in band, before its signature is), left
-  there if the process is killed. ~gc~ shreds those files.
+  mode 0600, once every in-band signature has passed. A rename on one
+  filesystem is what keeps a destination symlink from being followed. The
+  price is plaintext in that directory while its entry is decrypted, left
+  there if the process is killed. ~gc~ shreds those files. A failure part way
+  through leaves the entries already placed.
 - An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
   record are renamed in two steps. A crash between them leaves the new
   signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the

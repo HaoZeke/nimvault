@@ -67,19 +67,23 @@ Before decryption, verifies:
 - Blob SHA-256 hashes against manifest
 - Path safety (no directory traversal)
 
-Decryption writes to temporary files first. Only after all signatures and hashes
-pass does the tool move files to their final paths. This atomic approach prevents
-release of unverified plaintext under the final name.
+Every signature and hash is checked before any plaintext is written. A
+direct gpg blob carries its signature inside the ciphertext, so ~unseal~
+first decrypts each of those with the output discarded. Each entry is then
+decrypted to a temporary file beside its destination, checked again, and
+renamed into place before the next is staged; direct gpg blobs go eight at a
+time. A decryption that fails, or a full disk, stops the run there. The files
+already placed stay, and each had passed every check.
 
 The temporary file is =.nimvault-<id>.tmp= in the destination's directory,
 mode 0600. ~unseal~ creates it through a descriptor for that directory and
 copies the plaintext in from gpg's or age's standard output; neither tool is
-given a path to write. It sits beside the destination so the final step is a ~rename~ on
-one filesystem, which replaces a symlink at the destination instead of
-writing through it. The cost: plaintext sits in that directory for the length
-of the batch, before its in-band signature is checked when the blob carries
-one, and a kill before the rename leaves it behind. ~nimvault gc~ shreds such
-files.
+given a path to write. The rename goes through the same descriptor. It sits
+beside the destination so the final step is a ~rename~ on one filesystem,
+which replaces a symlink at the destination instead of writing through it.
+The cost: plaintext sits in that directory while its entry is decrypted, and
+a kill before the rename leaves it behind. ~nimvault gc~ shreds such files.
+Any other failure shreds it before ~unseal~ exits.
 
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).
@@ -403,15 +407,16 @@ comes from the signed records plus the blob digest. On ~unseal~:
    the config names (see [[file:config.org][configuration]])
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
-4. Blobs are decrypted to temporary files beside the destination
-5. Signatures are verified on each blob that carries one in band. gpg blobs
-   encrypted to a recipient do; age blobs and v6 enveloped blobs do not, and
-   take the same guarantee from the signed manifest plus the digest checked at
-   step 2
-6. Only after all checks pass are files moved to their final paths
+4. Signatures are verified on each blob that carries one in band, by
+   decrypting it with the output discarded. gpg blobs encrypted to a recipient
+   do; age blobs and v6 enveloped blobs do not, and take the same guarantee
+   from the signed manifest plus the digest checked at step 2
+5. Each entry is decrypted to a temporary file beside its destination,
+   checked again, and renamed into place before the next is staged
 
-For direct gpg blobs, step 4 means plaintext is staged before step 5 checks the
-in-band signature; an interrupted run leaves that staging file for ~gc~.
+No plaintext is written before steps 1 to 4 pass for every entry. A failure
+at step 5 stops the run and leaves the files already placed; a killed run
+leaves the staging file in flight for ~gc~.
 
 This design prevents forgery and ciphertext swapping, and refuses escaped record
 paths. Commands that reopen plaintext paths by name still rely on the path check
