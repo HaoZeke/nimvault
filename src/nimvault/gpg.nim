@@ -162,9 +162,13 @@ proc vaultSignerSpecs*(cfg: GpgConfig): seq[string] =
       keep(result, r)
 
 proc normalizeHexSpec(s: string): string =
+  ## A trailing `!` asks gpg for that subkey exactly; the key it names is the
+  ## same.
   var t = s.strip()
   if t.len >= 2 and (t[0] == '0') and (t[1] in {'x', 'X'}):
     t = t[2 .. ^1]
+  if t.endsWith('!'):
+    t = t[0 ..< ^1]
   t.toUpperAscii()
 
 proc isHexSpec(s: string): bool =
@@ -197,24 +201,36 @@ proc uidEmail(uid: string): string =
     return t.toLowerAscii()
   ""
 
-type ListedKey = tuple[keyId, fpr: string, emails: seq[string]]
+type
+  KeyName = tuple[keyId, fpr: string]
+  ListedKey = tuple[keyId, fpr: string, emails: seq[string], subkeys: seq[KeyName]]
 
 proc parseListedKeys(listing: string): seq[ListedKey] =
   var cur = -1
   var needFpr = false
+  var needSubFpr = false
   for line in listing.splitLines:
     let fields = line.split(':')
     if fields.len < 10:
       continue
     case fields[0]
     of "pub", "sec":
-      result.add((fields[4].toUpperAscii(), "", @[]))
+      result.add((fields[4].toUpperAscii(), "", @[], @[]))
       cur = result.high
       needFpr = true
+      needSubFpr = false
+    of "sub", "ssb":
+      if cur >= 0:
+        result[cur].subkeys.add((fields[4].toUpperAscii(), ""))
+        needFpr = false
+        needSubFpr = true
     of "fpr":
       if cur >= 0 and needFpr and fields[9].len > 0:
         result[cur].fpr = fields[9].toUpperAscii()
         needFpr = false
+      elif cur >= 0 and needSubFpr and fields[9].len > 0:
+        result[cur].subkeys[^1].fpr = fields[9].toUpperAscii()
+        needSubFpr = false
     of "uid":
       if cur >= 0 and fields[9].len > 0:
         let email = uidEmail(fields[9])
@@ -223,10 +239,17 @@ proc parseListedKeys(listing: string): seq[ListedKey] =
     else:
       discard
 
+proc hexNames(hex: string, key: KeyName): bool =
+  let keyId = normalizeHexSpec(key.keyId)
+  let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
+  fpr == hex or keyId == hex or
+    (hex.len <= keyId.len and hex.len in [8, 16] and keyId.endsWith(hex))
+
 proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
   ## Primary-key fingerprints, upper case, of every key in the keyring that one
   ## of `specs` names. Email specs are exact (`<addr>`), and key IDs or
-  ## fingerprints are exact hex matches.
+  ## fingerprints are exact hex matches against the primary key or a subkey;
+  ## a vault may name the encryption subkey it is sealed to.
   for raw in specs:
     let s = raw.strip()
     if s.len == 0 or s[0] == '-' or '\n' in s or '\r' in s or '\0' in s:
@@ -244,14 +267,12 @@ proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
     discard p.waitForExit()
     p.close()
     for key in parseListedKeys(listing):
-      let keyId = normalizeHexSpec(key.keyId)
       let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
       let ok =
         if email.len > 0:
           key.emails.anyIt(it == email)
         else:
-          fpr == hex or keyId == hex or
-            (hex.len <= keyId.len and hex.len in [8, 16] and keyId.endsWith(hex))
+          hexNames(hex, (key.keyId, key.fpr)) or key.subkeys.anyIt(hexNames(hex, it))
       if ok and fpr.len > 0 and fpr notin result:
         result.add(fpr)
 

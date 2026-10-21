@@ -1917,6 +1917,33 @@ block symlinkedHomeAndVaultRootAreNotRefused:
   removeDir(top)
   echo "PASS: a HOME or vault root reached through a symlink is not refused"
 
+block subkeyRecipientOpensTheVault:
+  ## A vault may name the encryption subkey it is sealed to. The signer lookup
+  ## matched only primary keys, so such a vault could neither sign nor verify.
+  let (listed, lcode) = execCmdEx("gpg --batch --with-colons --list-keys " &
+                                  keyId.quoteShell)
+  doAssert lcode == 0, listed
+  var subId = ""
+  for line in listed.splitLines:
+    if line.startsWith("sub:"):
+      subId = line.split(':')[4]
+  doAssert subId.len == 16 and subId != keyId, listed
+  for spec in [subId, subId & "!"]:
+    let r = setupRepo()
+    createDir(r / ".vault")
+    writeFile(r / ".vault" / "config", &"recipient = {spec}\nroot = repo\n")
+    let c = initGpgConfig("", r)
+    doAssert c.recipient == spec
+    writeFile(r / "s.txt", "subkey-secret")
+    add(r, r / "s.txt", c)
+    seal(r, c)
+    removeFile(r / "s.txt")
+    unseal(r, c)
+    doAssert readFile(r / "s.txt") == "subkey-secret"
+    doAssert get(r, r / "s.txt", c) == "subkey-secret"
+    removeDir(r)
+  echo "PASS: a recipient that names the encryption subkey opens the vault"
+
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."

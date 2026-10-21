@@ -140,6 +140,8 @@ exactly:
 - Long key ID: ~9CCCE36402CB49A6~
 - Fingerprint: ~ABCD1234...~
 - Email: ~user@example.com~ or ~<user@example.com>~
+- Subkey ID or fingerprint, optionally with gpg's trailing ~!~. The key it
+  belongs to is the one allowed to sign.
 
 Any other string, such as a name, is refused when the config loads, whether
 it comes from ~.vault/config~, ~--recipient~ or ~NIMVAULT_GPG_RECIPIENT~. gpg
