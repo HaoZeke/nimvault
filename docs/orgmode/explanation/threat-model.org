@@ -163,10 +163,10 @@ Still accepted:
   a second ~rotate~ finishes the job.
 - ~unseal~ opens each destination's parent by walking from =/= without
   following a symlink, then creates and writes its staging file through that
-  descriptor. Before the rename it re-walks the destination parent from the
-  boundary root and requires the same directory inode; if the parent changed
-  or now leaves the boundary, the staging file is shredded and that entry is
-  refused.
+  descriptor. It checks the parent before rename, renames through that held
+  descriptor, then re-checks the parent from the boundary root; if the parent
+  moved or now leaves the boundary, the placed file is overwritten through its
+  descriptor, unlinked, and that entry is refused.
 - Other commands check a path, then use it by name. Whoever can replace a
   writable parent directory between the check and the use wins that race:
   - ~mv~ creates the destination's parents and renames by name, so a parent
