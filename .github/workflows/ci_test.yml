@@ -10,22 +10,50 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     strategy:
+      fail-fast: false
       matrix:
         nim-version: ["2.0.14", "2.2.2"]
+        include:
+          # nim-lang.org publishes no arm64 builds; the nightlies archive does.
+          - nim-version: "binary:2.2.2"
+            os: ubuntu-24.04-arm
+          - nim-version: "binary:2.2.2"
+            os: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: iffy/install-nim@v5
         with:
           version: ${{ matrix.nim-version }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Install cligen
         run: nimble install cligen -y
 
-      - name: Install age
-        run: sudo apt-get update && sudo apt-get install -y age
+      - name: Install age and PCRE (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y age libpcre3
+
+      - name: Install age, gnupg and PCRE (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install age gnupg pcre
+          # std/re dlopens libpcre by bare name; /opt/homebrew/lib is not searched.
+          sudo mkdir -p /usr/local/lib
+          for lib in "$(brew --prefix pcre)"/lib/libpcre.*dylib; do
+            sudo ln -sf "$lib" /usr/local/lib/
+          done
+
+      - name: Allow user namespaces (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Lets the suite hide /proc from unseal in a user namespace.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: Configure git identity
         run: |

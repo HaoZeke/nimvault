@@ -4,8 +4,8 @@
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
-            tables, posix, sysrand]
-import ./gpg, ./manifest, ./crypto, ./lock, ./dek
+            tables, posix]
+import ./gpg, ./manifest, ./crypto, ./lock, ./dek, ./fsat
 # NimvaultError, nvRaise, nvQuiet from gpg
 
 proc recordsNeedSig(cfg: GpgConfig): bool =
@@ -124,31 +124,21 @@ proc assertReadPath(cfg: GpgConfig, repo, src: string) =
   assertAncestorsContained(cfg, repo, src, "read")
   assertResolvedWithinBoundary(cfg, src)
 
-const
-  ONoFollow = 131072  ## Linux O_NOFOLLOW.
-  ODirectory = 65536  ## Linux O_DIRECTORY.
-
-proc openAt(dirFd: cint, path: cstring, flags: cint): cint
-  {.importc: "openat", header: "<fcntl.h>".}
-proc openAtMode(dirFd: cint, path: cstring, flags: cint, mode: Mode): cint
-  {.importc: "openat", header: "<fcntl.h>".}
-proc mkdirAt(dirFd: cint, path: cstring, mode: Mode): cint
-  {.importc: "mkdirat", header: "<sys/stat.h>".}
-proc renameAtFd(oldDirFd: cint, oldPath: cstring, newDirFd: cint,
-                newPath: cstring): cint
-  {.importc: "renameat", header: "<stdio.h>".}
-proc unlinkAt(dirFd: cint, path: cstring, flags: cint): cint
-  {.importc: "unlinkat", header: "<fcntl.h>".}
-
-type StagedPath = object
+type StagedPath = ref object
   ## Plaintext staged beside a destination, anchored to one opened parent dir.
   dirFd: cint
+  fd: cint  ## the staging file, open from its creation until it is written
   dirPath: string
   destName: string
   tmpName: string
-  tmpPath: string
 
-proc closeStage(sp: var StagedPath) =
+proc closeStagedFile(sp: StagedPath) =
+  if sp.fd >= 0:
+    discard posix.close(sp.fd)
+    sp.fd = -1
+
+proc closeStage(sp: StagedPath) =
+  closeStagedFile(sp)
   if sp.dirFd >= 0:
     discard posix.close(sp.dirFd)
     sp.dirFd = -1
@@ -179,8 +169,7 @@ proc openDirFd(path: string, createMissing: bool): cint =
   let norm = normalizedPath(path)
   if not norm.isAbsolute:
     nvRaise(&"FATAL: expected an absolute path, got: {path}")
-  # Keep the descriptor across exec so gpg can write to /proc/self/fd/<dirfd>/.
-  let flags = posix.O_RDONLY or ODirectory or ONoFollow
+  let flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
   result = posix.open("/".cstring, flags)
   if result < 0:
     nvRaise("FATAL: cannot open / for secure path walk")
@@ -207,69 +196,59 @@ proc openDirFd(path: string, createMissing: bool): cint =
     result = next
 
 proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
-  ## Stage plaintext under a stable parent descriptor, then address the temp
-  ## file through /proc/self/fd/<dirfd>/<name> so later name swaps cannot
-  ## redirect where gpg writes.
+  ## Create the staging file under an opened parent descriptor and keep it
+  ## open. The plaintext is written through that descriptor, so a later swap
+  ## of a name in the path cannot redirect it.
   let parent = resolvedParentForWrite(dest)
   assertParentWithinBoundary(cfg, parent)
   let dirFd = openDirFd(parent, createMissing = true)
   let tmpName = ".nimvault-" & genId() & ".tmp"
-  let fd = openAtMode(dirFd, tmpName.cstring,
-                      posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
-                      O_CLOEXEC or ONoFollow, 0o600.Mode)
+  let fd = openAt(dirFd, tmpName.cstring,
+                  posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                  O_CLOEXEC or ONoFollow, 0o600.Mode)
   if fd < 0:
     discard posix.close(dirFd)
     nvRaise(&"FATAL: cannot create temporary plaintext in {parent}")
-  discard posix.close(fd)
   result = StagedPath(
     dirFd: dirFd,
+    fd: fd,
     dirPath: parent,
     destName: dest.extractFilename,
-    tmpName: tmpName,
-    tmpPath: "/proc/self/fd/" & $dirFd & "/" & tmpName)
+    tmpName: tmpName)
 
 proc shredStaged(sp: StagedPath) =
   ## Overwrite then unlink a staged plaintext file by descriptor-relative name.
   if sp.dirFd < 0:
     return
-  let fd = openAt(sp.dirFd, sp.tmpName.cstring,
-                  posix.O_WRONLY or O_CLOEXEC or ONoFollow)
-  if fd >= 0:
-    var st: Stat
-    if fstat(fd, st) == 0 and posix.S_ISREG(st.st_mode):
-      var left = st.st_size
-      var buf: array[8192, byte]
-      while left > 0:
-        let n = min(left.int, buf.len)
-        if not urandom(buf):
-          for i in 0 ..< buf.len:
-            buf[i] = 0
-        let wrote = posix.write(fd, addr buf[0], n)
-        if wrote <= 0:
-          break
-        left -= wrote
-      discard posix.fsync(fd)
-    discard posix.close(fd)
-  if unlinkAt(sp.dirFd, sp.tmpName.cstring, 0) != 0 and posix.errno != posix.ENOENT:
-    discard
+  if sp.fd >= 0:
+    overwriteFd(sp.fd)
+  else:
+    let fd = openAt(sp.dirFd, sp.tmpName.cstring,
+                    posix.O_WRONLY or O_CLOEXEC or ONoFollow)
+    if fd >= 0:
+      overwriteFd(fd)
+      discard posix.close(fd)
+  discard unlinkAt(sp.dirFd, sp.tmpName.cstring, 0)
 
 proc renameIntoPlace(sp: StagedPath) =
-  if renameAtFd(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
+  if renameAt(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
     shredStaged(sp)
     nvRaise(&"FATAL: could not place plaintext at {sp.dirPath / sp.destName}")
 
-proc setUnsealedPermissions(sp: StagedPath) =
-  ## Default to 0600; grant +x for shebang scripts.
-  let fd = openAt(sp.dirFd, sp.destName.cstring,
-                  posix.O_RDONLY or O_CLOEXEC or ONoFollow)
-  if fd < 0:
-    return
-  var mode = 0o600.Mode
-  var head: array[2, char]
-  if posix.read(fd, addr head[0], 2) == 2 and head[0] == '#' and head[1] == '!':
-    mode = 0o700.Mode
-  discard posix.fchmod(fd, mode)
-  discard posix.close(fd)
+proc finishStaged(sp: StagedPath, job: Drain): tuple[status: string, code: int] =
+  ## Close the staging file once its decryption has ended, mode 0600, or 0700
+  ## for a shebang script. A short write fails the entry: the staged bytes are
+  ## not the plaintext.
+  result = (job.err, job.code)
+  if job.writeErr != 0:
+    result.status.add("\nFATAL: cannot write the staging file: " &
+                      osErrorMsg(OSErrorCode(job.writeErr)))
+    if result.code == 0:
+      result.code = 1
+  let mode = if job.head == "#!": 0o700.Mode else: 0o600.Mode
+  if result.code == 0 and posix.fchmod(sp.fd, mode) != 0:
+    result = (job.err & "\nFATAL: cannot set the staging file mode", 1)
+  closeStagedFile(sp)
 
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
@@ -460,8 +439,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # path. moveFile's copy fallback follows that symlink when the runtime
   # directory is a different device, which is the usual split between
   # XDG_RUNTIME_DIR and $HOME.
-  # umask 077 so the tmp files are not world-readable (gpg -o otherwise
-  # inherits a typical 022).
+  # The staging file is created 0600 here and gpg or age only writes to a
+  # pipe. umask 077 keeps a missing parent directory owner-only as well.
   let batchSize = gpgParallelism()
   var staged: seq[StagedPath] = @[]
   type DecryptResult = tuple[entry: VaultEntry, staged: StagedPath,
@@ -481,36 +460,37 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       let stagedPath = stageBeside(dest, cfg)
       staged.add(stagedPath)
       if deks.hasKey(e.id):
-        var status = ""
-        var code = 0
+        var work = ""
+        var jobs = newSeq[Drain](1)
         try:
-          decryptWithDek(cfg, deks[e.id], resolveBlob(repo, cfg, e.id, e.hash),
-                         stagedPath.tmpPath)
+          jobs[0] = Drain(p: decryptWithDekStream(cfg, deks[e.id],
+                            resolveBlob(repo, cfg, e.id, e.hash), work),
+                          outFd: stagedPath.fd)
+          drain(jobs)
+          let (status, code) = finishStaged(stagedPath, jobs[0])
+          results.add((e, stagedPath, status, code, true))
         except CatchableError as err:
-          status = err.msg
-          code = 1
-        results.add((e, stagedPath, status, code, true))
+          results.add((e, stagedPath, err.msg, 1, true))
+        finally:
+          discardPrivate(work)
       else:
         direct.add(e)
 
   withPrivateUmask:
     for batchStart in countup(0, direct.high, batchSize):
       let batchEnd = min(batchStart + batchSize - 1, direct.high)
-      var procs: seq[(VaultEntry, StagedPath, Process)] = @[]
+      var procs: seq[(VaultEntry, StagedPath)] = @[]
+      var jobs: seq[Drain] = @[]
       for i in batchStart .. batchEnd:
         let e = direct[i]
         let inPath = resolveBlob(repo, cfg, e.id, e.hash)
         let stagedPath = stageBeside(resolvePath(cfg, e.path), cfg)
         staged.add(stagedPath)
-        let p = decryptProcess(cfg, inPath, stagedPath.tmpPath)
-        procs.add((e, stagedPath, p))
-
-      # Collect results for this batch
-      for (e, stagedPath, p) in procs:
-        discard p.outputStream.readAll()  # empty with -o
-        let status = p.errorStream.readAll()
-        let code = p.waitForExit()
-        p.close()
+        procs.add((e, stagedPath))
+        jobs.add(Drain(p: decryptStream(cfg, inPath), outFd: stagedPath.fd))
+      drain(jobs)
+      for k, (e, stagedPath) in procs:
+        let (status, code) = finishStaged(stagedPath, jobs[k])
         results.add((e, stagedPath, status, code, false))
 
   # Abort helper: shred every temp before exiting. Unlink is not enough;
@@ -558,10 +538,9 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   try:
     for r in results:
       renameIntoPlace(r.staged)
-      setUnsealedPermissions(r.staged)
       nvEcho(&"  {r.entry.path}")
   finally:
-    for sp in staged.mitems:
+    for sp in staged:
       shredStaged(sp)
       closeStage(sp)
 

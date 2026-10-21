@@ -9,6 +9,7 @@ from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
+from ./fsat import ONoFollow
 
 proc ensureOwnerDir*(dir: string) =
   ## Create `dir` mode 0700, or tighten a directory this user already owns.
@@ -52,10 +53,6 @@ proc privateWorkDir*(): string =
   if posix.mkdir(result.cstring, 0o700.Mode) != 0:
     nvRaise(&"FATAL: cannot create work directory: {result}")
   setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
-
-const ONoFollow = 131072
-  ## Linux O_NOFOLLOW. Nim's posix module does not export it. Opening with
-  ## this flag refuses a symlink instead of following it.
 
 proc shredFile*(path: string) =
   ## Overwrite a regular file, then unlink it. A symlink is unlinked and not
@@ -354,6 +351,20 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
                "-d", "-o", outPath, "--", inPath],
+      options = {poUsePath})
+
+proc decryptStream*(cfg: GpgConfig, inPath: string): Process =
+  ## Spawn a decryption of `inPath` that writes the plaintext to stdout and,
+  ## for gpg, its status lines to stderr. Where the bytes land is the
+  ## caller's choice, so no path is handed to the backend.
+  if cfg.usesAge:
+    startProcess(ageBinary(),
+      args = @["-d", "-i", ageIdentityPath(cfg), "--", inPath],
+      options = {poUsePath})
+  else:
+    startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+               "-d", "--", inPath],
       options = {poUsePath})
 
 proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
