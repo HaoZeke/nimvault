@@ -25,6 +25,7 @@
 ## Per backend the "data key" is whatever opens a payload non-interactively:
 ##
 ## | Backend | Data key | Payload |
+## | --- | --- | --- |
 ## | gpg | 256-bit passphrase, hex | `gpg --symmetric` |
 ## | age | x25519 identity | `age -r <recipient>` |
 ##
