@@ -38,8 +38,11 @@ Everything is re-encrypted regardless when the seal key changes, which covers th
 backend, recipient, identity and signer: unchanged plaintext still owes a fresh
 blob under a new key.
 
-Blobs and the manifest are flushed in crash-safe order -- payloads first, then
-the manifest that records their digests.
+New ciphertext is written to ~<id>.gpg.pending~ (or ~.age.pending~). The record
+is updated to name that file, and only then is it renamed over the live blob.
+A crash before the record is durable leaves the previous blob in place. A
+crash after the record is written leaves ~.pending~, which the next read
+promotes when its hash matches.
 
 Exits non-zero if any plaintext file is missing.
 
@@ -119,8 +122,10 @@ hash, and appends to the manifest.
 Checks ~git ls-files~ to verify the file is not already tracked by git. If the
 file is tracked, exits with an error instructing the user to untrack it first.
 
-Appends the file path to ~.gitignore~ unless ~--no-gitignore~ is passed or the
-path is already gitignored.
+Appends one ~.gitignore~ line for that path. The line is anchored at the
+repository root and ~#~, ~*~ and ~?~ are escaped, so the line matches the
+file and not a comment or a glob. ~--no-gitignore~ skips the line. A path
+that is already ignored is left alone.
 
 Exits non-zero if:
 - The file does not exist
@@ -153,9 +158,9 @@ nimvault get <path> [--allow-unsigned]
 #+end_src
 
 Print one entry's plaintext on stdout without unsealing the vault or writing
-anything to disk. Applies the same path-safety and blob-integrity checks
-~unseal~ does. Deliberately quiet, so nothing decorative shares the stream with
-a secret.
+the plaintext to disk, including the runtime directory. Applies the same
+path-safety and blob-integrity checks ~unseal~ does. Deliberately quiet, so
+nothing decorative shares the stream with a secret.
 
 ** check
 
@@ -187,6 +192,8 @@ remove the case. An orphan is not only clutter: it is a readable copy of a
 secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
+A ~.pending~ file whose hash a record names is kept. Any other ~.pending~ file
+is removed.
 
 *** ~--dry-run~
 
@@ -215,10 +222,22 @@ does. Churn is the intent, so it bypasses the incremental skip.
 ** scan
 
 #+begin_src text
-nimvault scan [PATH...] [--vault DIR]
+nimvault scan [PATH] [--cached | --rev REV] [--vault DIR]
 #+end_src
 
-Look for plaintext secrets that are not in the vault.
+Look for plaintext secrets that are not in the vault. With no flag, walk
+~PATH~ (default: the current directory). A directory named ~tmp~ or ~log~ in
+the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
+
+~--cached~ reads the git index. ~--rev REV~ reads blobs introduced by a
+commit (that commit and its ancestors) or by an ~A..B~ range, including a
+secret added and then removed before the tip. A vaulted path in the index or
+in those commits is reported even when its bytes do not match a pattern.
+~.vault/~ itself is not scanned.
+
+The pattern list skips binaries, files over 2MB, lines over 2000 characters,
+and dependency directories on a worktree walk. It does not print the matching
+line.
 
 ** list
 
@@ -261,7 +280,10 @@ nimvault lock [--recipient KEY] [--vault DIR]
 #+end_src
 
 Remove in-sync plaintext. Vault entries stay; ~unseal~ restores them. A
-modified file is refused.
+modified file is refused. A missing or mismatched blob is refused too: lock
+does not delete the only remaining copy. The file is overwritten before it
+is unlinked. Editor backups beside it (=name~=, =#name#=, =.name.swp=) are
+removed the same way. A symlink is unlinked and not followed.
 
 ** init
 
@@ -277,8 +299,10 @@ Write ~.vault/config~ with the recipient. Refuses if the file already exists.
 nimvault hook [--vault DIR]
 #+end_src
 
-Install a ~pre-push~ hook that runs ~nimvault check~ and a ~pre-commit~ hook
-that runs ~nimvault scan~. Refuses to overwrite existing hooks.
+Install a ~pre-commit~ hook that runs ~nimvault scan --cached~ and a
+~pre-push~ hook that runs ~nimvault scan --rev~ on the commits being pushed,
+then ~nimvault check~. Refuses to overwrite existing hooks. Hooks already
+installed keep their previous script until they are replaced by hand.
 
 ** doctor
 

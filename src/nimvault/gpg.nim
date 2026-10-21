@@ -144,11 +144,14 @@ proc gpgStatusHas*(status, token: string): bool =
 
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## Encrypt and sign a file using GPG with the configured recipient.
+  if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
+     '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
+    nvRaise("FATAL: invalid recipient")
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
              "--trust-model", "always",
-             "--sign", "-e", "-r", cfg.recipient,
-             "--set-filename", "", "-o", outPath, inPath],
+             "--sign", "-e", "--recipient=" & cfg.recipient,
+             "--set-filename", "", "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -160,7 +163,7 @@ proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path.
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-             "-d", "-o", outPath, inPath],
+             "-d", "-o", outPath, "--", inPath],
     options = {poUsePath})
   discard p.outputStream.readAll()
   let status = p.errorStream.readAll()
@@ -175,7 +178,7 @@ proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
 
 proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", inPath],
     options = {poUsePath})
   result = p.outputStream.readAll()
   let status = p.errorStream.readAll()

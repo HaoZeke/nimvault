@@ -4,7 +4,7 @@ import std/[os, strutils]
 import cligen
 
 from ./gpg import GpgConfig, initGpgConfig, NimvaultError
-from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous
+from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous, gitRoot
 from ./commands import nil
 from ./version import Version
 export Version
@@ -116,15 +116,27 @@ proc doCheck(recipient = "", vault = "") =
     let (repo, cfg) = resolve(recipient, vault)
     commands.check(repo, cfg)
 
-proc doScan(path: seq[string], recipient = "", vault = "") =
-  if path.len > 1:
-    stderr.writeLine "usage: nimvault scan [PATH]"
+proc doScan(path: seq[string], recipient = "", vault = "", cached = false,
+            rev = "") =
+  ## Walk a tree, or with `--cached` the index, or with `--rev` commits.
+  ## `--cached` and `--rev` take no path: they read git, not the worktree.
+  if (cached and rev.len > 0) or ((cached or rev.len > 0) and path.len > 0) or
+     path.len > 1:
+    stderr.writeLine "usage: nimvault scan [PATH] [--cached | --rev REV]"
     quit 1
-  let targetArg = if path.len == 0: "." else: path[0]
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
-    commands.scan(repo, target, cfg)
+    if cached or rev.len > 0:
+      let here = gitRoot()
+      let content = if here.len > 0: here else: repo
+      if cached:
+        commands.scanCached(repo, cfg, content)
+      else:
+        commands.scanRev(repo, cfg, content, rev)
+    else:
+      let targetArg = if path.len == 0: "." else: path[0]
+      let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
+      commands.scan(repo, target, cfg)
 
 proc doWho(recipient = "", vault = "") =
   cliRun:
@@ -194,7 +206,9 @@ proc main*(args: seq[string] = commandLineParams()) =
      help = {"recipient": rh, "vault": vh,
              "rekey": "re-encrypt every payload, not just the key wrapping"}],
     [doScan, cmdName = "scan", positional = "path",
-     help = {"recipient": rh, "vault": vh}],
+     help = {"recipient": rh, "vault": vh,
+             "cached": "scan the git index instead of the worktree",
+             "rev": "scan blobs introduced by a commit or A..B range"}],
     [doWho, cmdName = "who",
      help = {"recipient": rh, "vault": vh}],
     [doLock, cmdName = "lock",

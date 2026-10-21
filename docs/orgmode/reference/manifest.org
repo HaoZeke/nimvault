@@ -77,7 +77,9 @@ blob hashes; pass ~--allow-unsigned~, then ~seal~ to upgrade.
 
 Each manifest entry has a corresponding ~.vault/<id>.gpg~ (or ~.age~) file
 holding the encrypted contents. ~--set-filename ""~ keeps the original filename
-out of GPG metadata.
+out of GPG metadata. ~seal~ writes ~<id>.gpg.pending~ first. The pending file
+is the blob the record names until it is renamed over the live path. A read
+promotes a pending file whose hash matches the record.
 
 ** Envelope keys (v6)
 

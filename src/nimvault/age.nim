@@ -76,8 +76,11 @@ proc ageEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## manifest signature covers this blob through its recorded hash.
   if cfg.recipient.len == 0:
     nvRaise("FATAL: no age recipient configured")
+  if cfg.recipient[0] == '-' or '\n' in cfg.recipient or
+     '\r' in cfg.recipient or '\0' in cfg.recipient:
+    nvRaise("FATAL: invalid age recipient")
   let p = startProcess(ageBinary(),
-    args = @["-r", cfg.recipient, "-o", outPath, inPath],
+    args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -88,7 +91,7 @@ proc ageEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
 proc ageDecrypt*(cfg: GpgConfig, inPath, outPath: string) =
   let ident = ageIdentityPath(cfg)
   let p = startProcess(ageBinary(),
-    args = @["-d", "-i", ident, "-o", outPath, inPath],
+    args = @["-d", "-i", ident, "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -99,7 +102,7 @@ proc ageDecrypt*(cfg: GpgConfig, inPath, outPath: string) =
 proc ageDecryptToString*(cfg: GpgConfig, inPath: string): string =
   let ident = ageIdentityPath(cfg)
   let p = startProcess(ageBinary(),
-    args = @["-d", "-i", ident, inPath],
+    args = @["-d", "-i", ident, "--", inPath],
     options = {poUsePath})
   result = p.outputStream.readAll()
   let err = p.errorStream.readAll()

@@ -241,12 +241,12 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   try:
     encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
   finally:
-    if dirExists(work):
-      removeDir(work)
+    discardPrivate(work)
   syncPath(tmp)
   moveFile(tmp, dest)
   syncParentDir(dest)
   signManifest(cfg, dest)
+  rememberRecord(dest, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =
@@ -353,7 +353,9 @@ proc loadManifest*(repo: string, verifySig = false,
   loadManifestMeta(repo, verifySig, cfg).entries
 
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
-                   sealKey = "", envelope = false) =
+                   sealKey = "", envelope = false,
+                   knownDeks: DekTable = initTable[string, string](),
+                   haveDeks = false) =
   ## Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt.
   ## A non-empty `sealKey` records what the blobs are encrypted to (v5), which
   ## is what lets a later `seal` skip unchanged files without going stale
@@ -373,12 +375,11 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     # would recreate the last-writer-wins hole, so the stub is only written
     # when it is missing or the seal key changed.
     let existing = loadManifestMeta(repo, cfg = cfg)
-    let deks = loadDeks(repo, cfg)
+    let deks = if haveDeks: knownDeks else: loadDeks(repo, cfg)
     saveSplitEntries(repo, cfg, entries, deks)
     if existing.sealKey == sealKey and findManifest(repo, cfg).len > 0 and
        existing.envelope:
-      if dirExists(work):
-        removeDir(work)
+      discardPrivate(work)
       return
     # Fall through and write a rowless stub so old readers see an explicit
     # empty combined manifest rather than a missing one.
@@ -396,8 +397,7 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   try:
     encryptFile(cfg, plainPath, tmpEnc)
   finally:
-    if dirExists(work):
-      removeDir(work)
+    discardPrivate(work)
   # Durability, which rename alone does not give: flush the bytes before the
   # rename that points at them, and the directory entry after, or a crash can
   # leave the trust root present and empty. See `syncPath`.

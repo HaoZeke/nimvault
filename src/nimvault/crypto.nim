@@ -5,9 +5,32 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism
+                  gpgStatusHas, gpgParallelism, sha256sum
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
+
+proc ensureOwnerDir*(dir: string) =
+  ## Create `dir` mode 0700, or tighten a directory this user already owns.
+  ## A symlink or another uid's directory is refused: plaintext and data keys
+  ## are written underneath it.
+  if symlinkExists(dir):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  if not dirExists(dir):
+    if posix.mkdir(dir.cstring, 0o700.Mode) != 0 and posix.errno != posix.EEXIST:
+      nvRaise(&"FATAL: cannot create runtime directory: {dir}")
+  if symlinkExists(dir):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  var st: posix.Stat
+  if posix.lstat(dir.cstring, st) != 0:
+    nvRaise(&"FATAL: cannot stat runtime directory: {dir}")
+  if posix.S_ISLNK(st.st_mode):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  if not posix.S_ISDIR(st.st_mode):
+    nvRaise(&"FATAL: runtime directory is not a directory: {dir}")
+  if st.st_uid != posix.getuid():
+    nvRaise(&"FATAL: runtime directory is not owned by this user: {dir}")
+  if posix.chmod(dir.cstring, 0o700.Mode) != 0:
+    nvRaise(&"FATAL: cannot restrict runtime directory: {dir}")
 
 proc privateWorkDir*(): string =
   ## Owner-only directory for plaintext and data keys that must not land in
@@ -18,17 +41,73 @@ proc privateWorkDir*(): string =
   let parent =
     if xdg.len > 0 and dirExists(xdg): xdg / "nimvault"
     else: getTempDir() / &"nimvault-{getuid()}"
-  if not dirExists(parent):
-    createDir(parent)
-    setFilePermissions(parent, {fpUserRead, fpUserWrite, fpUserExec})
+  ensureOwnerDir(parent)
   var buf: array[8, byte]
   doAssert urandom(buf)
   var id = ""
   for b in buf:
     id.add(b.toHex(2).toLowerAscii())
   result = parent / id
-  createDir(result)
+  if posix.mkdir(result.cstring, 0o700.Mode) != 0:
+    nvRaise(&"FATAL: cannot create work directory: {result}")
   setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+
+const ONoFollow = 131072
+  ## Linux O_NOFOLLOW. Nim's posix module does not export it. Opening with
+  ## this flag refuses a symlink instead of following it.
+
+proc shredFile*(path: string) =
+  ## Overwrite a regular file, then unlink it. A symlink is unlinked and not
+  ## followed. Best effort: a filesystem that keeps old blocks can still
+  ## recover them.
+  if path.len == 0:
+    return
+  if symlinkExists(path):
+    try: removeFile(path) except CatchableError: discard
+    return
+  if not fileExists(path):
+    return
+  let fd = posix.open(path.cstring, posix.O_WRONLY or ONoFollow)
+  if fd >= 0:
+    var left = getFileSize(path)
+    var buf: array[8192, byte]
+    while left > 0:
+      let n = min(left.int, buf.len)
+      if not urandom(buf):
+        for i in 0 ..< buf.len: buf[i] = 0
+      let w = posix.write(fd, addr buf[0], n)
+      if w <= 0: break
+      left -= w
+    discard posix.fsync(fd)
+    discard posix.close(fd)
+  try: removeFile(path) except CatchableError: discard
+
+proc discardPrivate*(dir: string) =
+  ## Shred files under a work directory this process created, then remove it.
+  if dir.len == 0 or symlinkExists(dir) or not dirExists(dir):
+    return
+  for path in walkDirRec(dir, yieldFilter = {pcFile, pcLinkToFile}):
+    shredFile(path)
+  try: removeDir(dir) except CatchableError: discard
+
+proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
+  ## `rename(2)`. Replaces `dest` when it is a symlink and does not follow it.
+  ## Nim's posix module does not wrap this call.
+
+proc publishPending*(src, dest: string) =
+  ## Replace `dest` with `src`. A failed rename leaves `src` where it is:
+  ## the record may already name those bytes, and deleting them would leave
+  ## the record pointing at ciphertext that is no longer on disk.
+  if renameAt(src.cstring, dest.cstring) != 0:
+    nvRaise(&"FATAL: could not publish blob {dest}")
+
+proc renameOver*(src, dest: string) =
+  ## `rename` replaces `dest` even when `dest` is a symlink, and does not
+  ## follow it. The copy fallback in `moveFile` does follow, which writes
+  ## plaintext through a symlink when the two paths are on different devices.
+  if renameAt(src.cstring, dest.cstring) != 0:
+    shredFile(src)
+    nvRaise(&"FATAL: could not place plaintext at {dest}")
 
 template withPrivateUmask*(body: untyped) =
   ## Decrypt/encrypt sidecars inherit the process umask. Force 077 so a
@@ -95,6 +174,28 @@ proc findBlob*(repo: string, cfg: GpgConfig, id: string): string =
     return other
   return mine   ## report the expected path in the caller's "missing" error
 
+proc resolveBlob*(repo: string, cfg: GpgConfig, id, expectedHash: string): string =
+  ## The live blob when it matches `expectedHash`. A `.pending` sibling is
+  ## the ciphertext a seal wrote before it could rename it into place; if
+  ## that sibling is the one the record names, promote it.
+  let live = findBlob(repo, cfg, id)
+  proc matches(path: string): bool =
+    expectedHash.len > 0 and fileExists(path) and sha256sum(path) == expectedHash
+  let pend = blobPath(repo, cfg, id) & ".pending"
+  if matches(live):
+    if fileExists(pend):
+      try: removeFile(pend) except CatchableError: discard
+    return live
+  if matches(pend):
+    let dest = blobPath(repo, cfg, id)
+    if renameAt(pend.cstring, dest.cstring) != 0:
+      if matches(dest): return dest
+      return live
+    syncPath(dest)
+    syncParentDir(dest)
+    return dest
+  return live
+
 proc manifestPath*(repo: string, cfg: GpgConfig): string =
   ## Path the configured backend would write. Use `findManifest` to read.
   repo / ".vault" / ("manifest" & cfg.blobExt)
@@ -153,7 +254,7 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
     var procs: seq[(int, Process)] = @[]
     for i in start .. stop:
       procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", paths[i]],
+        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]],
         options = {poUsePath})))
     for (i, p) in procs:
       let plain = p.outputStream.readAll()
@@ -217,12 +318,12 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   ## `unseal` and `status` stay backend-agnostic.
   if cfg.usesAge:
     startProcess(ageBinary(),
-      args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, inPath],
+      args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, "--", inPath],
       options = {poUsePath})
   else:
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", outPath, inPath],
+               "-d", "-o", outPath, "--", inPath],
       options = {poUsePath})
 
 proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
@@ -244,9 +345,11 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
   var args: seq[string] = @[]
   if cfg.usesAge:
     for r in recipients:
+      if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
+        nvRaise("FATAL: invalid recipient")
       args.add("-r")
       args.add(r)
-    args.add(@["-o", outPath, inPath])
+    args.add(@["-o", outPath, "--", inPath])
     let p = startProcess(ageBinary(), args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
@@ -261,9 +364,10 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
       args.add("--sign")
     args.add("-e")
     for r in recipients:
-      args.add("-r")
-      args.add(r)
-    args.add(@["--set-filename", "", "-o", outPath, inPath])
+      if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
+        nvRaise("FATAL: invalid recipient")
+      args.add("--recipient=" & r)
+    args.add(@["--set-filename", "", "-o", outPath, "--", inPath])
     let p = startProcess("gpg", args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
@@ -275,12 +379,12 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
 proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   if cfg.usesAge:
     startProcess(ageBinary(),
-      args = @["-r", cfg.recipient, "-o", outPath, inPath],
+      args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
   else:
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always",
-               "--sign", "-e", "-r", cfg.recipient,
-               "--set-filename", "", "-o", outPath, inPath],
+               "--sign", "-e", "--recipient=" & cfg.recipient,
+               "--set-filename", "", "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
