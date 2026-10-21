@@ -37,12 +37,36 @@ check before decrypting.
 Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.
 
+* The config is trusted as written
+
+~.vault/config~ is plaintext, committed and unsigned, and it defines the
+trust root. Its ~recipient~ and ~wrap~ lines decide who may sign records and
+who the next ~seal~ encrypts to. ~allowed_signers~ and ~signer_identity~
+decide whose ssh signature verifies. Whoever can change the file can change
+all of that:
+
+- A key added to any ~wrap~ rule is an allowed signer for every path.
+- ~wrap = **:<their key>~ also makes the next ~seal~ encrypt every entry to
+  them.
+- ~allowed_signers~ pointed at a file in the repository, or a changed
+  ~signer_identity~, makes records signed with their ssh key verify.
+
+No signature in the vault can vouch for the file that names the signers.
+Review a diff to ~.vault/config~ as you would review code, and read it
+before the next ~unseal~ or ~seal~ on that checkout. A pull request that
+touches it changes the trust root.
+
 * Signer authority
 
 With ~signer = gpg~, the allowed signer set is the configured ~recipient~ plus
 every recipient named in any ~wrap~ rule. Any one of those keys can sign a
 record for any path in the vault. ~wrap~ scopes who can decrypt records, not
 who can sign which path.
+
+So naming a key in a ~wrap~ rule trusts it to write every path. A build box
+that appears only in ~wrap = **:laptop@example.com,buildbox@example.com~ can
+sign a record for =~/.bashrc= or =~/.ssh/authorized_keys=, and every machine
+that unseals writes it.
 
 Email specs are matched as exact addresses (the ~<addr>~ form), but they still
 authorize every key in the keyring that carries that exact email.
