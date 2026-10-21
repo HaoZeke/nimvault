@@ -71,10 +71,10 @@ block initGpgConfigFromFile:
   let tmpDir = createTempDir("nimvault_cfg_", "_test")
   let vaultDir = tmpDir / ".vault"
   createDir(vaultDir)
-  writeFile(vaultDir / "config", "# vault config\nrecipient = CONFIGKEY456\nroot = repo\n")
+  writeFile(vaultDir / "config", "# vault config\nrecipient = 9CCCE36402CB49A6\nroot = repo\n")
   delEnv("NIMVAULT_GPG_RECIPIENT")
   let cfg = initGpgConfig("", tmpDir)
-  doAssert cfg.recipient == "CONFIGKEY456"
+  doAssert cfg.recipient == "9CCCE36402CB49A6"
   doAssert cfg.root == tmpDir  # "repo" expands to the repo path
   removeDir(tmpDir)
   echo "PASS: initGpgConfig from config file"
