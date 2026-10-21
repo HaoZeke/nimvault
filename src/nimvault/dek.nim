@@ -377,8 +377,12 @@ proc decryptWithDekBytesToString*(cfg: GpgConfig, dek, cipher: string): string =
       options = {poUsePath})
     let io = runWithInput(p, cipher)
     if io.writeErr != 0:
-      nvRaise("FATAL: age decrypt failed while writing ciphertext: " &
-              osErrorMsg(OSErrorCode(io.writeErr)))
+      var msg = "FATAL: age decrypt failed while writing ciphertext: " &
+                osErrorMsg(OSErrorCode(io.writeErr))
+      let detail = io.err.strip()
+      if detail.len > 0:
+        msg.add("\n" & detail)
+      nvRaise(msg)
     if io.code != 0:
       nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
     result = io.outp
