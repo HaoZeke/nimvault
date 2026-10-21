@@ -37,7 +37,6 @@ import std/[os, osproc, streams, strutils, strformat, sysrand, tables,
 import ./gpg
 from ./age import ageKeygenBinary, ageRecipientForIdentity, ageBinary
 import ./crypto
-import ./recordcache
 from ./fsat import runWithInput
 
 const
@@ -234,7 +233,6 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
     else:
       gpgNoSecretKey(msg)
   let edir = dir / "e"
-  let scope = cacheScope(cfg)
   if dirExists(edir):
     for kind, path in walkDir(edir):
       if kind != pcFile:
@@ -242,18 +240,16 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
       let name = path.extractFilename
       if not (name.endsWith(".gpg") or name.endsWith(".age")):
         continue
-      var plain = recalledRecordPlain(scope, path)
-      if plain.len == 0:
-        try:
-          plain = verifyAndDecryptToString(cfg, path, verifySig = requireSig,
-                                           checkPresent = true)
-        except CatchableError as err:
-          if sigFailure(err.msg):
-            nvRaise(err.msg)
-          if noSecretKey(err.msg):
-            continue
+      var plain = ""
+      try:
+        plain = verifyAndDecryptToString(cfg, path, verifySig = requireSig,
+                                         checkPresent = true)
+      except CatchableError as err:
+        if sigFailure(err.msg):
           nvRaise(err.msg)
-        rememberRecordPlain(scope, path, plain)
+        if noSecretKey(err.msg):
+          continue
+        nvRaise(err.msg)
       for line in plain.splitLines:
         let s = line.strip()
         if s.len == 0 or s.startsWith("#"):
