@@ -4,7 +4,8 @@
 ## suite still runs on a machine that only has gpg. A skip is announced, since a
 ## test that quietly does nothing is worse than one that is not there.
 
-import std/[os, osproc, strutils, strformat, tempfiles, tables, streams]
+import std/[os, osproc, strutils, strformat, tempfiles, tables, streams, sysrand,
+            posix, times]
 import nimvault/[gpg, manifest, commands, crypto, dek]
 
 proc have(bin: string): bool = findExe(bin).len > 0
@@ -78,12 +79,62 @@ proc cliExe(): string =
 
 proc runCliTimeout(dir: string, timeoutSec: int,
                    args: seq[string]): tuple[outp: string, code: int] =
-  let p = startProcess("timeout", workingDir = dir,
-                       args = @["--preserve-status", &"{timeoutSec}s", cliExe()] & args,
-                       options = {poUsePath, poStdErrToStdOut})
-  result.outp = p.outputStream.readAll()
-  result.code = p.waitForExit()
+  let p = startProcess(cliExe(), workingDir = dir, args = args,
+                       options = {poStdErrToStdOut})
+  let outFd = p.outputHandle.cint
+  var buf: array[65536, char]
+  let deadline = epochTime() + timeoutSec.float
+  while true:
+    let leftMs = max(0, int((deadline - epochTime()) * 1000.0))
+    var pollMs = min(leftMs, 200)
+    var pf = TPollfd(fd: outFd, events: POLLIN)
+    let polled = poll(addr pf, 1.Tnfds, pollMs.cint)
+    if polled < 0:
+      if errno == EINTR:
+        continue
+      break
+    if polled > 0 and (pf.revents and (POLLIN or POLLHUP or POLLERR)) != 0:
+      let n = posix.read(outFd, addr buf[0], buf.len)
+      if n > 0:
+        let at = result.outp.len
+        result.outp.setLen(at + n)
+        copyMem(addr result.outp[at], addr buf[0], n)
+    let code = p.peekExitCode()
+    if code != -1:
+      result.code = code
+      while true:
+        let n = posix.read(outFd, addr buf[0], buf.len)
+        if n <= 0:
+          break
+        let at = result.outp.len
+        result.outp.setLen(at + n)
+        copyMem(addr result.outp[at], addr buf[0], n)
+      p.close()
+      return
+    if epochTime() >= deadline:
+      p.kill()
+      discard p.waitForExit()
+      result.code = 124
+      while true:
+        let n = posix.read(outFd, addr buf[0], buf.len)
+        if n <= 0:
+          break
+        let at = result.outp.len
+        result.outp.setLen(at + n)
+        copyMem(addr result.outp[at], addr buf[0], n)
+      p.close()
+      return
+  p.kill()
+  discard p.waitForExit()
   p.close()
+  result.code = 124
+
+proc randomPayload(n: int): string =
+  var bytes = newSeq[byte](n)
+  doAssert urandom(bytes)
+  result = newString(n)
+  for i, b in bytes:
+    result[i] = char(b)
 
 proc ageDecryptSwapHook(realAge: string): string =
   ## Wrapper that runs one swap command when age decrypts a blob by path.
@@ -290,6 +341,61 @@ block splitRecordSwapDuringSshVerifyIsRefused:
   removeDir(forged)
   removeDir(wrapBin)
   echo "PASS: age split-record swaps after verify are refused"
+
+block splitRecordOnlySwapKeepsOriginalPlaintext:
+  ## Swapping only the record after verify must not redirect writes.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  let plainText = "age-split-original"
+  writeFile(f, plainText)
+  add(dir, f, c)
+  seal(dir, c)
+  removeFile(f)
+  let entry = loadManifest(dir, cfg = c)[0]
+  let dek = loadDeks(dir, c)[entry.id]
+  let forged = createTempDir("nimvault_age_", "_record_only_forged")
+  let badTarget = "evil.txt"
+  let plain = forged / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{badTarget}\t{entry.hash}\tfile\t{entry.contentHash}\t{dek}\n")
+  let badRec = forged / "record.age"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_age_", "_sshwrap_record_only")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "ssh-keygen"
+  let realSsh = findExe("ssh-keygen")
+  doAssert realSsh.len > 0
+  writeFile(wrapper, sshVerifySwapHook(realSsh))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badRec.quoteShell & " > \"$NIMVAULT_VERIFY_TARGET\""
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  var raised = false
+  try:
+    unseal(dir, c)
+  except CatchableError:
+    raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_SWAP_CMD")
+    delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert fileExists(marker), "test wrapper did not swap the verified record"
+  let planted = dir / badTarget
+  if not raised:
+    doAssert fileExists(f), "unseal succeeded without restoring the original path"
+    doAssert readFile(f).strip() == plainText
+    doAssert not fileExists(planted),
+      "record-only swap must not redirect plaintext writes"
+  else:
+    doAssert not fileExists(f), "a refused unseal must not restore plaintext"
+    doAssert not fileExists(planted), "a refused unseal must not write swapped paths"
+  removeDir(dir)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: age record-only swaps keep original plaintext"
 
 block legacyManifestSwapDuringSshVerifyIsRefused:
   ## Legacy combined manifests must not verify one read and decrypt another.
@@ -510,6 +616,54 @@ block ageLargeCipherDecryptsWithoutDeadlock:
   removeDir(listDir)
   removeDir(addDir)
   echo "PASS: age large-cipher paths return under timeout"
+
+block ageCorruptSignedRecordExitsNonZero:
+  ## A bad detached signature over a large record must fail loudly.
+  let cmds = @[
+    @["check"],
+    @["get", "tok.txt"],
+    @["list"],
+    @["status"],
+    @["unseal"],
+    @["add", "later.txt"],
+    @["seal"],
+    @["rm", "tok.txt"],
+  ]
+  for size in [70_000, 2_000_000]:
+    let (dir, c) = freshAgeVault()
+    let f = dir / "tok.txt"
+    writeFile(f, "sigpipe-regression")
+    add(dir, f, c)
+    seal(dir, c)
+    writeFile(dir / "later.txt", "later")
+    let id = loadManifest(dir, cfg = c)[0].id
+    let rec = entryFile(dir, c, id)
+    writeFile(rec, randomPayload(size))
+    writeFile(rec & ".sig", "not-a-signature\n")
+    for cmd in cmds:
+      let got = runCliTimeout(dir, 25, cmd)
+      doAssert got.code != 0, &"{cmd.join(\" \")} returned 0 on {size}-byte junk record:\n" &
+                               got.outp
+    removeDir(dir)
+  echo "PASS: large bad signatures make all read/write commands fail non-zero"
+
+block ageWrongDekLargeCipherExitsOne:
+  ## A decryptable record with the wrong DEK must fail with exit 1, not 0.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "big.txt"
+  writeFile(f, repeat('W', 2_000_000))
+  add(dir, f, c)
+  seal(dir, c)
+  let e = loadManifest(dir, cfg = c)[0]
+  saveEntryRecord(dir, c, e, newDek(c))
+  removeFile(f)
+  var got = runCliTimeout(dir, 25, @["get", "big.txt"])
+  doAssert got.code == 1, got.outp
+  got = runCliTimeout(dir, 25, @["unseal"])
+  doAssert got.code == 1, got.outp
+  doAssert not fileExists(f), "unseal must not write plaintext on a wrong DEK"
+  removeDir(dir)
+  echo "PASS: a 2 MB wrong-DEK blob exits 1"
 
 block allowUnsignedStillVerifiesAPresentSshSignature:
   ## --allow-unsigned accepts a record with no detached signature. A record
