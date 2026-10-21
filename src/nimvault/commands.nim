@@ -1251,14 +1251,19 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
   ##
   ## A `.pending` sibling whose hash a record names is the durable ciphertext
   ## of a seal that has not renamed it yet. Removing it would strand the record.
+  ## One whose record this identity cannot open is left alone: its hash is
+  ## unknown here. `<id>.gpg.tmp` and `<id>.gpg.pending.tmp` are payloads a
+  ## killed `add` or `seal` was still writing; no record names them.
   let entries = loadManifest(repo, cfg = cfg)
-  var live = initHashSet[string]()
+  var opened = initHashSet[string]()
   var hashes = initHashSet[string]()
   for e in entries:
-    live.incl(e.id)
+    opened.incl(e.id)
     if e.hash.len > 0:
       hashes.incl(e.hash)
-  for id in splitRecordIds(repo):
+  var live = opened
+  let recorded = splitRecordIds(repo)
+  for id in recorded:
     live.incl(id)
   let dir = repo / ".vault"
   if not dirExists(dir):
@@ -1267,7 +1272,18 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
     if kind != pcFile:
       continue
     let name = path.extractFilename
+    if name.endsWith(".tmp"):
+      let inner = name[0 ..< name.len - ".tmp".len]
+      let blobName = if inner.endsWith(".pending"): inner[0 ..< inner.len - ".pending".len]
+                     else: inner
+      if (blobName.endsWith(".gpg") or blobName.endsWith(".age")) and
+         isHexSha(blobName.rsplit('.', maxsplit = 1)[0]):
+        result.add(path)
+      continue
     if name.endsWith(".pending"):
+      let id = pendingId(path)
+      if id in recorded and id notin opened:
+        continue
       if sha256sum(path) notin hashes:
         result.add(path)
       continue
@@ -1281,23 +1297,51 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
     if stem notin live:
       result.add(path)
 
+proc stagedPlaintext*(repo: string, cfg: GpgConfig): seq[string] =
+  ## `.nimvault-<id>.tmp` files beside the entries this identity can open.
+  ## `unseal` decrypts there before it verifies and renames, so a kill in
+  ## between leaves plaintext that nothing tracks. Records are verified first:
+  ## the directories searched are the ones they name.
+  let stagedName = re"^\.nimvault-[0-9a-f]{16}\.tmp$"
+  var dirs = initHashSet[string]()
+  for e in loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg):
+    if isPathSafe(cfg, e.path):
+      dirs.incl(resolvePath(cfg, e.path).parentDir)
+  for dir in dirs:
+    if not dirExists(dir):
+      continue
+    for kind, path in walkDir(dir):
+      if kind == pcFile and path.extractFilename.match(stagedName):
+        result.add(path)
+
 proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =
-  ## Remove blobs no manifest entry points at.
+  ## Remove blobs no manifest entry points at, half-written payloads, and
+  ## plaintext a killed `unseal` staged beside its destination. Holding the
+  ## vault lock is what makes every one of those a leftover rather than a
+  ## write in progress.
   let lk {.used.} = acquire(repo)
   let found = orphans(repo, cfg)
-  if found.len == 0:
+  let staged = stagedPlaintext(repo, cfg)
+  if found.len == 0 and staged.len == 0:
     nvEcho("no orphan blobs")
     return
-  banner(&"{found.len} orphan blob(s)")
-  for path in found:
-    nvEcho(&"  {path.extractFilename}")
-    if not dryRun:
-      removeFile(path)
+  if found.len > 0:
+    banner(&"{found.len} orphan blob(s)")
+    for path in found:
+      nvEcho(&"  {path.extractFilename}")
+      if not dryRun:
+        removeFile(path)
+  if staged.len > 0:
+    banner(&"{staged.len} staged plaintext file(s) from an interrupted unseal")
+    for path in staged:
+      nvEcho(&"  {path}")
+      if not dryRun:
+        shredFile(path)
   if dryRun:
     nvEcho("\ndry run; nothing removed")
   else:
     syncParentDir(repo / ".vault" / "x")
-    nvEcho(&"\nRemoved {found.len} orphan blob(s).")
+    nvEcho(&"\nRemoved {found.len} orphan blob(s) and {staged.len} staged file(s).")
 
 type CheckResult* = tuple[problems: seq[string], checked: int]
 
