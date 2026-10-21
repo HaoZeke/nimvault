@@ -5,9 +5,14 @@
 import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles, times]
 import nimvault/[gpg, manifest, commands, crypto, dek, lock]
 
+proc gpgHome(tag: string): string =
+  ## A GNUPGHOME for one test. gpg-agent puts its sockets in it, and macOS
+  ## caps a socket path at 103 bytes, 49 of them its temp dir.
+  result = createTempDir("nvg_", "_" & tag)
+  setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+
 proc setupGpg(): tuple[home, key: string] =
-  result.home = createTempDir("nimvault_audit_", "_gpg")
-  setFilePermissions(result.home, {fpUserRead, fpUserWrite, fpUserExec})
+  result.home = gpgHome("gpg")
   putEnv("GNUPGHOME", result.home)
   let script = result.home / "keygen.txt"
   writeFile(script, """
@@ -1019,8 +1024,7 @@ block gcCleansLeftoversAndKeepsUnreadPending:
   writeFile(pendTmp, "half-written-ciphertext")
   let foreign = "dddddddddddddddd"
   let savedHome = getEnv("GNUPGHOME")
-  let foreignHome = createTempDir("nimvault_audit_", "_foreign")
-  setFilePermissions(foreignHome, {fpUserRead, fpUserWrite, fpUserExec})
+  let foreignHome = gpgHome("foreign")
   putEnv("GNUPGHOME", foreignHome)
   let script = foreignHome / "keygen.txt"
   writeFile(script, """
@@ -1615,8 +1619,7 @@ block checkWithoutSecretKey:
   doAssert ecode == 0, exported
   doAssert "BEGIN PGP PUBLIC KEY BLOCK" in exported
   doAssert "PRIVATE KEY" notin exported
-  let pubHome = createTempDir("nimvault_audit_", "_pub")
-  setFilePermissions(pubHome, {fpUserRead, fpUserWrite, fpUserExec})
+  let pubHome = gpgHome("pub")
   writeFile(pubHome / "pub.asc", exported)
   try:
     putEnv("GNUPGHOME", pubHome)
@@ -1653,8 +1656,7 @@ block checkReportsUnreadRecords:
   ## A record this machine cannot open with any secret key is skippable, but
   ## check must say that it was skipped.
   let savedHome = getEnv("GNUPGHOME")
-  let foreignHome = createTempDir("nimvault_audit_", "_foreign")
-  setFilePermissions(foreignHome, {fpUserRead, fpUserWrite, fpUserExec})
+  let foreignHome = gpgHome("foreign")
   putEnv("GNUPGHOME", foreignHome)
   let foreignKey = genKey(foreignHome, "Foreign Box", "foreign@nimvault.local")
   let (exported, ecode) = execCmdEx("gpg --batch --export --armor " &
@@ -1738,8 +1740,7 @@ block unsealReportsRecordsItCouldNotOpen:
   ## unseal restored what this machine could open and said nothing of the
   ## rest. With none it could open, it reported an empty vault.
   let savedHome = getEnv("GNUPGHOME")
-  let foreignHome = createTempDir("nimvault_audit_", "_foreign")
-  setFilePermissions(foreignHome, {fpUserRead, fpUserWrite, fpUserExec})
+  let foreignHome = gpgHome("foreign")
   putEnv("GNUPGHOME", foreignHome)
   let foreignKey = genKey(foreignHome, "Foreign Box", "foreign@nimvault.local")
   let (exported, ecode) = execCmdEx("gpg --batch --export --armor " &
@@ -1954,8 +1955,7 @@ Expire-Date: 0
 
 block emailSpecifierMatchesExactEmailOnly:
   ## alice@example.com must not authorize malice@example.com by substring.
-  let home = createTempDir("nimvault_audit_", "_email")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("email")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   try:
@@ -1974,8 +1974,7 @@ block emailSpecifierMatchesExactEmailOnly:
 
 block addUsesAnAllowedSignerNotTheGpgDefault:
   ## add/seal must pick an allowed signer explicitly, not gpg's default key.
-  let home = createTempDir("nimvault_audit_", "_localsigner")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("localsigner")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -1998,10 +1997,8 @@ block addUsesAnAllowedSignerNotTheGpgDefault:
 block addFailsWithoutAllowedSecretKey:
   ## When only a disallowed secret key is present, add must fail instead of
   ## signing with it.
-  let ownerHome = createTempDir("nimvault_audit_", "_owner")
-  let signerHome = createTempDir("nimvault_audit_", "_signer")
-  setFilePermissions(ownerHome, {fpUserRead, fpUserWrite, fpUserExec})
-  setFilePermissions(signerHome, {fpUserRead, fpUserWrite, fpUserExec})
+  let ownerHome = gpgHome("owner")
+  let signerHome = gpgHome("signer")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", ownerHome)
   let owner = genKey(ownerHome, "Owner", "owner-only-public@nimvault.local")
@@ -2036,8 +2033,7 @@ block addFailsWithoutAllowedSecretKey:
 
 block recipientEmailRefusesMaliceSigner:
   ## recipient = alice@example.com must not accept a malice@example.com signer.
-  let home = createTempDir("nimvault_audit_", "_malice")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("malice")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -2084,8 +2080,7 @@ block recipientEmailRefusesMaliceSigner:
 block recordSignedByAnotherKeyIsRefused:
   ## GOODSIG only says some key in the keyring signed. A record signed by a
   ## key the vault is not configured for must not be trusted.
-  let home = createTempDir("nimvault_audit_", "_twokeys")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("twokeys")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -2164,8 +2159,7 @@ block allowUnsignedRefusesAnUnconfiguredRecordSigner:
   ## --allow-unsigned accepts a record with no signature. A record that
   ## carries a good signature from a key the vault is not configured for is
   ## not unsigned, and must not be accepted.
-  let home = createTempDir("nimvault_audit_", "_unsignedflag")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("unsignedflag")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -2224,8 +2218,7 @@ block allowUnsignedRefusesAnUnconfiguredRecordSigner:
 block allowUnsignedRefusesAnUnconfiguredBlobSigner:
   ## A v5 blob carries its signature in band. With the flag, a good signature
   ## from an unconfigured key must still be refused by unseal and get.
-  let home = createTempDir("nimvault_audit_", "_unsignedblob")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("unsignedblob")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -2280,8 +2273,7 @@ block allowUnsignedRefusesAnUnconfiguredBlobSigner:
 block allowUnsignedChecksSplitStubSignature:
   ## In split mode, --allow-unsigned still checks a stub manifest signature
   ## when one is present.
-  let home = createTempDir("nimvault_audit_", "_unsignedstub")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("unsignedstub")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
@@ -2316,8 +2308,7 @@ block allowUnsignedChecksSplitStubSignature:
 block nameSpecifierIsRefused:
   ## A spec that is neither an email nor hex went to gpg as a substring, so
   ## `recipient = Alice` let a record signed by Malice through a plain unseal.
-  let home = createTempDir("nimvault_audit_", "_names")
-  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let home = gpgHome("names")
   let savedHome = getEnv("GNUPGHOME")
   putEnv("GNUPGHOME", home)
   let r = setupRepo()
