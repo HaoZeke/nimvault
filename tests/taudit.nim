@@ -700,16 +700,19 @@ proc nthDecryptSwapHook(realGpg, targetRecord, replacement, marker,
   ## The review repro lands on decrypt #5 in a second `add`.
   result = "#!/bin/sh\n" &
     "set -eu\n" &
+    "last=\"\"\n" &
+    "for arg in \"$@\"; do last=\"$arg\"; done\n" &
     "case \" $* \" in\n" &
     "  *\" -d \"*|*\" --decrypt \"*) decrypt=1 ;;\n" &
     "  *) decrypt=\"\" ;;\n" &
     "esac\n" &
     "if [ -n \"$decrypt\" ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
     "  n=0\n" &
-    "  if [ -f " & seen.quoteShell & " ]; then n=$(cat " &
-      seen.quoteShell & "); fi\n" &
+    "  if [ -f " & seen.quoteShell & " ]; then\n" &
+    "    n=$(wc -l < " & seen.quoteShell & ")\n" &
+    "  fi\n" &
     "  n=$((n + 1))\n" &
-    "  echo \"$n\" > " & seen.quoteShell & "\n" &
+    "  printf '%s\\t%s\\n' \"$n\" \"$last\" >> " & seen.quoteShell & "\n" &
     "  if [ \"$n\" -eq " & $swapOn & " ]; then\n" &
     "    cat " & replacement.quoteShell & " > " & targetRecord.quoteShell & "\n" &
     "    : >" & marker.quoteShell & "\n" &
@@ -1337,11 +1340,16 @@ block addRefusesARecordDekSwappedAfterVerify:
   ## attacker data key on a later write.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
+  let keep = r / "sibling.txt"
   let f = r / "secret.txt"
+  writeFile(keep, "record-dek-sibling")
   writeFile(f, "record-dek-original")
+  add(r, keep, c)
   add(r, f, c)
   seal(r, c)
-  let entry = loadManifest(r, cfg = c)[0]
+  let ordered = loadManifest(r, cfg = c)
+  doAssert ordered.len >= 2
+  let entry = ordered[1]
   let forged = createTempDir("nimvault_audit_", "_recordswap")
   let plain = forged / "record.plain"
   let badDek = repeat('b', 64)
@@ -1364,7 +1372,10 @@ block addRefusesARecordDekSwappedAfterVerify:
   setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
   writeFile(r / "later.txt", "record-dek-later")
   let oldPath = getEnv("PATH")
+  let hadParallel = existsEnv("NIMVAULT_GPG_PARALLEL")
+  let oldParallel = getEnv("NIMVAULT_GPG_PARALLEL")
   putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_PARALLEL", "1")
   var raised = false
   try:
     try:
@@ -1373,6 +1384,10 @@ block addRefusesARecordDekSwappedAfterVerify:
       raised = true
   finally:
     putEnv("PATH", oldPath)
+    if hadParallel:
+      putEnv("NIMVAULT_GPG_PARALLEL", oldParallel)
+    else:
+      delEnv("NIMVAULT_GPG_PARALLEL")
   doAssert fileExists(marker), "test wrapper did not swap the record"
   var checkFailed = false
   try:
@@ -1392,11 +1407,16 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   let c = GpgConfig(recipient: keyId, root: r)
   let keepDir = r / "keep"
   createDir(keepDir)
+  let sibling = keepDir / "sibling.txt"
   let keep = keepDir / "secret.txt"
+  writeFile(sibling, "record-dek-sibling")
   writeFile(keep, "record-dek-original")
+  add(r, sibling, c)
   add(r, keep, c)
   seal(r, c)
-  let entry = loadManifest(r, cfg = c)[0]
+  let ordered = loadManifest(r, cfg = c)
+  doAssert ordered.len >= 2
+  let entry = ordered[1]
   let forged = createTempDir("nimvault_audit_", "_recordswap_dir")
   let plain = forged / "record.plain"
   let badDek = repeat('b', 64)
@@ -1443,15 +1463,22 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   removeDir(r)
   echo "PASS: add-dir refuses record-DEK swaps after verify"
 
-block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
+block addRepairsRecordSwappedOnLastManifestDecrypt:
   ## A vault-signed swap on the last save decrypt must not survive add.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
+  let keep = r / "sibling.txt"
   let f = r / "secret.txt"
+  writeFile(keep, "record-dek-sibling")
   writeFile(f, "record-dek-original")
+  add(r, keep, c)
   add(r, f, c)
   seal(r, c)
-  let entry = loadManifest(r, cfg = c)[0]
+  let ordered = loadManifest(r, cfg = c)
+  doAssert ordered.len >= 2
+  let entry = ordered[1]
+  let targetPath = resolvePath(c, entry.path)
+  let expectedPlain = readFile(targetPath)
   let forged = createTempDir("nimvault_audit_", "_recordswap_last")
   let plain = forged / "record.plain"
   let badDek = repeat('b', 64)
@@ -1474,7 +1501,10 @@ block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
   setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
   writeFile(r / "later.txt", "record-dek-later")
   let oldPath = getEnv("PATH")
+  let hadParallel = existsEnv("NIMVAULT_GPG_PARALLEL")
+  let oldParallel = getEnv("NIMVAULT_GPG_PARALLEL")
   putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_PARALLEL", "1")
   var addRaised = false
   try:
     try:
@@ -1483,19 +1513,42 @@ block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
       addRaised = true
   finally:
     putEnv("PATH", oldPath)
+    if hadParallel:
+      putEnv("NIMVAULT_GPG_PARALLEL", oldParallel)
+    else:
+      delEnv("NIMVAULT_GPG_PARALLEL")
   doAssert fileExists(marker), "test wrapper did not swap the record"
+  doAssert fileExists(seen), "decrypt history missing for swap assertion"
+  var decryptFivePath = ""
+  for line in readFile(seen).splitLines:
+    let cols = line.split('\t')
+    if cols.len == 2 and cols[0] == "5":
+      decryptFivePath = cols[1]
+      break
+  let expectedDecryptFive = "record-1" & c.blobExt
+  doAssert decryptFivePath.extractFilename == expectedDecryptFive,
+    "decrypt #5 must stay on " & expectedDecryptFive & ", got " &
+    decryptFivePath
+  doAssert not addRaised,
+    "a vault-signed decrypt-5 swap should be repaired during add"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  doAssert not checkFailed, "check should pass after add repairs the swapped record"
   var got = ""
   var getRaised = false
   try:
-    got = get(r, f, c)
+    got = get(r, targetPath, c)
   except CatchableError:
     getRaised = true
-  doAssert addRaised or (not getRaised and got == "record-dek-original"),
-    "a vault-signed swap must fail add or keep the original plaintext retrievable"
+  doAssert not getRaised and got == expectedPlain,
+    "a vault-signed swap must keep the original plaintext retrievable"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)
-  echo "PASS: add refuses signed swaps on the last saveManifest decrypt"
+  echo "PASS: add repairs signed swaps on the last saveManifest decrypt"
 
 block addDoesNotSignDekSwappedInKeysTmp:
   ## A keys.*.tmp plaintext swap must not change the DEK signed into records.

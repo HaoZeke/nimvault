@@ -1,0 +1,2 @@
+The signed swap audit now pins decrypt step five to the victim record path and
+requires add to repair the swapped record without raising.
