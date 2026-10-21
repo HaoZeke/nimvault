@@ -76,8 +76,8 @@ type Drain* = object
 
 proc drain*(jobs: var openArray[Drain]) =
   ## Read every child's stdout and stderr to the end, then reap it. Both
-  ## streams are read together across all children: a child blocked on a full
-  ## pipe never exits, whichever pipe it is.
+  ## streams are read together across all children: a child waiting to write
+  ## to a full pipe never exits, whichever pipe it is.
   var open = newSeq[array[2, bool]](jobs.len)
   for i in 0 .. jobs.high:
     open[i] = [true, true]
