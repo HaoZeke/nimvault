@@ -1,0 +1,2 @@
+`saveEntryRecord` now caches the encrypted temp-file digest computed before
+publish, instead of re-hashing the destination after rename.
