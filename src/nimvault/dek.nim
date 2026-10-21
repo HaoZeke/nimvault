@@ -334,36 +334,29 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   moveFile(tmp, outPath)
   syncParentDir(outPath)
 
-proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
-  ## Decrypt a v6 payload with its data key.
+proc decryptWithDekStream*(cfg: GpgConfig, dek, inPath: string,
+                           work: var string): Process =
+  ## Spawn a decryption of a v6 payload that writes the plaintext to stdout.
+  ## For age the data key is an identity file in `work`, a private directory
+  ## the caller discards once the process has exited.
+  work = ""
   if cfg.usesAge:
-    let work = privateWorkDir()
+    work = privateWorkDir()
     let identFile = work / "identity"
     writeFile(identFile, dek & "\n")
     setFilePermissions(identFile, {fpUserRead, fpUserWrite})
-    defer:
-      discardPrivate(work)
-    let p = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "-o", outPath, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
-    let output = p.outputStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{output}")
+    startProcess(ageBinary(),
+      args = @["-d", "-i", identFile, "--", inPath],
+      options = {poUsePath})
   else:
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
                "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "-o", outPath, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
+               "--", inPath],
+      options = {poUsePath})
     p.inputStream.write(dek & "\n")
     p.inputStream.close()
-    let output = p.outputStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {code}):\n{output}")
+    p
 
 proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
   ## Plaintext in memory. The data key for age still needs an identity file;

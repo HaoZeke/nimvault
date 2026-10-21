@@ -72,7 +72,9 @@ pass does the tool move files to their final paths. This atomic approach prevent
 release of unverified plaintext under the final name.
 
 The temporary file is =.nimvault-<id>.tmp= in the destination's directory,
-mode 0600. It sits beside the destination so the final step is a ~rename~ on
+mode 0600. ~unseal~ creates it through a descriptor for that directory and
+copies the plaintext in from gpg's or age's standard output; neither tool is
+given a path to write. It sits beside the destination so the final step is a ~rename~ on
 one filesystem, which replaces a symlink at the destination instead of
 writing through it. The cost: plaintext sits in that directory for the length
 of the batch, before its in-band signature is checked when the blob carries

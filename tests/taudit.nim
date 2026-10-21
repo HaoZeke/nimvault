@@ -55,6 +55,18 @@ proc devOf(path: string): int64 =
     return -1
   int64(st.st_dev)
 
+proc secondFs(name: string): string =
+  ## A fresh directory on a filesystem other than the temp dir's, or "" when
+  ## this machine has none to offer.
+  if not dirExists("/dev/shm"):
+    return ""
+  result = "/dev/shm" / (name & $getCurrentProcessId())
+  createDir(result)
+  setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+  if devOf(result) == devOf(getTempDir()):
+    removeDir(result)
+    result = ""
+
 let creds = setupGpg()
 let keyId = creds.key
 
@@ -263,11 +275,8 @@ block addRejectsTildePathWhoseRealPathLeavesHome:
 block unsealDoesNotCopyThroughFinalSymlink:
   ## Runtime dir and the vault are on different devices. moveFile then copies,
   ## and a copy follows a symlink planted at the destination.
-  let shm = "/dev/shm/nimvault-audit-" & $getCurrentProcessId()
-  createDir(shm)
-  setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
-  if devOf(shm) == devOf(getTempDir()):
-    removeDir(shm)
+  let shm = secondFs("nimvault-audit-")
+  if shm.len == 0:
     echo "SKIP: cross-device unseal (no second filesystem)"
   else:
     let oldXdg = getEnv("XDG_RUNTIME_DIR")
@@ -323,11 +332,8 @@ block mvRefusesFinalSymlink:
 
 block mvDoesNotCopyThroughSymlinkAcrossFilesystems:
   ## The cross-filesystem fallback must not copy through a destination symlink.
-  let shm = "/dev/shm/nimvault-audit-mv-" & $getCurrentProcessId()
-  createDir(shm)
-  setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
-  if devOf(shm) == devOf(getTempDir()):
-    removeDir(shm)
+  let shm = secondFs("nimvault-audit-mv-")
+  if shm.len == 0:
     echo "SKIP: cross-device mv (no second filesystem)"
   else:
     let oldHome = getEnv("HOME")
@@ -367,11 +373,8 @@ block mvDoesNotCopyThroughSymlinkAcrossFilesystems:
 block mvAcrossFilesystemsKeepsTheSourceMode:
   ## The copy fallback created the new file with the process umask, so a
   ## 0600 secret arrived 0644.
-  let shm = "/dev/shm/nimvault-audit-mvmode-" & $getCurrentProcessId()
-  createDir(shm)
-  setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
-  if devOf(shm) == devOf(getTempDir()):
-    removeDir(shm)
+  let shm = secondFs("nimvault-audit-mvmode-")
+  if shm.len == 0:
     echo "SKIP: cross-device mv mode (no second filesystem)"
   else:
     let oldHome = getEnv("HOME")
@@ -543,6 +546,31 @@ block rotateReadsUnderTheLock:
   removeDir(r)
   echo "PASS: rotate reads records under the lock"
 
+proc payloadDecryptHook(realGpg: string): string =
+  ## A gpg wrapper that runs $NIMVAULT_SWAP_CMD once, when gpg decrypts a
+  ## payload blob. Records under `.vault/e/` and key files are decrypted while
+  ## the records load, before the checks a swap has to come after.
+  """#!/bin/sh
+set -eu
+last=""
+for arg in "$@"; do last="$arg"; done
+case " $* " in
+  *" -d "*|*" --decrypt "*) decrypt=1 ;;
+  *) decrypt="" ;;
+esac
+if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
+   [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
+  case "$last" in
+    */.vault/e/*) ;;
+    */.vault/[0-9a-f]*.gpg)
+      sh -c "$NIMVAULT_SWAP_CMD"
+      : >"$NIMVAULT_SWAP_MARKER"
+      ;;
+  esac
+fi
+exec """ & realGpg.quoteShell & """ "$@"
+"""
+
 block unsealUsesDescriptorAnchoredStaging:
   ## A parent symlink swapped after path checks must not redirect where
   ## plaintext is staged or where the final rename lands.
@@ -565,28 +593,7 @@ block unsealUsesDescriptorAnchoredStaging:
   let wrapper = wrapBin / "gpg"
   let swapCmd = "rm -f " & (r / "safe").quoteShell &
                 " && ln -s " & outside.quoteShell & " " & (r / "safe").quoteShell
-  writeFile(wrapper, """#!/bin/sh
-set -eu
-out=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then out="$arg"; fi
-  prev="$arg"
-done
-if [ -n "${NIMVAULT_SWAP_CMD:-}" ] && [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
-  case " $* " in
-    *" -d "*|*" --decrypt "*) ;;
-    *) out="" ;;
-  esac
-  case "$out" in
-    *".nimvault-"*".tmp")
-      sh -c "$NIMVAULT_SWAP_CMD"
-      : >"$NIMVAULT_SWAP_MARKER"
-      ;;
-  esac
-fi
-exec """ & realGpg.quoteShell & """ "$@"
-""")
+  writeFile(wrapper, payloadDecryptHook(realGpg))
   setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
   let oldPath = getEnv("PATH")
   putEnv("PATH", wrapBin & ":" & oldPath)
@@ -949,7 +956,7 @@ block runtimeDirRejectsSymlink:
     parked = parent & ".parked2"
     if dirExists(parked): removeDir(parked)
     moveDir(parent, parked)
-  createSymlink("/dev/shm", parent)
+  createSymlink(getTempDir(), parent)
   var raised = false
   try:
     discard privateWorkDir()
@@ -1276,6 +1283,44 @@ block unsignedRecordDoesNotHideAFileFromScan:
   removeDir(r)
   echo "PASS: an unsigned record does not hide a file from scan"
 
+block unsealWorksWithoutProc:
+  ## Staging handed gpg a /proc/self/fd/<dirfd>/<name> path. macOS has no
+  ## /proc, and a Linux container may not mount it. Hide it with a tmpfs in a
+  ## user namespace where the kernel allows one.
+  let probe = execCmdEx("unshare -rm sh -c " &
+    "'mount -t tmpfs none /proc && test ! -e /proc/self'")
+  if probe.exitCode != 0:
+    echo "SKIP: unseal without /proc (no unprivileged user namespace)"
+  else:
+    let r = setupRepo()
+    createDir(r / ".vault")
+    writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+    createDir(r / "sub")
+    writeFile(r / "sub" / "a.txt", "no-proc-alpha")
+    writeFile(r / "run.sh", "#!/bin/sh\necho no-proc\n")
+    for f in ["sub/a.txt", "run.sh"]:
+      let got = runCli(r, @["add", f])
+      doAssert got.code == 0, got.outp
+    let sealed = runCli(r, @["seal"])
+    doAssert sealed.code == 0, sealed.outp
+    removeDir(r / "sub")
+    removeFile(r / "run.sh")
+    let p = startProcess("unshare", workingDir = r,
+      args = @["-rm", "sh", "-c",
+               "mount -t tmpfs none /proc && exec " & cliExe().quoteShell & " unseal"],
+      options = {poUsePath, poStdErrToStdOut})
+    let outp = p.outputStream.readAll()
+    let code = p.waitForExit()
+    p.close()
+    doAssert code == 0, "unseal must not need /proc:\n" & outp
+    doAssert readFile(r / "sub" / "a.txt") == "no-proc-alpha"
+    doAssert readFile(r / "run.sh") == "#!/bin/sh\necho no-proc\n"
+    doAssert getFilePermissions(r / "run.sh") ==
+      {fpUserRead, fpUserWrite, fpUserExec}
+    doAssert getFilePermissions(r / "sub" / "a.txt") == {fpUserRead, fpUserWrite}
+    removeDir(r)
+    echo "PASS: unseal works with /proc hidden"
+
 block corruptRecordFailsCheckAndUnseal:
   ## A record this machine should be able to decrypt must not be skipped when
   ## corrupted.
@@ -1503,7 +1548,8 @@ block unsealReportsRecordsItCouldNotOpen:
   echo "PASS: unseal reports the records it could not open"
 
 block getDoesNotWritePlaintextToTheRuntimeDir:
-  let shm = "/dev/shm/nimvault-get-" & $getCurrentProcessId()
+  let shm = (if dirExists("/dev/shm"): "/dev/shm" else: getTempDir()) /
+            ("nimvault-get-" & $getCurrentProcessId())
   createDir(shm)
   setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
   let oldXdg = getEnv("XDG_RUNTIME_DIR")
