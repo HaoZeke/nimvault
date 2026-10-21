@@ -1,0 +1,3 @@
+`nimvault mv` now checks for legacy entries whose DEK exists only in unsigned
+`keys.*` files before moving plaintext, so a refused move leaves the file and
+record path unchanged and the suggested `seal --force` recovery command works.

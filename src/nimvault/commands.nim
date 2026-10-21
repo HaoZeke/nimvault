@@ -1133,28 +1133,25 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
 
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var entries = meta.entries
-  var found = false
-  var movedEntry: seq[VaultEntry] = @[]
-  for e in entries.mitems:
+  var idx = -1
+  for i, e in entries:
     if resolvePath(cfg, e.path) == oldAbs:
-      found = true
-      if fileExists(oldAbs) or symlinkExists(oldAbs):
-        safeMovePath(oldAbs, newAbs)
-        nvEcho(&"  Moved {e.path} -> {newStored}")
-      elif fileExists(newAbs):
-        nvEcho(&"  File already at {newStored}")
-      else:
-        nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
-      e.path = newStored
-      movedEntry = @[e]
+      idx = i
       break
-
-  if not found:
+  if idx < 0:
     nvRaise(&"Not in vault: {oldPath}")
 
-  let keyOnly = keyFileOnlyDekEntries(repo, cfg, movedEntry, meta.deks)
+  let keyOnly = keyFileOnlyDekEntries(repo, cfg, @[entries[idx]], meta.deks)
   if keyOnly.len > 0:
     refuseUnsignedDekResign(keyOnly, "move")
+  if fileExists(oldAbs) or symlinkExists(oldAbs):
+    safeMovePath(oldAbs, newAbs)
+    nvEcho(&"  Moved {entries[idx].path} -> {newStored}")
+  elif fileExists(newAbs):
+    nvEcho(&"  File already at {newStored}")
+  else:
+    nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
+  entries[idx].path = newStored
   persistDeks(repo, cfg, deksForEntries(repo, cfg, entries, meta.deks), entries)
   saveManifestKeep(repo, entries, cfg,
                    knownDeks = meta.deks, haveDeks = true)
