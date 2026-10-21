@@ -4,7 +4,7 @@
 ## suite still runs on a machine that only has gpg. A skip is announced, since a
 ## test that quietly does nothing is worse than one that is not there.
 
-import std/[os, osproc, strutils, strformat, tempfiles]
+import std/[os, osproc, strutils, strformat, tempfiles, tables]
 import nimvault/[gpg, manifest, commands, crypto, dek]
 
 proc have(bin: string): bool = findExe(bin).len > 0
@@ -164,6 +164,143 @@ proc freshAgeVault(): (string, GpgConfig) =
   createDir(dir / ".vault")
   writeFile(dir / ".vault" / "config", readFile(work / ".vault" / "config"))
   (dir, initGpgConfig("", dir))
+
+proc sshVerifySwapHook(realSshKeygen: string): string =
+  ## Wrapper that runs one swap command after a successful `ssh-keygen -Y verify`.
+  """#!/bin/sh
+set -u
+sig=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-s" ]; then
+    sig="$arg"
+  fi
+  prev="$arg"
+done
+""" & realSshKeygen.quoteShell & """ "$@"
+code=$?
+if [ "$code" -eq 0 ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
+   [ -n "${NIMVAULT_SWAP_MARKER:-}" ] &&
+   [ ! -e "${NIMVAULT_SWAP_MARKER}" ] && [ -n "$sig" ]; then
+  NIMVAULT_VERIFY_TARGET="${sig%.sig}" sh -c "$NIMVAULT_SWAP_CMD"
+  : >"$NIMVAULT_SWAP_MARKER"
+fi
+exit "$code"
+"""
+
+block splitRecordSwapDuringSshVerifyIsRefused:
+  ## age split-record loads must decrypt the same bytes ssh-keygen verified.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-split-original")
+  add(dir, f, c)
+  seal(dir, c)
+  removeFile(f)
+  let entry = loadManifest(dir, cfg = c)[0]
+  let blob = crypto.blobPath(dir, c, entry.id)
+  let dek = loadDeks(dir, c)[entry.id]
+  let forged = createTempDir("nimvault_age_", "_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.age"
+  encryptWithDek(c, dek, payload, badBlob)
+  let badHash = sha256sum(badBlob)
+  let plain = forged / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{badHash}\tfile\t{sha256sum(payload)}\t{dek}\n")
+  let badRec = forged / "record.age"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_age_", "_sshwrap")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "ssh-keygen"
+  let realSsh = findExe("ssh-keygen")
+  doAssert realSsh.len > 0
+  writeFile(wrapper, sshVerifySwapHook(realSsh))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badRec.quoteShell & " > \"$NIMVAULT_VERIFY_TARGET\"" &
+                " && cat " & badBlob.quoteShell & " > " & blob.quoteShell
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  var raised = false
+  try:
+    unseal(dir, c)
+  except CatchableError:
+    raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_SWAP_CMD")
+    delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert fileExists(marker), "test wrapper did not swap the verified record"
+  doAssert raised, "unseal must fail after a split-record swap post-verify"
+  doAssert not fileExists(f), "unseal must not write plaintext after the swap"
+  removeDir(dir)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: age split-record swaps after verify are refused"
+
+block legacyManifestSwapDuringSshVerifyIsRefused:
+  ## Legacy combined manifests must not verify one read and decrypt another.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-legacy-original")
+  add(dir, f, c)
+  seal(dir, c)
+  let entry = loadManifest(dir, cfg = c)[0]
+  let blob = crypto.blobPath(dir, c, entry.id)
+  let dek = loadDeks(dir, c)[entry.id]
+  if dirExists(entryDir(dir)):
+    removeDir(entryDir(dir))
+  saveManifest(dir, @[entry], c)
+  doAssert not hasSplitEntries(dir), "test setup must use the legacy read path"
+  removeFile(f)
+
+  let forged = createTempDir("nimvault_age_", "_legacy_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.age"
+  encryptWithDek(c, dek, payload, badBlob)
+  let badHash = sha256sum(badBlob)
+  let badTarget = "secrets/evil.txt"
+  let badPlain = forged / "manifest.plain"
+  writeFile(badPlain, "# vault-manifest-v4\n" &
+    &"{entry.id}\t{badTarget}\t{badHash}\tfile\t{sha256sum(payload)}\n")
+  let badManifest = forged / "manifest.age"
+  encryptFile(c, badPlain, badManifest)
+
+  let wrapBin = createTempDir("nimvault_age_", "_sshwrap")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "ssh-keygen"
+  let realSsh = findExe("ssh-keygen")
+  doAssert realSsh.len > 0
+  writeFile(wrapper, sshVerifySwapHook(realSsh))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badManifest.quoteShell & " > \"$NIMVAULT_VERIFY_TARGET\"" &
+                " && cat " & badBlob.quoteShell & " > " & blob.quoteShell
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  var raised = false
+  try:
+    unseal(dir, c)
+  except CatchableError:
+    raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_SWAP_CMD")
+    delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert fileExists(marker), "test wrapper did not swap the verified manifest"
+  doAssert raised, "unseal must fail after a legacy-manifest swap post-verify"
+  doAssert not fileExists(dir / badTarget),
+    "unseal must not write attacker plaintext from a swapped manifest"
+  doAssert not fileExists(f), "unseal must not restore plaintext after the swap"
+  removeDir(dir)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: age legacy-manifest swaps after verify are refused"
 
 block allowUnsignedStillVerifiesAPresentSshSignature:
   ## --allow-unsigned accepts a record with no detached signature. A record
