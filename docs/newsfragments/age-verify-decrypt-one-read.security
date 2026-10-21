@@ -1,0 +1,3 @@
+Age-backed record and manifest loads now verify and decrypt the same ciphertext
+bytes in memory. `unseal`, `get` and `check` no longer verify one on-disk read
+and decrypt another for ssh-signed age records.
