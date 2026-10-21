@@ -59,17 +59,22 @@ proc release*(l: var VaultLock) =
   ## Drop the lock. Safe to call twice; the kernel would release on exit anyway.
   dropOwned(l)
 
-proc `=destroy`(l: VaultLock) =
-  ## Releasing on scope exit is what lets a command take the lock in one line
-  ## without a wrapper block, and it still holds when the body raises.
-  ## A moved-from lock has `owns` false, so this does not close descriptor 0.
-  ## The descriptor is closed before the mutex: closing it drops every fcntl
-  ## lock this process holds on the file.
-  if not l.owns:
-    return
-  if l.fd >= 0:
-    discard close(l.fd)
-  thrlocks.release(threadGate)
+when NimMajor == 2 and NimMinor == 0:
+  proc `=destroy`(l: var VaultLock) =
+    ## Nim 2.0 requires a mutable `=destroy` parameter.
+    dropOwned(l)
+else:
+  proc `=destroy`(l: VaultLock) =
+    ## Releasing on scope exit is what lets a command take the lock in one line
+    ## without a wrapper block, and it still holds when the body raises.
+    ## A moved-from lock has `owns` false, so this does not close descriptor 0.
+    ## The descriptor is closed before the mutex: closing it drops every fcntl
+    ## lock this process holds on the file.
+    if not l.owns:
+      return
+    if l.fd >= 0:
+      discard close(l.fd)
+    thrlocks.release(threadGate)
 
 proc `=wasMoved`(l: var VaultLock) =
   ## A bitwise reset would leave `fd` at 0 and the destructor would close stdin.
