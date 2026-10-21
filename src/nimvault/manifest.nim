@@ -164,10 +164,8 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
     result.ok = false
 
 var recordCache {.threadvar.}: Table[string, tuple[cipherHash, plain: string]]
-  ## Plaintext of split records this process decrypted, by path, keyed by the
-  ## digest of the exact ciphertext bytes copied into the decrypt snapshot.
-  ## When live bytes move, the cache entry is ignored and the record is read
-  ## again.
+  ## Plaintext cache for split records, keyed by ciphertext digest. This is a
+  ## speed cache, not an authority: callers still compare against live bytes.
 
 proc recordCipherHash(path: string): string =
   ## Hash of the encrypted record bytes; empty when unreadable.
@@ -181,8 +179,8 @@ proc rememberRecord(path, digest, plain: string) =
     recordCache[path] = (digest, plain)
 
 proc recalledRecord(path: string): string =
-  ## The cached plaintext of `path` when live ciphertext still hashes to the
-  ## digest of the bytes this process verified and decrypted; empty otherwise.
+  ## Cached plaintext of `path` only when live ciphertext still hashes to the
+  ## digest this process already decrypted; empty otherwise.
   if not recordCache.hasKey(path):
     return ""
   let (digest, plain) = recordCache[path]
@@ -279,8 +277,9 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
     encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
   finally:
     discardPrivate(work)
+  let tmpHash = sha256sum(tmp)
   publishSigned(cfg, tmp, dest)
-  rememberRecord(dest, recordCipherHash(dest), content)
+  rememberRecord(dest, tmpHash, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =
