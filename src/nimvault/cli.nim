@@ -11,9 +11,9 @@ export Version
 
 template cliRun(body: untyped) =
   try:
-    # cligen's default SIGPIPE handler exits 0. Restore the kernel default of
-    # "write gets EPIPE" for each command run so a closed child pipe is a
-    # command failure, never a silent success.
+    # cligen installs a SIGPIPE handler that exits 0. Ignore SIGPIPE so writes
+    # fail with EPIPE instead, and a closed pipe is reported as a command
+    # failure rather than a silent success.
     discard sigignore(SIGPIPE)
     body
   except NimvaultError as e:
