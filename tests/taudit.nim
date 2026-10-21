@@ -1379,8 +1379,8 @@ block addRefusesARecordDekSwappedAfterVerify:
     check(r, c)
   except CatchableError:
     checkFailed = true
-  doAssert raised or checkFailed,
-    "a post-verify record swap must fail the command or fail check"
+  doAssert raised and checkFailed,
+    "an unsigned post-verify record swap must fail add and fail check"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)
@@ -1444,7 +1444,7 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   echo "PASS: add-dir refuses record-DEK swaps after verify"
 
 block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
-  ## Swapping a record on the last decrypt in saveManifest must fail both.
+  ## A vault-signed swap on the last save decrypt must not survive add.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let f = r / "secret.txt"
@@ -1458,7 +1458,7 @@ block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
   writeFile(plain, EntryHeader & "\n" &
     &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
   let badRec = forged / "record.gpg"
-  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = true)
 
   let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_last")
   let marker = wrapBin / "swapped"
@@ -1484,17 +1484,18 @@ block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
   finally:
     putEnv("PATH", oldPath)
   doAssert fileExists(marker), "test wrapper did not swap the record"
-  var checkRaised = false
+  var got = ""
+  var getRaised = false
   try:
-    check(r, c)
+    got = get(r, f, c)
   except CatchableError:
-    checkRaised = true
-  doAssert addRaised or checkRaised,
-    "a last-decrypt swap must fail add or fail check"
+    getRaised = true
+  doAssert addRaised or (not getRaised and got == "record-dek-original"),
+    "a vault-signed swap must fail add or keep the original plaintext retrievable"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)
-  echo "PASS: add/check refuse swaps on the last saveManifest decrypt"
+  echo "PASS: add refuses signed swaps on the last saveManifest decrypt"
 
 block addDoesNotSignDekSwappedInKeysTmp:
   ## A keys.*.tmp plaintext swap must not change the DEK signed into records.
