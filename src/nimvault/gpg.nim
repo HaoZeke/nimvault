@@ -83,14 +83,28 @@ proc gpgSecretKeyPresent*(): bool =
   secretKeyCache = (home, true, present)
   present
 
+proc ageIdentityPresent(cfg: GpgConfig): bool =
+  ## The age identity is the decrypt key. A configured path that is not on
+  ## this machine is the same as no key: a CI writer often has the recipient
+  ## in `.vault/config` and nothing else.
+  if cfg.identity.len == 0:
+    return false
+  var p = cfg.identity
+  if p.startsWith("~/"):
+    p = getHomeDir() / p[2 .. ^1]
+  fileExists(p)
+
 proc publicKeyOnly*(cfg: GpgConfig): bool =
-  ## A writer that must not decrypt or sign. Age still signs with ssh unless
-  ## the caller set `publicOnly`; the automatic case is a gpg home with no
-  ## secret key.
+  ## Encrypt to public keys and do not decrypt or sign.
+  ##
+  ## gpg signs in the same operation as `-e`, so a home with no secret key
+  ## cannot produce a signed record. age does not sign; the ssh key does, and
+  ## the identity file is what decrypts. No identity file is that same case.
+  ## `--public-only` forces it when a decrypt key is present and must not be used.
   if cfg.publicOnly:
     return true
   if cfg.backend == "age":
-    return false
+    return not ageIdentityPresent(cfg)
   not gpgSecretKeyPresent()
 
 type VaultConfigFile* = tuple[recipient, root, backend, identity, signer,
