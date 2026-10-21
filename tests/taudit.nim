@@ -694,6 +694,29 @@ proc secondRecordDecryptSwapHook(realGpg, targetRecord, replacement,
     "fi\n" &
     "exec " & realGpg.quoteShell & " \"$@\"\n"
 
+proc nthDecryptSwapHook(realGpg, targetRecord, replacement, marker,
+                        seen: string, swapOn: int): string =
+  ## Swap one live record while a decrypt call is in flight.
+  ## The review repro lands on decrypt #5 in a second `add`.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "case \" $* \" in\n" &
+    "  *\" -d \"*|*\" --decrypt \"*) decrypt=1 ;;\n" &
+    "  *) decrypt=\"\" ;;\n" &
+    "esac\n" &
+    "if [ -n \"$decrypt\" ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "  n=0\n" &
+    "  if [ -f " & seen.quoteShell & " ]; then n=$(cat " &
+      seen.quoteShell & "); fi\n" &
+    "  n=$((n + 1))\n" &
+    "  echo \"$n\" > " & seen.quoteShell & "\n" &
+    "  if [ \"$n\" -eq " & $swapOn & " ]; then\n" &
+    "    cat " & replacement.quoteShell & " > " & targetRecord.quoteShell & "\n" &
+    "    : >" & marker.quoteShell & "\n" &
+    "  fi\n" &
+    "fi\n" &
+    "exec " & realGpg.quoteShell & " \"$@\"\n"
+
 proc keyFileEncryptSwapHook(realBin, badDek, marker: string): string =
   ## Replace each DEK line in keys.*.tmp before the backend encrypts it.
   ## add/add-dir must still sign the in-memory DEK that encrypted the blob.
@@ -1272,6 +1295,33 @@ block recordDekWinsOverKeyFile:
   removeDir(r)
   echo "PASS: the signed record's data key wins over a key file"
 
+block loadDeksRefusesUnsignedRecordAfterUnverifiedRead:
+  ## A prior unverified read must not let loadDeks skip signature checks.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "unsigned-record-cache")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let forged = createTempDir("nimvault_audit_", "_unsigned_record")
+  let plain = forged / "record.plain"
+  let badDek = repeat('a', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  encryptFileTo(c, @[c.recipient], plain, entryFile(r, c, entry.id), sign = false)
+  discard loadManifest(r, cfg = c) # verifySig defaults to false
+  var raised = false
+  try:
+    discard loadDeks(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised,
+    "loadDeks must reject unsigned records after unverified reads"
+  removeDir(forged)
+  removeDir(r)
+  echo "PASS: loadDeks rejects unsigned records after an unverified read"
+
 proc plantUnsignedDekFile(r: string, c: GpgConfig, id, dek: string) =
   let work = createTempDir("nimvault_audit_", "_keys")
   let plain = work / "keys.plain"
@@ -1392,6 +1442,59 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   removeDir(wrapBin)
   removeDir(r)
   echo "PASS: add-dir refuses record-DEK swaps after verify"
+
+block addAndCheckRefuseRecordSwapOnLastManifestDecrypt:
+  ## Swapping a record on the last decrypt in saveManifest must fail both.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "record-dek-original")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let forged = createTempDir("nimvault_audit_", "_recordswap_last")
+  let plain = forged / "record.plain"
+  let badDek = repeat('b', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_last")
+  let marker = wrapBin / "swapped"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, nthDecryptSwapHook(realGpg,
+                                        entryFile(r, c, entry.id),
+                                        badRec, marker, seen, swapOn = 5))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  writeFile(r / "later.txt", "record-dek-later")
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  var addRaised = false
+  try:
+    try:
+      add(r, r / "later.txt", c)
+    except CatchableError:
+      addRaised = true
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  var checkRaised = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkRaised = true
+  doAssert addRaised or checkRaised,
+    "a last-decrypt swap must fail add or fail check"
+  removeDir(forged)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add/check refuse swaps on the last saveManifest decrypt"
 
 block addDoesNotSignDekSwappedInKeysTmp:
   ## A keys.*.tmp plaintext swap must not change the DEK signed into records.
