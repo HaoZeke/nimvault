@@ -55,13 +55,21 @@ proc boundaryBase(cfg: GpgConfig, dest: string): string =
   else:
     ""
 
+proc resolvedBase(base: string): string =
+  ## `base` with its symlinks resolved, to compare with an `expandFilename`
+  ## result, which resolves those too.
+  try:
+    normalizedBase(expandFilename(base))
+  except OSError:
+    base
+
 proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
   ## A lexical ~/ path can still resolve outside HOME through a symlink.
   let base = boundaryBase(cfg, absPath)
   if base.len == 0:
     return
   let real = expandFilename(absPath)
-  if not insideBase(base, real):
+  if not insideBase(resolvedBase(base), real):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
 proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
@@ -80,6 +88,7 @@ proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
   let rel = relativePath(parent, base)
   if rel.startsWith(".."):
     nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
+  let real = resolvedBase(base)
   var acc = base
   for part in rel.split(DirSep):
     if part.len == 0 or part == ".":
@@ -88,8 +97,7 @@ proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
       nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     acc = acc / part
     if symlinkExists(acc):
-      let real = expandFilename(acc)
-      if not insideBase(base, real):
+      if not insideBase(real, expandFilename(acc)):
         nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     elif not dirExists(acc):
       break

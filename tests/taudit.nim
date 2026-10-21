@@ -1871,6 +1871,52 @@ block recordThatHoldsNoEntryIsCounted:
   removeDir(r)
   echo "PASS: check and unseal count a record that holds no entry"
 
+block symlinkedHomeAndVaultRootAreNotRefused:
+  ## The base was compared as spelled and the path under it fully resolved,
+  ## so a HOME or a vault root reached through a symlink refused every file.
+  let r = setupRepo()
+  let realRepo = setupRepo()
+  let top = createTempDir("nimvault_audit_", "_linkedbase")
+  let realHome = top / "real-home"
+  createDir(realHome / "dotfiles")
+  createSymlink(realHome, top / "home")
+  createSymlink(realHome / "dotfiles", realHome / ".dot")
+  let savedHome = getEnv("HOME")
+  putEnv("HOME", top / "home")
+  try:
+    let c = GpgConfig(recipient: keyId)
+    let plainFile = top / "home" / "token.txt"
+    let viaDirLink = top / "home" / ".dot" / "rc.txt"
+    writeFile(plainFile, "home-secret")
+    writeFile(viaDirLink, "dot-secret")
+    add(r, plainFile, c)
+    add(r, viaDirLink, c)
+    seal(r, c)
+    removeFile(plainFile)
+    removeFile(viaDirLink)
+    unseal(r, c)
+    doAssert readFile(plainFile) == "home-secret"
+    doAssert readFile(viaDirLink) == "dot-secret"
+  finally:
+    putEnv("HOME", savedHome)
+
+  createDir(realRepo / "real-sub")
+  createSymlink(realRepo / "real-sub", realRepo / "sub")
+  let linkRepo = top / "vault"
+  createSymlink(realRepo, linkRepo)
+  let rc = GpgConfig(recipient: keyId, root: linkRepo)
+  let g = linkRepo / "sub" / "x.txt"
+  writeFile(g, "root-secret")
+  add(linkRepo, g, rc)
+  seal(linkRepo, rc)
+  removeFile(g)
+  unseal(linkRepo, rc)
+  doAssert readFile(g) == "root-secret"
+  removeDir(r)
+  removeDir(realRepo)
+  removeDir(top)
+  echo "PASS: a HOME or vault root reached through a symlink is not refused"
+
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."
