@@ -67,7 +67,15 @@ Before decryption, verifies:
 
 Decryption writes to temporary files first. Only after all signatures and hashes
 pass does the tool move files to their final paths. This atomic approach prevents
-release of unverified plaintext.
+release of unverified plaintext under the final name.
+
+The temporary file is =.nimvault-<id>.tmp= in the destination's directory,
+mode 0600. It sits beside the destination so the final step is a ~rename~ on
+one filesystem, which replaces a symlink at the destination instead of
+writing through it. The cost: plaintext sits in that directory for the length
+of the batch, before its in-band signature is checked when the blob carries
+one, and a kill before the rename leaves it behind. ~nimvault gc~ shreds such
+files.
 
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).

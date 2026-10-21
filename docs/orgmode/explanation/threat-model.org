@@ -119,6 +119,11 @@ Still accepted:
 - ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
   some records on the previous wrapping. The data key bytes are unchanged, and
   a second ~rotate~ finishes the job.
+- ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
+  mode 0600. A rename on one filesystem is what keeps a destination symlink
+  from being followed. The price is plaintext in that directory until the
+  batch is checked (for a blob signed in band, before its signature is), left
+  there if the process is killed. ~gc~ shreds those files.
 - An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
   record are renamed in two steps. A crash between them leaves the new
   signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
