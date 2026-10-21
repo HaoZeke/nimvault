@@ -140,6 +140,10 @@ type StagedPath = ref object
   boundaryReal: string
   placed: bool
 
+when defined(nimvaultTest):
+  ## Test seam: run after the pre-rename checks and before renameat.
+  var unsealBeforeRenameHook*: proc(destPath: string) {.closure.}
+
 proc resolvedParentForWrite(path: string): string =
   ## Resolve the existing prefix of `path.parentDir` once, then append any
   ## missing tail components. This keeps symlinked HOME/root paths working
@@ -282,6 +286,13 @@ proc stillNamed(sp: StagedPath): bool =
     fstatAt(sp.dirFd, sp.tmpName.cstring, named, AtSymlinkNoFollow) == 0 and
     sameFile(mine, named)
 
+proc destStillNamed(sp: StagedPath): bool =
+  ## Whether the destination name still refers to this staged file.
+  var mine, named: Stat
+  fstat(sp.fd, mine) == 0 and
+    fstatAt(sp.dirFd, sp.destName.cstring, named, AtSymlinkNoFollow) == 0 and
+    sameFile(mine, named)
+
 proc discardStaged(sp: StagedPath) =
   ## Close the entry's descriptors. A staging file that was not placed is
   ## overwritten through its own descriptor, then unlinked while its name
@@ -313,8 +324,16 @@ proc placeStaged(sp: StagedPath, job: Drain) =
     if stillNamed(sp):
       discard unlinkAt(sp.dirFd, sp.tmpName.cstring, 0)
     nvRaise(&"FATAL: destination parent changed while unsealing: {dest}")
+  when defined(nimvaultTest):
+    if unsealBeforeRenameHook != nil:
+      unsealBeforeRenameHook(sp.destPath)
   if renameAt(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
     nvRaise(&"FATAL: could not place plaintext at {dest}")
+  if not parentStillBound(sp):
+    overwriteFd(sp.fd)
+    if destStillNamed(sp):
+      discard unlinkAt(sp.dirFd, sp.destName.cstring, 0)
+    nvRaise(&"FATAL: destination parent changed while unsealing: {dest}")
   sp.placed = true
 
 proc startAll(n: int, start: proc (i: int): Drain {.closure.}): seq[Drain] =

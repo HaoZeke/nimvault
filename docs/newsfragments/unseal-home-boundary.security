@@ -1,5 +1,4 @@
 With no `root`, `unseal` now re-walks each destination parent from the `$HOME`
-boundary path and requires the same directory inode it opened for staging. If
-that parent changed or now resolves outside the boundary, the staging file is
-shredded through its descriptor and that entry is refused before rename. A
-failure still leaves any earlier entries that were already placed.
+boundary path both before and after `renameat`. If the parent moved or now
+resolves outside the boundary after placement, the plaintext is overwritten
+through its descriptor and unlinked, and that entry fails.

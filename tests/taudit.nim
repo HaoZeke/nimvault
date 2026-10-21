@@ -714,6 +714,56 @@ block unsealUsesDescriptorAnchoredStaging:
   removeDir(wrapBin)
   echo "PASS: unseal refuses a parent changed after path checks"
 
+block unsealRejectsParentSwapBetweenCheckAndRename:
+  ## Swap the destination parent after the pre-rename check and before
+  ## renameat, then ensure the rollback shreds and unlinks what was placed.
+  when not defined(nimvaultTest):
+    echo "SKIP: parent-swap seam needs -d:nimvaultTest"
+  else:
+    let r = setupRepo()
+    let c = GpgConfig(recipient: keyId, root: r)
+    let inside = r / "inside"
+    let outside = createTempDir("nimvault_audit_", "_outside")
+    let moved = outside / "inside-moved"
+    createDir(inside)
+    createSymlink(inside, r / "safe")
+    let f = r / "safe" / "secret.txt"
+    writeFile(f, "anchored-secret")
+    add(r, f, c)
+    seal(r, c)
+    removeFile(inside / "secret.txt")
+
+    var swapped = false
+    unsealBeforeRenameHook = proc(destPath: string) =
+      if swapped:
+        return
+      swapped = true
+      doAssert destPath == normalizedPath(f), destPath
+      moveDir(inside, moved)
+      createSymlink(moved, inside)
+
+    var raised = false
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+    finally:
+      unsealBeforeRenameHook = nil
+
+    doAssert swapped, "test seam did not swap the destination parent"
+    doAssert raised, "unseal must fail when the parent moves after the pre-check"
+    doAssert not fileExists(moved / "secret.txt"),
+      "rollback must shred and unlink a misplaced plaintext"
+    doAssert not fileExists(f),
+      "a refused unseal must not restore plaintext at the tracked path"
+    if symlinkExists(r / "safe"):
+      removeFile(r / "safe")
+    if symlinkExists(inside):
+      removeFile(inside)
+    removeDir(r)
+    removeDir(outside)
+    echo "PASS: unseal rolls back if the parent moves between check and rename"
+
 proc stagingFiles(dir: string): seq[string] =
   for path in walkDirRec(dir, yieldFilter = {pcFile, pcLinkToFile}):
     if path.extractFilename.startsWith(".nimvault-"):
@@ -1562,13 +1612,16 @@ block vaultedMatchIsByAbsolutePath:
   createDir(g / "notes")
   writeFile(g / "notes" / "a.txt", "sk-ant-" & repeat('K', 30))
   doAssert gitCode(g, @["add", "--", "notes/a.txt"]) == 0
-  var raised = false
+  var msg = ""
   try:
     scanCached(v, c, g)
-  except CatchableError:
-    raised = true
-  doAssert raised,
+  except CatchableError as e:
+    msg = e.msg
+  doAssert msg.len > 0,
     "a same-named file in another repository must not be skipped as vaulted"
+  doAssert "anthropic-api-key" in msg and "notes/a.txt" in msg, msg
+  doAssert "vault-plaintext" notin msg,
+    "this hit must come from scanning plaintext, not from a vaulted marker:\n" & msg
   removeDir(v)
   removeDir(g)
   echo "PASS: vaulted matching is by absolute path"
