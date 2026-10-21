@@ -119,3 +119,7 @@ Still accepted:
 - ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
   some records on the previous wrapping. The data key bytes are unchanged, and
   a second ~rotate~ finishes the job.
+- An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
+  record are renamed in two steps. A crash between them leaves the new
+  signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
+  write. A signing failure leaves the old pair in place.

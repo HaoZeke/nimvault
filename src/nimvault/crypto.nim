@@ -282,6 +282,29 @@ proc signManifest*(cfg: GpgConfig, path: string) =
   of "none", "gpg": discard
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
 
+proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
+  ## Move freshly encrypted `tmp` over `dest` along with its detached
+  ## signature. The signature is made over `tmp` first, so a signer that
+  ## fails leaves `dest` and the signature that covers it untouched; signing
+  ## `dest` after the rename put new ciphertext under the old signature, or
+  ## under none once ssh-keygen had removed it. The two renames are not one
+  ## step: a crash between them leaves the new signature at `<dest>.sig` and
+  ## the record it covers at `<dest>.tmp`; moving that file over `dest`
+  ## finishes the write.
+  let tmpSig = tmp & ".sig"
+  try:
+    signManifest(cfg, tmp)
+  except CatchableError:
+    for leftover in [tmp, tmpSig]:
+      try: removeFile(leftover) except CatchableError: discard
+    raise
+  syncPath(tmp)
+  if fileExists(tmpSig):
+    syncPath(tmpSig)
+    moveFile(tmpSig, dest & ".sig")
+  moveFile(tmp, dest)
+  syncParentDir(dest)
+
 proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool) =
   if not requireSig:
     return
