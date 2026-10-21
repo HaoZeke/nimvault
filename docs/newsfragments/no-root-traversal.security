@@ -1,1 +1,1 @@
-Without a ``root``, a record path containing a ``..`` component is refused, so ``../../outside`` and ``/tmp/../etc/passwd`` no longer pass the path check.
+Without a `root`, a record path containing a `..` component is refused, so `../../outside` and `/tmp/../etc/passwd` no longer pass the path check.

@@ -577,6 +577,10 @@ block checkWithoutSecretKey:
       raised = true
       doAssert "check-needs-the-secret" notin e.msg
       doAssert "entries consistent with the manifest" notin e.msg
+      doAssert "restore the missing blob" notin e.msg,
+        "a vault this key cannot open has no missing blob to restore: " & e.msg
+      doAssert "secret key" in e.msg,
+        "check must say the records need the secret key: " & e.msg
     doAssert raised, "check must not succeed without the secret key"
   finally:
     putEnv("GNUPGHOME", home)

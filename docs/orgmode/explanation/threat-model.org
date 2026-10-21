@@ -21,7 +21,7 @@ This is the threat model for the CLI, not a third-party audit.
 * What the commands buy
 
 | Command | Gives | Does not give |
-| ~check~ | blob digests still match the signed manifest; no key needed | that you can decrypt; that git history is gone |
+| ~check~ | blob digests still match the signed records; needs the key that opens the records, not the payloads | that the payloads decrypt; that git history is gone |
 | ~rotate~ | a removed recipient can no longer unwrap the data keys | post-compromise secrecy for a leaked data key |
 | ~rotate --rekey~ | new data keys and new payloads | erasure of old objects on the remote |
 | ~status~ | local plaintext vs the recorded content hash | blob integrity |
