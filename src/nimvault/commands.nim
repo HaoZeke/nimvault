@@ -26,6 +26,56 @@ proc nvEcho(msg: string) =
   if nvQuiet: return
   echo msg
 
+proc assertStoreable(path: string) =
+  ## The record is a single TSV line. A tab or newline in the path shifts
+  ## columns, so the hash and the data key are no longer the fields they claim.
+  if '\n' in path or '\r' in path or '\t' in path or '\0' in path:
+    nvRaise("FATAL: path contains a character the manifest cannot store")
+
+proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
+  ## Refuse a directory symlink that resolves outside the vault root (or
+  ## $HOME). The final path may itself be a symlink: `rename` replaces it.
+  ## `createDir` would follow an ancestor and write the plaintext outside.
+  if not isPathSafe(cfg, dest) and not isPathSafe(cfg, storePath(cfg, dest, repo)):
+    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
+  let base = if cfg.root.len > 0: normalizedPath(cfg.root)
+             elif dest.startsWith("~/") or dest.startsWith(getHomeDir()):
+               normalizedPath(getHomeDir()).strip(leading = false,
+                 trailing = true, chars = {'/'})
+             else:
+               return
+  let parent = dest.parentDir
+  if parent.len == 0:
+    return
+  let rel = relativePath(parent, base)
+  if rel.startsWith(".."):
+    nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+  var acc = base
+  for part in rel.split(DirSep):
+    if part.len == 0 or part == ".":
+      continue
+    if part == "..":
+      nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+    acc = acc / part
+    if symlinkExists(acc):
+      let real = expandFilename(acc)
+      if not isPathSafe(cfg, storePath(cfg, real, repo)):
+        nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+    elif not dirExists(acc):
+      break
+
+proc gitignorePattern(rel: string): string =
+  ## A gitignore line for this path alone. A leading `#` is a comment, a
+  ## leading `!` is a negation, and `*` is a glob, so the written line is
+  ## anchored and those characters are escaped.
+  result = "/"
+  for c in rel:
+    if c in {'*', '?', '[', '\\'}:
+      result.add('\\')
+    result.add(c)
+  if result.len > 1 and result[^1] == ' ':
+    result = result[0 ..< ^1] & "\\ "
+
 proc toAbs(cfg: GpgConfig, path: string): string =
   ## Resolve a user-supplied path the way `add`, `rm` and `get` already do, so
   ## every command accepts the same spellings of the same file.
@@ -107,7 +157,7 @@ proc trackGitignore(repo, absPath, storedPath: string, cfg: GpgConfig,
       let gitignorePath = repo / ".gitignore"
       var f: File
       if open(f, gitignorePath, fmAppend):
-        f.writeLine(gitPath)
+        f.writeLine(gitignorePattern(gitPath))
         f.close()
         stderr.writeLine &"Added {gitPath} to .gitignore"
       else:
@@ -120,9 +170,16 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
       nvRaise(&"Already in vault: {storePath(cfg, absPath, repo)}")
+  if symlinkExists(absPath):
+    nvRaise(&"FATAL: refusing symlink: {absPath}")
   if not fileExists(absPath):
     nvRaise(&"FATAL: file not found: {absPath}")
+  let canon = expandFilename(absPath)
+  if not isPathSafe(cfg, storePath(cfg, canon, repo)):
+    nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
   let storedPath = storePath(cfg, absPath, repo)
+  assertStoreable(storedPath)
+  assertStoreable(absPath)
   trackGitignore(repo, absPath, storedPath, cfg, noGitignore)
   let id = genId()
   let outPath = crypto.blobPath(repo, cfg, id)
@@ -158,7 +215,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
 
   # Verify blob integrity and path safety before any decryption
   for e in entries:
-    let inPath = findBlob(repo, cfg, e.id)
+    let inPath = resolveBlob(repo, cfg, e.id, e.hash)
     if not fileExists(inPath):
       nvRaise(&"FATAL: vault blob missing: {inPath}")
     # Path traversal check
@@ -167,10 +224,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       stderr.writeLine &"  Resolved: {normalizedPath(resolvePath(cfg, e.path))}"
       nvRaise("  Possible directory traversal attack.")
     let dest = resolvePath(cfg, e.path)
-    if dirExists(dest.parentDir) or symlinkExists(dest.parentDir):
-      let realDest = expandFilename(dest.parentDir) / dest.extractFilename
-      if not isPathSafe(cfg, storePath(cfg, realDest, repo)):
-        nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+    assertWritePath(cfg, repo, dest)
     # Blob hash verification
     if e.hash.len > 0:
       let actualHash = sha256sum(inPath)
@@ -183,19 +237,22 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
       nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
 
-  # Decrypt to temp files first (never directly to final path).
-  # This prevents release of unverified plaintext: GPG streams content to
-  # disk before the signature check completes, so writing to the final
-  # path would expose unverified data even if we abort on BADSIG.
-  # Process in batches to avoid GPG memory exhaustion (NIMVAULT_GPG_PARALLEL).
-  # umask 077 so the tmp files are not world-readable for the length of
-  # the batch (gpg -o otherwise inherits a typical 022).
+  # Decrypt beside the destination, not under the runtime directory.
+  # rename() stays on one filesystem and replaces a symlink at the final
+  # path. moveFile's copy fallback follows that symlink when the runtime
+  # directory is a different device, which is the usual split between
+  # XDG_RUNTIME_DIR and $HOME.
+  # umask 077 so the tmp files are not world-readable (gpg -o otherwise
+  # inherits a typical 022).
   let batchSize = gpgParallelism()
-  let work = privateWorkDir()
   var tmpPaths: seq[string] = @[]
   type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string,
                              code: int, enveloped: bool]
   var results: seq[DecryptResult] = @[]
+
+  proc stageBeside(dest: string): string =
+    createDir(dest.parentDir)
+    result = dest.parentDir / (".nimvault-" & genId() & ".tmp")
 
   # A vault may hold both formats while a migration drains: an entry with a
   # data key is v6, one without is encrypted straight to the recipient. The
@@ -206,13 +263,14 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   var direct: seq[VaultEntry] = @[]
   withPrivateUmask:
     for e in entries:
-      let tmpPath = work / e.id
+      let dest = resolvePath(cfg, e.path)
+      let tmpPath = stageBeside(dest)
       if deks.hasKey(e.id):
         tmpPaths.add(tmpPath)
         var status = ""
         var code = 0
         try:
-          decryptWithDek(cfg, deks[e.id], findBlob(repo, cfg, e.id), tmpPath)
+          decryptWithDek(cfg, deks[e.id], resolveBlob(repo, cfg, e.id, e.hash), tmpPath)
         except CatchableError as err:
           status = err.msg
           code = 1
@@ -226,8 +284,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       var procs: seq[(VaultEntry, string, Process)] = @[]
       for i in batchStart .. batchEnd:
         let e = direct[i]
-        let inPath = findBlob(repo, cfg, e.id)
-        let tmpPath = work / e.id
+        let inPath = resolveBlob(repo, cfg, e.id, e.hash)
+        let tmpPath = stageBeside(resolvePath(cfg, e.path))
         tmpPaths.add(tmpPath)
         let p = decryptProcess(cfg, inPath, tmpPath)
         procs.add((e, tmpPath, p))
@@ -240,12 +298,11 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
         p.close()
         results.add((e, tmpPath, status, code, false))
 
-  # Abort helper: remove all temp files before exiting
+  # Abort helper: shred every temp before exiting. Unlink is not enough;
+  # the bytes are the plaintext.
   template abortUnseal(msgs: varargs[string]) =
     for tp in tmpPaths:
-      if fileExists(tp): removeFile(tp)
-    if dirExists(work):
-      removeDir(work)
+      shredFile(tp)
     var acc = ""
     for msg in msgs:
       acc.add msg & "\n"
@@ -271,32 +328,65 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
 
-  # All verified: atomically move temp files to final locations
-  for r in results:
-    let outPath = resolvePath(cfg, r.entry.path)
-    createDir(outPath.parentDir)
-    moveFile(r.tmpPath, outPath)
-    # Default to user-only 0600; give +x when the file is a shebang-style
-    # script. Without this, unseal silently breaks hooks (e.g. the Claude
-    # Code rtk-rewrite.sh PreToolUse hook would fail with "Permission
-    # denied" on the next Bash call after a fresh machine was unsealed).
-    var perms = {fpUserRead, fpUserWrite}
-    try:
-      var f: File
-      if open(f, outPath, fmRead):
-        defer: f.close()
-        var head: array[2, char]
-        let n = f.readBuffer(addr head[0], 2)
-        if n == 2 and head[0] == '#' and head[1] == '!':
-          perms.incl(fpUserExec)
-    except IOError:
-      discard
-    setFilePermissions(outPath, perms)
-    nvEcho(&"  {r.entry.path}")
+  # All verified: rename temps onto the final paths. Same directory, so this
+  # does not fall back to a copy that follows a symlink.
+  try:
+    for r in results:
+      let outPath = resolvePath(cfg, r.entry.path)
+      renameOver(r.tmpPath, outPath)
+      # Default to user-only 0600; give +x when the file is a shebang-style
+      # script. Without this, unseal silently breaks hooks (e.g. the Claude
+      # Code rtk-rewrite.sh PreToolUse hook would fail with "Permission
+      # denied" on the next Bash call after a fresh machine was unsealed).
+      var perms = {fpUserRead, fpUserWrite}
+      try:
+        var f: File
+        if open(f, outPath, fmRead):
+          defer: f.close()
+          var head: array[2, char]
+          let n = f.readBuffer(addr head[0], 2)
+          if n == 2 and head[0] == '#' and head[1] == '!':
+            perms.incl(fpUserExec)
+      except IOError:
+        discard
+      setFilePermissions(outPath, perms)
+      nvEcho(&"  {r.entry.path}")
+  finally:
+    for tp in tmpPaths:
+      if fileExists(tp):
+        shredFile(tp)
 
-  if dirExists(work):
-    removeDir(work)
   nvEcho(&"\nUnsealed {entries.len} file(s).")
+
+proc pendingId(path: string): string =
+  let name = path.extractFilename
+  if name.endsWith(".gpg.pending"):
+    return name[0 ..< (name.len - ".gpg.pending".len)]
+  if name.endsWith(".age.pending"):
+    return name[0 ..< (name.len - ".age.pending".len)]
+  name.split('.')[0]
+
+proc discardPendingUnlessRecorded(repo: string, cfg: GpgConfig,
+                                  paths: seq[string]) =
+  ## Drop pending ciphertext the record does not name. A record that already
+  ## names it is the durable copy; the next read promotes the file. When the
+  ## records cannot be read, leave every pending file for that read.
+  var named = initHashSet[string]()
+  var known = true
+  try:
+    for ent in loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg):
+      if ent.hash.len > 0:
+        named.incl(ent.id & "\t" & ent.hash)
+  except CatchableError:
+    known = false
+  if not known:
+    return
+  for pend in paths:
+    if not fileExists(pend):
+      continue
+    let key = pendingId(pend) & "\t" & sha256sum(pend)
+    if key notin named:
+      try: removeFile(pend) except CatchableError: discard
 
 proc seal*(repo: string, cfg: GpgConfig, force = false) =
   ## Encrypt every tracked file whose plaintext changed since the last seal.
@@ -354,7 +444,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       continue
     # Plaintext matches. The blob still has to be present and intact, or a
     # deleted or corrupted blob would survive as a skipped entry.
-    let blob = findBlob(repo, cfg, e.id)
+    let blob = resolveBlob(repo, cfg, e.id, e.hash)
     if blob.len == 0 or not fileExists(blob) or
        e.hash.len == 0 or sha256sum(blob) != e.hash:
       todo.add(e)
@@ -381,60 +471,77 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     groupOf[e.id] = gid
     recipsOf[gid] = recips
 
-  for e in todo:
-    let inPath = resolvePath(cfg, e.path)
-    let outPath = crypto.blobPath(repo, cfg, e.id)
-    let key = newDek(cfg)
-    encryptWithDek(cfg, key, inPath, outPath)
-    deks[e.id] = key
-    nvEcho(&"  {e.path}")
+  # New ciphertext goes to `<id>.gpg.pending`. The live blob stays until the
+  # record that names the new bytes and the new data key is durable. A crash
+  # or a refused record write must not replace the blob the old record still
+  # vouches for. `rename` is not `renameOver`: a failed rename must leave the
+  # pending file in place once the record names it.
+  var pendingHash = initTable[string, string]()
+  var pendingPaths: seq[string] = @[]
+  var recordsCommitted = false
+  try:
+    for e in todo:
+      let inPath = resolvePath(cfg, e.path)
+      let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
+      let key = newDek(cfg)
+      encryptWithDek(cfg, key, inPath, pend)
+      pendingPaths.add(pend)
+      pendingHash[e.id] = sha256sum(pend)
+      deks[e.id] = key
+      syncPath(pend)
+      nvEcho(&"  {e.path}")
 
-  # Drop keys for entries that are gone, so the file does not accumulate the
-  # means to read blobs nobody kept.
-  var live = initHashSet[string]()
-  for e in entries:
-    live.incl(e.id)
-  var stale: seq[string] = @[]
-  for id in deks.keys:
-    if id notin live:
-      stale.add(id)
-  for id in stale:
-    deks.del(id)
+    # Drop keys for entries that are gone, so the file does not accumulate the
+    # means to read blobs nobody kept.
+    var live = initHashSet[string]()
+    for e in entries:
+      live.incl(e.id)
+    var stale: seq[string] = @[]
+    for id in deks.keys:
+      if id notin live:
+        stale.add(id)
+    for id in stale:
+      deks.del(id)
 
-  if todo.len > 0 or stale.len > 0:
+    # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
+    var hashedEntries: seq[VaultEntry] = @[]
+    for e in entries:
+      if e.id in keptIds:
+        hashedEntries.add(e)
+      elif pendingHash.hasKey(e.id):
+        hashedEntries.add((e.id, e.path, pendingHash[e.id], e.kind,
+                           plainHashes.getOrDefault(e.id)))
+      else:
+        let blobPath = resolveBlob(repo, cfg, e.id, e.hash)
+        hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind,
+                           plainHashes.getOrDefault(e.id)))
+
+    # The manifest is encrypted and signed, so writing it is itself a rewrite:
+    # a seal that changed nothing would still leave one modified file behind and
+    # a fresh signature over identical content. Leave it alone when it already
+    # says exactly this.
+    if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
+      if stale.len > 0:
+        saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
+      nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
+      return
+
+    saveManifest(repo, hashedEntries, cfg, currentKey, envelope = true,
+                 knownDeks = deks, haveDeks = true)
+    recordsCommitted = true
+    for e in todo:
+      let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
+      let dest = crypto.blobPath(repo, cfg, e.id)
+      if fileExists(pend):
+        publishPending(pend, dest)
+        syncPath(dest)
+    if todo.len > 0:
+      syncParentDir(crypto.blobPath(repo, cfg, todo[0].id))
     saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
-
-  # Flush new blobs before the manifest that vouches for them. The manifest
-  # records each blob's hash, so a crash that persisted the manifest but not
-  # the blob leaves an entry promising bytes that never landed, and the next
-  # unseal reports tampering for a file nobody touched. Data first, then the
-  # metadata pointing at it.
-  for e in todo:
-    let blob = findBlob(repo, cfg, e.id)
-    if blob.len > 0 and fileExists(blob):
-      syncPath(blob)
-  if todo.len > 0:
-    syncParentDir(crypto.blobPath(repo, cfg, todo[0].id))
-
-  # Blob + plaintext content hashes; v4 manifest enables fast status without GPG
-  var hashedEntries: seq[VaultEntry] = @[]
-  for e in entries:
-    if e.id in keptIds:
-      hashedEntries.add(e)
-    else:
-      let blobPath = findBlob(repo, cfg, e.id)
-      hashedEntries.add((e.id, e.path, sha256sum(blobPath), e.kind,
-                         plainHashes.getOrDefault(e.id)))
-
-  # The manifest is encrypted and signed, so writing it is itself a rewrite:
-  # a seal that changed nothing would still leave one modified file behind and
-  # a fresh signature over identical content. Leave it alone when it already
-  # says exactly this.
-  if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
-    nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
-    return
-
-  saveManifest(repo, hashedEntries, cfg, currentKey, envelope = true)
+  except CatchableError:
+    if not recordsCommitted:
+      discardPendingUnlessRecorded(repo, cfg, pendingPaths)
+    raise
   if keptIds.len > 0:
     nvEcho(&"\nSealed {todo.len} file(s), {keptIds.len} unchanged.")
   else:
@@ -548,6 +655,9 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
       if fileExists(blobPath):
         removeFile(blobPath)
         nvEcho(&"  Removed .vault/{e.id}{cfg.blobExt}")
+      let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
+      if fileExists(pend):
+        removeFile(pend)
       deks.del(e.id)
       nvEcho(&"  Removed manifest entry: {e.path}")
     else:
@@ -595,7 +705,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       nvRaise("  Possible directory traversal attack.")
 
-    let inPath = findBlob(repo, cfg, e.id)
+    let inPath = resolveBlob(repo, cfg, e.id, e.hash)
     if not fileExists(inPath):
       nvRaise(&"FATAL: vault blob missing: {inPath}")
 
@@ -615,16 +725,9 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
     if deks.hasKey(e.id):
       # v6: no in-band signature to verify, exactly as for age. Authenticity
       # came from the signed manifest and the blob digest checked just above.
-      let work = privateWorkDir()
-      let tmp = work / e.id
-      try:
-        withPrivateUmask:
-          decryptWithDek(cfg, deks[e.id], inPath, tmp)
-        result = readFile(tmp)
-      finally:
-        if dirExists(work):
-          removeDir(work)
-      return result
+      # Decrypt to memory. A file under the runtime directory is plaintext
+      # another uid can read for as long as the process is decrypting.
+      return decryptWithDekToString(cfg, deks[e.id], inPath)
     return decryptToString(cfg, inPath, verifySig = requireSig)
 
   nvRaise(&"Not in vault: {path}")
@@ -652,6 +755,11 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
     expandHome(newPath)
 
   let newStored = storePath(cfg, newAbs, repo)
+  if not isPathSafe(cfg, newStored):
+    nvRaise(&"FATAL: refusing path outside the vault root: {newAbs}")
+  assertStoreable(newStored)
+  assertStoreable(newAbs)
+  assertWritePath(cfg, repo, newAbs)
 
   var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var found = false
@@ -697,13 +805,15 @@ const BinaryExts = [
   ".sqlite", ".sqlite3", ".db", ".gpg", ".age",
 ]
 
-const SkipDirs = [
+const AlwaysSkipDirs = [
   ".git", ".vault", ".cache", ".tmpclaude", ".pixi", ".venv", "venv",
   "target", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache",
   ".pytest_cache", ".tox", "build", "dist",
-  # Claude Code / Codex runtime state: edit-history and session logs hold
-  # historical versions of files, including keys that have since been
-  # rotated or vaulted. Flagging them creates noise, not action.
+]
+
+# Claude Code / Codex runtime state. These names are common in a repository
+# (`tmp`, `log`, `projects`), so they only match under the tool's own directory.
+const AgentStateDirs = [
   "projects", "cache", "plugins", "sessions", "file-history", "backups",
   "tasks", "plans", "teams", "todos", "debug", "downloads", "telemetry",
   "paste-cache", "session-env", "shell-snapshots", "shell_snapshots",
@@ -732,10 +842,15 @@ proc compileRules(): seq[(string, Regex)] =
     ("ssh-private-key", re(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
   ]
 
-proc isSkippedDir(dir: string): bool =
-  let base = lastPathPart(dir)
-  for s in SkipDirs:
-    if base == s: return true
+proc componentSkipped(path: string): bool =
+  ## Dependency and tool directories. A repository directory named `tmp` is
+  ## not skipped: that name is only special under `.claude` or `.codex`.
+  var prev = ""
+  for part in path.split(DirSep):
+    if part.len == 0: continue
+    if part in AlwaysSkipDirs: return true
+    if prev in [".claude", ".codex"] and part in AgentStateDirs: return true
+    prev = part
   false
 
 proc isBinaryExt(path: string): bool =
@@ -750,6 +865,18 @@ proc isSkippedFile(path: string): bool =
     if base == s: return true
   false
 
+proc scanText(label, content: string, nbytes: int,
+               rules: seq[(string, Regex)]): seq[SecretHit] =
+  var lineNo = 0
+  for line in content.splitLines:
+    inc lineNo
+    # Short-circuit on extremely long lines (minified JS, base64 blobs)
+    if line.len > 2000: continue
+    for (name, rx) in rules:
+      if line.contains(rx):
+        result.add((label, name, lineNo, nbytes))
+        break  # one hit per line is enough
+
 proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
   if not fileExists(path): return
   let nbytes = int(getFileSize(path))
@@ -759,15 +886,7 @@ proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
     content = readFile(path)
   except IOError:
     return
-  var lineNo = 0
-  for line in content.splitLines:
-    inc lineNo
-    # Short-circuit on extremely long lines (minified JS, base64 blobs)
-    if line.len > 2000: continue
-    for (name, rx) in rules:
-      if line.contains(rx):
-        result.add((path, name, lineNo, nbytes))
-        break  # one hit per line is enough
+  result = scanText(path, content, nbytes, rules)
 
 proc scan*(repo: string, target: string, cfg: GpgConfig) =
   ## Walk `target` (file or dir) and flag any file containing a secret
@@ -794,18 +913,13 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   else:
     for path in walkDirRec(abs, yieldFilter = {pcFile},
                            skipSpecial = true, relative = false):
-      # Check each path component against SkipDirs
-      var skip = false
-      for part in path.splitPath.head.split(DirSep):
-        if part in SkipDirs:
-          skip = true
-          break
-      if skip: continue
+      if componentSkipped(path): continue
       files.add(path)
 
   var hits: seq[SecretHit]
   var scanned = 0
   for f in files:
+    if componentSkipped(f): continue
     if f in vaulted: continue
     if isBinaryExt(f): continue
     if isSkippedFile(f): continue
@@ -832,6 +946,171 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   report.add "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
   nvRaise(report)
 
+proc reportHits(hits: seq[SecretHit], scanned: int) =
+  if hits.len == 0:
+    if not nvQuiet:
+      echo &"scanned {scanned} file(s); no unvaulted secrets found"
+    else:
+      nvRaise(&"scanned {scanned} file(s); no unvaulted secrets found")
+    return
+  if not nvQuiet:
+    banner(&"Unvaulted secrets found ({hits.len})")
+    for h in hits:
+      styledEcho fgRed, &"  [{h.rule}] {h.file}:{h.line} bytes={h.bytes}"
+    echo &"\nscanned {scanned} file(s); {hits.len} potential secret(s) in {hits.len} line(s)."
+    echo "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  var report = &"Unvaulted secrets found ({hits.len})\n"
+  for h in hits:
+    report.add &"  [{h.rule}] {h.file}:{h.line} bytes={h.bytes}\n"
+  report.add &"\nscanned {scanned} file(s); {hits.len} potential secret(s).\n"
+  report.add "Fix: nimvault add <file> && nimvault seal, OR rotate+replace the literal."
+  nvRaise(report)
+
+proc gitCapture(repo: string, args: seq[string]): tuple[outp: string, code: int] =
+  let p = startProcess("git",
+    args = @["-C", repo, "--no-pager"] & args,
+    options = {poUsePath})
+  result.outp = p.outputStream.readAll()
+  discard p.errorStream.readAll()
+  result.code = p.waitForExit()
+  p.close()
+
+proc gitMust(repo: string, args: seq[string]): string =
+  let got = gitCapture(repo, args)
+  if got.code != 0:
+    nvRaise("FATAL: git " & args.join(" ") & " failed")
+  got.outp
+
+proc splitZ(s: string): seq[string] =
+  for part in s.split('\0'):
+    if part.len > 0:
+      result.add(part)
+
+proc isHexSha(s: string): bool =
+  if s.len == 0: return false
+  for c in s:
+    if c notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+      return false
+  true
+
+proc revCharsOk(rev: string): bool =
+  ## A revision reaches git argv. Hex and a single `..` range only, so a
+  ## value that looks like an option cannot change what git does.
+  if rev.len == 0 or rev[0] == '-' or rev[0] == '.':
+    return false
+  var dots = 0
+  for c in rev:
+    if c == '.':
+      inc dots
+    elif c notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+      return false
+  dots == 0 or dots == 2
+
+proc commitsIn(gitRepo, rev: string): seq[string] =
+  if not revCharsOk(rev):
+    nvRaise("FATAL: refusing revision")
+  if ".." in rev:
+    let parts = rev.split("..")
+    if parts.len != 2 or not isHexSha(parts[0]) or not isHexSha(parts[1]):
+      nvRaise("FATAL: refusing revision")
+  elif not isHexSha(rev):
+    nvRaise("FATAL: refusing revision")
+  let listed = gitMust(gitRepo, @["rev-list", "--reverse", rev])
+  for line in listed.splitLines:
+    let s = line.strip()
+    if s.len == 0: continue
+    if not isHexSha(s):
+      nvRaise("FATAL: refusing revision")
+    result.add(s)
+
+proc loadVaulted(repo: string, cfg: GpgConfig): HashSet[string] =
+  result = initHashSet[string]()
+  if repo.len == 0:
+    return
+  for e in loadManifest(repo, cfg = cfg):
+    result.incl(normalizedPath(resolvePath(cfg, e.path)))
+    result.incl(e.path)
+
+proc noteHit(hits: var seq[SecretHit], seen: var HashSet[string], hit: SecretHit) =
+  let key = hit.file & "\t" & hit.rule & "\t" & $hit.line
+  if key in seen: return
+  seen.incl(key)
+  hits.add(hit)
+
+proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
+                     rules: seq[(string, Regex)],
+                     hits: var seq[SecretHit], seen: var HashSet[string],
+                     scanned: var int) =
+  if rel.len == 0 or '\n' in rel or '\r' in rel or rel.startsWith("-"):
+    return
+  if rel == ".vault" or rel.startsWith(".vault/") or
+     rel == ".git" or rel.startsWith(".git/"):
+    return
+  let abs = normalizedPath(gitRepo / rel)
+  if abs in vaulted or rel in vaulted:
+    var nbytes = 0
+    let sz = gitCapture(gitRepo, @["cat-file", "-s", "--", spec])
+    if sz.code == 0:
+      try: nbytes = parseInt(sz.outp.strip) except ValueError: discard
+    noteHit(hits, seen, (abs, "vault-plaintext", 1, nbytes))
+    inc scanned
+    return
+  if isBinaryExt(rel):
+    return
+  let sz = gitCapture(gitRepo, @["cat-file", "-s", "--", spec])
+  if sz.code != 0:
+    return
+  var nbytes = 0
+  try:
+    nbytes = parseInt(sz.outp.strip)
+  except ValueError:
+    return
+  if nbytes > 2_000_000 or nbytes < 0:
+    return
+  let blob = gitCapture(gitRepo, @["cat-file", "blob", "--", spec])
+  if blob.code != 0 or '\0' in blob.outp:
+    return
+  inc scanned
+  for hit in scanText(abs, blob.outp, nbytes, rules):
+    noteHit(hits, seen, hit)
+
+proc scanCached*(repo: string, cfg: GpgConfig, gitRepo: string) =
+  ## Scan the index, not the worktree. A staged secret whose worktree copy
+  ## was edited back, and a vaulted file forced into the index, are both
+  ## invisible to a walk of the working tree.
+  if gitRepo.len == 0 or not dirExists(gitRepo):
+    nvRaise(&"FATAL: not a git repository: {gitRepo}")
+  let vaulted = loadVaulted(repo, cfg)
+  let rules = compileRules()
+  let listed = gitMust(gitRepo, @["diff", "--cached", "--name-only",
+                                  "--diff-filter=ACMRT", "-z"])
+  var hits: seq[SecretHit] = @[]
+  var seen = initHashSet[string]()
+  var scanned = 0
+  for rel in splitZ(listed):
+    considerGitBlob(gitRepo, rel, ":" & rel, vaulted, rules, hits, seen, scanned)
+  reportHits(hits, scanned)
+
+proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string) =
+  ## Scan blobs introduced by `rev` (`A..B` or one commit and its ancestors).
+  ## The diff of the two tips misses a secret that was added and removed
+  ## again inside the range.
+  if gitRepo.len == 0 or not dirExists(gitRepo):
+    nvRaise(&"FATAL: not a git repository: {gitRepo}")
+  let vaulted = loadVaulted(repo, cfg)
+  let rules = compileRules()
+  var hits: seq[SecretHit] = @[]
+  var seen = initHashSet[string]()
+  var scanned = 0
+  for commit in commitsIn(gitRepo, rev):
+    let listed = gitMust(gitRepo, @[
+      "diff-tree", "--root", "-m", "-r", "--no-commit-id", "--name-only",
+      "--diff-filter=ACMRT", "-z", commit])
+    for rel in splitZ(listed):
+      considerGitBlob(gitRepo, rel, commit & ":" & rel, vaulted, rules,
+                      hits, seen, scanned)
+  reportHits(hits, scanned)
+
 proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
   let entries = loadManifest(repo, cfg = cfg)
@@ -842,7 +1121,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
   var needDecrypt: seq[VaultEntry] = @[]
   for e in entries:
     let localPath = resolvePath(cfg, e.path)
-    let blobPath = findBlob(repo, cfg, e.id)
+    let blobPath = resolveBlob(repo, cfg, e.id, e.hash)
 
     if not fileExists(localPath):
       result.add &"  [missing]   {e.path}\n"
@@ -878,7 +1157,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
           let e = needDecrypt[i]
           let localPath = resolvePath(cfg, e.path)
           let localHash = sha256sum(localPath)
-          let blobPath = findBlob(repo, cfg, e.id)
+          let blobPath = resolveBlob(repo, cfg, e.id, e.hash)
           let tmpPath = work / e.id
           let p = decryptProcess(cfg, blobPath, tmpPath)
           procs.add((e, localHash, tmpPath, p))
@@ -899,8 +1178,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
       else:
         result.add &"  [modified]  {r.entry.path}\n"
   finally:
-    if dirExists(work):
-      removeDir(work)
+    discardPrivate(work)
 
 proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   ## Re-wrap the data keys to the current recipients, or re-encrypt everything.
@@ -961,10 +1239,16 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
   ## writing the manifest that names it, which the lock makes rarer but does
   ## not remove. An orphan is not merely clutter: it is a readable copy of a
   ## secret that nothing tracks, so nothing will ever rotate or remove it.
+  ##
+  ## A `.pending` sibling whose hash a record names is the durable ciphertext
+  ## of a seal that has not renamed it yet. Removing it would strand the record.
   let entries = loadManifest(repo, cfg = cfg)
   var live = initHashSet[string]()
+  var hashes = initHashSet[string]()
   for e in entries:
     live.incl(e.id)
+    if e.hash.len > 0:
+      hashes.incl(e.hash)
   for id in splitRecordIds(repo):
     live.incl(id)
   let dir = repo / ".vault"
@@ -974,6 +1258,10 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
     if kind != pcFile:
       continue
     let name = path.extractFilename
+    if name.endsWith(".pending"):
+      if sha256sum(path) notin hashes:
+        result.add(path)
+      continue
     if not (name.endsWith(".gpg") or name.endsWith(".age")):
       continue
     let stem = name.rsplit('.', maxsplit = 1)[0]
@@ -1026,7 +1314,7 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
     result.checked.inc
   for e in entries:
     result.checked.inc
-    let blob = findBlob(repo, cfg, e.id)
+    let blob = resolveBlob(repo, cfg, e.id, e.hash)
     if blob.len == 0 or not fileExists(blob):
       result.problems.add(&"no blob for {e.path}")
       continue
@@ -1079,7 +1367,7 @@ proc status*(repo: string, cfg: GpgConfig) =
   var needDecrypt: seq[VaultEntry] = @[]
   for e in entries:
     let localPath = resolvePath(cfg, e.path)
-    let blobPath = findBlob(repo, cfg, e.id)
+    let blobPath = resolveBlob(repo, cfg, e.id, e.hash)
 
     if not fileExists(localPath):
       styledEcho fgYellow, &"  [missing]   {e.path}"
@@ -1115,7 +1403,7 @@ proc status*(repo: string, cfg: GpgConfig) =
           let e = needDecrypt[i]
           let localPath = resolvePath(cfg, e.path)
           let localHash = sha256sum(localPath)
-          let blobPath = findBlob(repo, cfg, e.id)
+          let blobPath = resolveBlob(repo, cfg, e.id, e.hash)
           let tmpPath = work / e.id
           let p = decryptProcess(cfg, blobPath, tmpPath)
           procs.add((e, localHash, tmpPath, p))
@@ -1136,9 +1424,7 @@ proc status*(repo: string, cfg: GpgConfig) =
       else:
         styledEcho fgRed, &"  [modified]  {r.entry.path}"
   finally:
-    if dirExists(work):
-      removeDir(work)
-
+    discardPrivate(work)
 
 proc whoReport*(repo: string, cfg: GpgConfig): string =
   ## Recipients that the current wrap rules assign to each entry.
@@ -1152,24 +1438,51 @@ proc whoReport*(repo: string, cfg: GpgConfig): string =
 proc who*(repo: string, cfg: GpgConfig) =
   stdout.write whoReport(repo, cfg)
 
+proc editorLeftovers(path: string): seq[string] =
+  ## Editor copies that sit beside a vaulted file and are not themselves entries.
+  let name = path.extractFilename
+  let dir = path.parentDir
+  result.add(path & "~")
+  result.add(dir / ("#" & name & "#"))
+  result.add(dir / (".#" & name))
+  for ext in [".swp", ".swo", ".swn", ".swx"]:
+    result.add(dir / ("." & name & ext))
+
 proc lockPlaintext*(repo: string, cfg: GpgConfig) =
   ## Remove in-sync plaintext. The vault entry stays; unseal brings it back.
   ## A modified file is refused: lock is not a way to discard unsealed edits.
+  ## The blob has to match the record first. Otherwise the plaintext is the
+  ## only remaining copy, and deleting it is not a lock.
   let lk {.used.} = acquire(repo)
   let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     nvEcho("vault is empty")
     return
-  var removed = 0
+  var doomed: seq[string] = @[]
   for e in entries:
     let local = resolvePath(cfg, e.path)
-    if not fileExists(local):
-      continue
-    if e.contentHash.len == 0 or sha256sum(local) != e.contentHash:
+    let present = fileExists(local)
+    if present and (e.contentHash.len == 0 or sha256sum(local) != e.contentHash):
       nvRaise(&"FATAL: {e.path} is modified; seal or restore it before lock")
-    removeFile(local)
+    var residue = false
+    if not present:
+      for extra in editorLeftovers(local):
+        if fileExists(extra) or symlinkExists(extra):
+          residue = true
+          break
+    if not present and not residue:
+      continue
+    let blob = resolveBlob(repo, cfg, e.id, e.hash)
+    if e.hash.len == 0 or not fileExists(blob) or sha256sum(blob) != e.hash:
+      nvRaise(&"FATAL: {e.path} has no intact blob; refusing to delete plaintext")
+    doomed.add(local)
+  var removed = 0
+  for local in doomed:
+    shredFile(local)
+    for extra in editorLeftovers(local):
+      shredFile(extra)
     inc removed
-    nvEcho(&"  {e.path}")
+    nvEcho(&"  {local}")
   nvEcho(&"\nLocked {removed} file(s); unseal to restore.")
 
 proc initVault*(repo, recipient: string) =
@@ -1190,8 +1503,10 @@ proc initVault*(repo, recipient: string) =
   nvEcho(&"initialised {cfgPath}")
 
 proc installHooks*(repo: string) =
-  ## Install a pre-push hook that runs `nimvault check` and a pre-commit
-  ## hook that runs `nimvault scan`. Refuse to overwrite an existing hook.
+  ## Install a pre-commit hook that scans the index and a pre-push hook that
+  ## scans the commits being pushed, then runs `nimvault check`. Refuse to
+  ## overwrite an existing hook. A worktree scan misses a staged secret and
+  ## a secret that was committed and then deleted from the worktree.
   let hooks = repo / ".git" / "hooks"
   if not dirExists(hooks):
     nvRaise("FATAL: not a git repository (no .git/hooks)")
@@ -1201,8 +1516,31 @@ proc installHooks*(repo: string) =
     nvRaise(&"FATAL: {prePush} already exists")
   if fileExists(preCommit):
     nvRaise(&"FATAL: {preCommit} already exists")
-  writeFile(prePush, "#!/bin/sh\nexec nimvault check\n")
-  writeFile(preCommit, "#!/bin/sh\nexec nimvault scan\n")
+  writeFile(preCommit, """#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+exec nimvault scan --cached
+""")
+  writeFile(prePush, """#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in
+    0000000000000000000000000000000000000000*) continue ;;
+  esac
+  case "$remote_sha" in
+    0000000000000000000000000000000000000000*)
+      nimvault scan --rev "$local_sha" || status=1
+      ;;
+    *)
+      nimvault scan --rev "${remote_sha}..${local_sha}" || status=1
+      ;;
+  esac
+done
+nimvault check || status=1
+exit "$status"
+""")
   let exe = {fpUserRead, fpUserWrite, fpUserExec}
   setFilePermissions(prePush, exe)
   setFilePermissions(preCommit, exe)

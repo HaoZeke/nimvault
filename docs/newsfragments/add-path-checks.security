@@ -1,0 +1,1 @@
+add refuses a symlink and a path containing a tab, newline or NUL, which the record format cannot store.

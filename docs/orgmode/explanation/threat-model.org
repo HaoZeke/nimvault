@@ -67,3 +67,51 @@ Accepted:
 - Unsigned GPG in-band signatures on key files stay unsigned so a second
   machine does not need the signer's public key to decrypt.
 - Third-party review is not commissioned from this sitting.
+
+* In-repo review (2026-10)
+
+- ~lock~ deleted plaintext when the blob was missing or did not match the
+  record. It now requires a matching blob, overwrites the file, and removes
+  editor backups beside it.
+- ~seal~ replaced the live blob before the record was durable. New ciphertext
+  is ~<id>.gpg.pending~ until the record names it, then renamed into place.
+  A pending file the record names is promoted on read. ~gc~ removes any other
+  pending file.
+- ~unseal~ followed a directory symlink, and across devices copied through a
+  symlink at the destination. The destination is written beside the final
+  path and renamed over it. ~add~ refuses a symlink.
+- ~get~ wrote plaintext under the runtime directory. v6 decrypt stays in
+  memory.
+- An unsigned ~keys.*~ file could replace the data key stored in the signed
+  record. The record wins. ~seal~ writes that same key back.
+- ~gpg~ and ~age~ treated an operand named like an option as an option.
+- A ~.gitignore~ line was not literal, so a leading ~#~ or a ~*~ in the name
+  did not ignore that one path.
+- ~pre-commit~ read the worktree and skipped vaulted paths, so a staged
+  secret passed. It now runs ~scan --cached~. ~pre-push~ runs ~scan --rev~
+  on the pushed commits, then ~check~.
+- The runtime directory could stay mode 0755, or be a symlink prepared in
+  advance.
+- The vault lock did not exclude a second thread in the same process, and
+  moving the lock closed standard input.
+- A tab or newline in a path was stored in the record and shifted its columns.
+- ~scan~ skipped every directory named ~tmp~. That skip now applies only
+  under ~.claude~ or ~.codex~.
+
+Still accepted:
+
+- Blob counts, sizes and mtimes are visible.
+- Old git objects survive ~rotate --rekey~. Nothing here rewrites history.
+- ~scan~ matches a fixed pattern list. It skips binaries, files over 2MB,
+  lines over 2000 characters, and dependency directories on a worktree walk.
+- ~--allow-unsigned~ remains a migration hatch.
+- Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
+- Key files stay unsigned.
+- Overwriting a file does not erase every copy a filesystem keeps.
+- An ~fcntl~ lock is not reliable on NFS.
+- A change to the seal key still re-encrypts every payload.
+- ~add~ writes a new blob before its record. The previous version is not at
+  risk; the plaintext is still on disk, and ~gc~ removes a blob no record names.
+- ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
+  some records on the previous wrapping. The data key bytes are unchanged, and
+  a second ~rotate~ finishes the job.

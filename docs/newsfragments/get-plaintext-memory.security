@@ -1,0 +1,1 @@
+get decrypts a v6 payload in memory and does not write the plaintext under the runtime directory.

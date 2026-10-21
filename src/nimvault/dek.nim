@@ -231,7 +231,9 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
       if s.len == 0 or s.startsWith("#"):
         continue
       let parts = s.split('\t')
-      if parts.len >= 2:
+      if parts.len >= 2 and parts[0] notin result:
+        # The signed per-entry record is the trust root. A key file is not
+        # signed, so it may only fill an id that has no record yet.
         result[parts[0]] = parts[1]
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
@@ -263,8 +265,7 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
       encryptFileTo(cfg, recipsOf.getOrDefault(gid, @[cfg.recipient]),
                     plainPath, tmp, sign = false)
     finally:
-      if dirExists(work):
-        removeDir(work)
+      discardPrivate(work)
     syncPath(tmp)
     moveFile(tmp, path)
     syncParentDir(path)
@@ -302,7 +303,7 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   if cfg.usesAge:
     let recip = ageRecipientForIdentity(dek)
     let p = startProcess(ageBinary(),
-      args = @["-r", recip, "-o", tmp, inPath],
+      args = @["-r", recip, "-o", tmp, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
     let code = p.waitForExit()
@@ -316,7 +317,7 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
       args = @["--batch", "--yes", "--quiet", "--symmetric",
                "--cipher-algo", "AES256", "--passphrase-fd", "0",
                "--pinentry-mode", "loopback",
-               "--set-filename", "", "-o", tmp, inPath],
+               "--set-filename", "", "-o", tmp, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
     p.inputStream.write(dek & "\n")
     p.inputStream.close()
@@ -338,10 +339,9 @@ proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
     writeFile(identFile, dek & "\n")
     setFilePermissions(identFile, {fpUserRead, fpUserWrite})
     defer:
-      if dirExists(work):
-        removeDir(work)
+      discardPrivate(work)
     let p = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "-o", outPath, inPath],
+      args = @["-d", "-i", identFile, "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
     let code = p.waitForExit()
@@ -352,7 +352,7 @@ proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
                "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "-o", outPath, inPath],
+               "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
     p.inputStream.write(dek & "\n")
     p.inputStream.close()
@@ -361,3 +361,37 @@ proc decryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
     p.close()
     if code != 0:
       nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {code}):\n{output}")
+
+proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
+  ## Plaintext in memory. The data key for age still needs an identity file;
+  ## the plaintext itself is not written.
+  if cfg.usesAge:
+    let work = privateWorkDir()
+    let identFile = work / "identity"
+    writeFile(identFile, dek & "\n")
+    setFilePermissions(identFile, {fpUserRead, fpUserWrite})
+    defer:
+      discardPrivate(work)
+    let p = startProcess(ageBinary(),
+      args = @["-d", "-i", identFile, "--", inPath],
+      options = {poUsePath})
+    result = p.outputStream.readAll()
+    let err = p.errorStream.readAll()
+    let code = p.waitForExit()
+    p.close()
+    if code != 0:
+      nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+  else:
+    let p = startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--decrypt",
+               "--passphrase-fd", "0", "--pinentry-mode", "loopback",
+               "--", inPath],
+      options = {poUsePath})
+    p.inputStream.write(dek & "\n")
+    p.inputStream.close()
+    result = p.outputStream.readAll()
+    let err = p.errorStream.readAll()
+    let code = p.waitForExit()
+    p.close()
+    if code != 0:
+      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {code}):\n{err}")
