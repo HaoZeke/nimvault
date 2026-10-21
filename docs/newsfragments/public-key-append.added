@@ -1,0 +1,1 @@
+A writer with no secret key can add and seal a new entry. The path and data key go in an unsigned `.vault/a/<id>.gpg` encrypted to that entry's recipients, and existing records are not decrypted. `rotate` turns an openable fragment into a signed `.vault/e/` record.

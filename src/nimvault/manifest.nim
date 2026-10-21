@@ -1,6 +1,6 @@
 ## Vault manifest operations: entry types, load/save, ID generation.
 
-import std/[os, strutils, strformat, sysrand, tables, sets, times]
+import std/[os, strutils, strformat, sysrand, tables, sets, times, algorithm]
 import ./gpg
 import ./crypto
 import ./dek
@@ -20,7 +20,13 @@ const EnvelopeHeader* = "# vault-envelope"
 const EntryDirName* = "e"
   ## Per-entry records. Two machines that add different files write different
   ## paths under here, so git can merge them. The combined manifest cannot.
+const AppendDirName* = "a"
+  ## Unsigned fragments from a writer that holds recipient public keys and no
+  ## secret key. A signed record in `e/` wins when both exist for one id.
 const EntryHeader* = "# vault-entry-v7"
+const BlobIndexName* = "blob-index"
+const BlobIndexHeader* = "# nimvault-blob-index-v1"
+const DigestHeader* = "# nimvault-digests-v1"
 
 proc genId*(): string =
   ## 16-char random hex via cryptographic randomness.
@@ -80,8 +86,10 @@ proc vaultDir*(repo: string): string =
 proc entryDir*(repo: string): string =
   vaultDir(repo) / EntryDirName
 
-proc hasSplitEntries*(repo: string): bool =
-  let dir = entryDir(repo)
+proc appendDir*(repo: string): string =
+  vaultDir(repo) / AppendDirName
+
+proc dirHasCipher(dir: string): bool =
   if not dirExists(dir):
     return false
   for kind, path in walkDir(dir):
@@ -90,7 +98,13 @@ proc hasSplitEntries*(repo: string): bool =
     let name = path.extractFilename
     if name.endsWith(".gpg") or name.endsWith(".age"):
       return true
-  return false
+  false
+
+proc hasSplitEntries*(repo: string): bool =
+  dirHasCipher(entryDir(repo))
+
+proc hasAppendEntries*(repo: string): bool =
+  dirHasCipher(appendDir(repo))
 
 proc entryFile*(repo: string, cfg: GpgConfig, id: string): string =
   entryDir(repo) / (id & cfg.blobExt)
@@ -104,11 +118,10 @@ proc findEntryFile*(repo: string, cfg: GpgConfig, id: string): string =
     return other
   return ""
 
-proc splitRecordIds*(repo: string): HashSet[string] =
-  ## Ids that have a per-entry file, including those this identity cannot
+proc cipherIds(dir: string): HashSet[string] =
+  ## Stems of ciphertext files in `dir`, including ones this identity cannot
   ## open. A wrap-subset view must not treat the rest as gone.
   result = initHashSet[string]()
-  let dir = entryDir(repo)
   if not dirExists(dir):
     return
   for kind, path in walkDir(dir):
@@ -121,9 +134,38 @@ proc splitRecordIds*(repo: string): HashSet[string] =
       continue
     result.incl(name.rsplit('.', maxsplit = 1)[0])
 
+proc splitRecordIds*(repo: string): HashSet[string] =
+  cipherIds(entryDir(repo))
+
+proc appendRecordIds*(repo: string): HashSet[string] =
+  cipherIds(appendDir(repo))
+
 proc dropEntryRecord*(repo: string, cfg: GpgConfig, id: string) =
   ## Remove one split record this command just deleted. Other stems stay.
   let path = findEntryFile(repo, cfg, id)
+  if path.len == 0:
+    return
+  removeFile(path)
+  let sig = path & ".sig"
+  if fileExists(sig):
+    removeFile(sig)
+
+proc appendFile*(repo: string, cfg: GpgConfig, id: string): string =
+  appendDir(repo) / (id & cfg.blobExt)
+
+proc findAppendFile*(repo: string, cfg: GpgConfig, id: string): string =
+  let mine = appendFile(repo, cfg, id)
+  if fileExists(mine):
+    return mine
+  let other = appendDir(repo) / (id & (if cfg.usesAge: ".gpg" else: ".age"))
+  if fileExists(other):
+    return other
+  return ""
+
+proc dropAppendRecord*(repo: string, cfg: GpgConfig, id: string) =
+  ## Remove one public-key fragment. A signed `e/` record has replaced it,
+  ## or the entry itself is gone.
+  let path = findAppendFile(repo, cfg, id)
   if path.len == 0:
     return
   removeFile(path)
@@ -233,11 +275,11 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       discardPrivate(work)
     if err.len > 0:
       if sigFailure(err):
-        nvRaise(err)
+        nvRaise(err, gpgFailureCode(err))
       if noSecretKey(err):
         result.unread.inc
         continue
-      nvRaise(err)
+      nvRaise(err, gpgFailureCode(err))
     rememberRecord(path, plain)
     let parsed = parseEntryPlain(plain)
     if parsed.ok:
@@ -286,18 +328,106 @@ proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
   except CatchableError:
     false
 
+proc saveAppendRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
+  ## One encrypted fragment for a writer with no secret key.
+  ##
+  ## The combined manifest and a signed `e/` record both need a signature,
+  ## and a signature needs a secret key. This file is encrypted to the same
+  ## recipients as a signed record, so the path stays inside ciphertext, and
+  ## it is a new path, so it does not rewrite any existing record.
+  ##
+  ## It is not signed. Anyone who has the recipient public keys can plant one.
+  ## A bad signature on an `e/` record is still fatal. `check` against the
+  ## blob-index and a previous digest list is what makes a plant visible
+  ## without a key. A later `seal` or `rotate` by a holder of a secret key
+  ## rewrites a changed fragment as a signed `e/` record.
+  let recips = recipientsFor(cfg, e.path)
+  createDir(appendDir(repo))
+  let work = privateWorkDir()
+  let plainPath = work / "entry.plain"
+  let dest = appendFile(repo, cfg, e.id)
+  var content = EntryHeader & "\n"
+  content.add("# vault-append\n")
+  content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\t{dek}\n")
+  writeFile(plainPath, content)
+  setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
+  let tmp = dest & ".tmp"
+  try:
+    encryptFileTo(cfg, recips, plainPath, tmp, sign = false)
+  finally:
+    discardPrivate(work)
+  syncPath(tmp)
+  moveFile(tmp, dest)
+  syncParentDir(dest)
+  rememberRecord(dest, content)
+
+proc appendRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
+                           dek: string): bool =
+  ## True when `.vault/a/<id>` already carries this plaintext. Ciphertext is
+  ## not stable, so a seal that did not change the entry must not rewrite it.
+  let path = findAppendFile(repo, cfg, e.id)
+  if path.len == 0:
+    return false
+  try:
+    let cached = recalledRecord(path)
+    let plain = if cached.len > 0: cached
+                else: decryptToString(cfg, path, false)
+    if cached.len == 0:
+      rememberRecord(path, plain)
+    let parsed = parseEntryPlain(plain)
+    parsed.ok and parsed.entry == e and parsed.dek == dek
+  except CatchableError:
+    false
+
+proc loadAppendEntries(repo: string, cfg: GpgConfig): tuple[entries: seq[VaultEntry],
+                                                           deks: DekTable] =
+  ## Public-key fragments this identity can decrypt. No signature is required:
+  ## the writer did not have a key. A fragment this identity cannot decrypt
+  ## is skipped. These files are not in `.vault/e/`, so a missing signature
+  ## here does not weaken the check on signed records.
+  let dir = appendDir(repo)
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.endsWith(".sig"):
+      continue
+    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+      continue
+    var plain = ""
+    try:
+      plain = decryptToString(cfg, path, false)
+    except CatchableError:
+      continue
+    rememberRecord(path, plain)
+    let parsed = parseEntryPlain(plain)
+    if parsed.ok:
+      result.entries.add(parsed.entry)
+      if parsed.dek.len > 0:
+        result.deks[parsed.entry.id] = parsed.dek
+
 proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
                        deks: DekTable, force = false) =
   ## Write the records this identity can open. Unchanged stems stay as
   ## they are on disk so a sibling add is a new path, not a rewrite.
   ## `force` is for rotate, which must rewrap even when the fields match.
   ## Unread stems stay; `dropEntryRecord` is the only remover.
+  ##
+  ## An unchanged public-key fragment stays in `.vault/a/`. A changed one is
+  ## rewritten as a signed `e/` record, which is the adoption step a holder
+  ## of a secret key can do and a public-key writer cannot.
   createDir(entryDir(repo))
   for e in entries:
     let dek = deks.getOrDefault(e.id)
     if not force and entryRecordUnchanged(repo, cfg, e, dek):
+      dropAppendRecord(repo, cfg, e.id)
+      continue
+    if not force and appendRecordUnchanged(repo, cfg, e, dek):
       continue
     saveEntryRecord(repo, cfg, e, dek)
+    dropAppendRecord(repo, cfg, e.id)
   # Do not delete stems that are missing from `entries`. That list is
   # only what this identity could open; unread wrap-private records
   # stay until dropEntryRecord names them.
@@ -322,13 +452,30 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   ##
   ## `checkPresent` is `--allow-unsigned`: with `verifySig` off, a signature
   ## that is present must still verify and come from a configured signer.
-  if hasSplitEntries(repo):
-    let split = loadSplitEntries(repo, cfg, verifySig, checkPresent)
-    result.entries = split.entries
-    result.unopened = split.unread
-    result.unparsed = split.unparsed
-    result.deks = split.deks
+  let sealed = hasSplitEntries(repo) or hasAppendEntries(repo)
+  if publicKeyOnly(cfg) and (sealed or findManifest(repo, cfg).len > 0):
+    nvRaise("FATAL: no secret key; cannot read sealed entries.\n" &
+            "  A public-key writer can add and seal new entries, and check " &
+            "without a key.", 3)
+  if sealed:
+    if hasSplitEntries(repo):
+      let split = loadSplitEntries(repo, cfg, verifySig, checkPresent)
+      result.entries = split.entries
+      result.unopened = split.unread
+      result.unparsed = split.unparsed
+      result.deks = split.deks
     result.envelope = true
+    var seen = initHashSet[string]()
+    for e in result.entries:
+      seen.incl(e.id)
+    # Signed records win. An append fragment is only the copy a public-key
+    # writer could produce.
+    let appended = loadAppendEntries(repo, cfg)
+    for e in appended.entries:
+      if e.id notin seen:
+        result.entries.add(e)
+        if e.id in appended.deks:
+          result.deks[e.id] = appended.deks[e.id]
     # Seal key still lives on the stub combined manifest when one exists.
     let encStub = findManifest(repo, cfg)
     if encStub.len > 0:
@@ -445,3 +592,121 @@ proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   ## and so forced the next seal to re-encrypt every blob.
   let meta = loadManifestMeta(repo, cfg = cfg)
   saveManifest(repo, entries, cfg, meta.sealKey, meta.envelope or envelope)
+
+proc blobIndexPath(repo: string): string =
+  vaultDir(repo) / BlobIndexName
+
+proc blobIndexExists*(repo: string): bool =
+  fileExists(blobIndexPath(repo))
+
+proc readBlobIndex*(repo: string): Table[string, string] =
+  ## Payload id to ciphertext sha256. No paths. Empty when the file is absent.
+  let path = blobIndexPath(repo)
+  if not fileExists(path):
+    return
+  for line in lines(path):
+    let s = line.strip()
+    if s.len == 0 or s.startsWith("#"):
+      continue
+    let sp = s.rfind(' ')
+    if sp <= 0:
+      continue
+    result[s[0 ..< sp]] = s[sp + 1 .. ^1]
+
+proc writeBlobIndex(repo: string, rows: Table[string, string]) =
+  ensureVaultDir(repo)
+  var ids: seq[string] = @[]
+  for id in rows.keys:
+    ids.add(id)
+  ids.sort()
+  var content = BlobIndexHeader & "\n"
+  for id in ids:
+    content.add(id & " " & rows[id] & "\n")
+  let dest = blobIndexPath(repo)
+  let tmp = dest & ".tmp"
+  writeFile(tmp, content)
+  setFilePermissions(tmp, {fpUserRead, fpUserWrite})
+  syncPath(tmp)
+  moveFile(tmp, dest)
+  syncParentDir(dest)
+
+proc noteBlob*(repo, id, hash: string) =
+  ## Record one payload hash and leave every other id alone. A writer who
+  ## cannot read those entries must not drop their lines.
+  if id.len == 0 or hash.len == 0:
+    return
+  var rows = readBlobIndex(repo)
+  if rows.getOrDefault(id) == hash:
+    return
+  rows[id] = hash
+  writeBlobIndex(repo, rows)
+
+proc forgetBlob*(repo, id: string) =
+  var rows = readBlobIndex(repo)
+  if id notin rows:
+    return
+  rows.del(id)
+  writeBlobIndex(repo, rows)
+
+proc payloadBlobHashes*(repo: string): Table[string, string] =
+  ## Top-level `.vault/<16 hex>.gpg` files. Key files are `keys.<id>.gpg`
+  ## and are not payloads.
+  let dir = vaultDir(repo)
+  if not dirExists(dir):
+    return
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    let ext = if name.endsWith(".gpg"): ".gpg"
+              elif name.endsWith(".age"): ".age"
+              else: ""
+    if ext.len == 0:
+      continue
+    let stem = name[0 ..< name.len - ext.len]
+    if stem.len != 16:
+      continue
+    var hexOk = true
+    for c in stem:
+      if c notin {'0'..'9', 'a'..'f'}:
+        hexOk = false
+        break
+    if hexOk:
+      result[stem] = sha256sum(path)
+
+proc readDigestFile*(path: string): Table[string, string] =
+  if not fileExists(path):
+    return
+  for line in lines(path):
+    let s = line.strip()
+    if s.len == 0 or s.startsWith("#"):
+      continue
+    let sp = s.rfind(' ')
+    if sp <= 0:
+      continue
+    result[s[0 ..< sp]] = s[sp + 1 .. ^1]
+
+proc writeDigestFile*(path: string, rows: seq[(string, string)]) =
+  ## Snapshot of ciphertext hashes. This is what is on disk, not a claim
+  ## that it matches a previous snapshot.
+  var content = DigestHeader & "\n"
+  for (rel, hash) in rows:
+    content.add(rel & " " & hash & "\n")
+  let tmp = path & ".tmp"
+  writeFile(tmp, content)
+  setFilePermissions(tmp, {fpUserRead, fpUserWrite})
+  syncPath(tmp)
+  moveFile(tmp, path)
+
+proc vaultCipherDigests*(repo: string): seq[(string, string)] =
+  ## Every file under `.vault/` except plaintext `config` and temp files.
+  ## Relative paths only: an entry's name is not in this list.
+  let dir = vaultDir(repo)
+  if not dirExists(dir):
+    return
+  for path in walkDirRec(dir, yieldFilter = {pcFile}):
+    let rel = relativePath(path, dir)
+    if rel == "config" or rel.endsWith(".tmp"):
+      continue
+    result.add((rel, sha256sum(path)))
+  result.sort(proc (a, b: (string, string)): int = cmp(a[0], b[0]))
