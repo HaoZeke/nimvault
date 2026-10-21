@@ -1356,9 +1356,9 @@ block addRefusesARecordDekSwappedAfterVerify:
   let wrapper = wrapBin / "gpg"
   let realGpg = findExe("gpg")
   doAssert realGpg.len > 0
-  writeFile(wrapper, secondRecordDecryptSwapHook(realGpg,
-                                                 entryFile(r, c, entry.id),
-                                                 badRec, marker, seen))
+  writeFile(wrapper, nthDecryptSwapHook(realGpg,
+                                        entryFile(r, c, entry.id),
+                                        badRec, marker, seen, swapOn = 5))
   let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
   doAssert lintCode == 0, lint
   setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
@@ -1380,11 +1380,11 @@ block addRefusesARecordDekSwappedAfterVerify:
   except CatchableError:
     checkFailed = true
   doAssert raised and checkFailed,
-    "an unsigned post-verify record swap must fail add and fail check"
+    "an unsigned decrypt-5 record swap must fail add and fail check"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)
-  echo "PASS: add refuses record-DEK swaps after verify"
+  echo "PASS: add refuses decrypt-5 record-DEK swaps after verify"
 
 block addDirRefusesARecordDekSwappedAfterVerify:
   ## add-dir must not re-sign a record DEK from an unsigned swapped record.
