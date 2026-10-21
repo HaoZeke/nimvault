@@ -198,11 +198,11 @@ shares the stream with a secret.
 nimvault check [--recipient KEY]
 #+end_src
 
-Verify every blob against the hash the manifest records for it. Those hashes
-are stored in the encrypted manifest and the per-entry records, so ~check~
-decrypts the records and does not decrypt the payload blobs. It verifies every
-record this machine can open, and reports how many records it could not open
-with the available secret keys. Exits non-zero when a blob differs, when a
+Verify the blob of each record this machine can open against the hash that
+record holds. The hashes are stored in the encrypted manifest and the
+per-entry records, so ~check~ decrypts the records and does not decrypt the
+payload blobs. A record encrypted only to keys this machine lacks is not
+checked; ~check~ reports how many it could not open. Exits non-zero when a blob differs, when a
 record for a key this machine holds does not decrypt, when a record opens but
 holds no entry, or when no record opens at all.
 
