@@ -1489,7 +1489,7 @@ block vaultedPlaintextFailsTheCommitAndPushScans:
 
 block vaultedMatchIsByAbsolutePath:
   ## A record stores `notes/a.txt` relative to its root. The same relative
-  ## name in another repository is a different file and is not vaulted.
+  ## name in another repository is a different file and must still be scanned.
   let v = setupRepo()
   let g = setupRepo()
   let c = GpgConfig(recipient: keyId, root: v)
@@ -1498,12 +1498,18 @@ block vaultedMatchIsByAbsolutePath:
   add(v, v / "notes" / "a.txt", c)
   seal(v, c)
   createDir(g / "notes")
-  writeFile(g / "notes" / "a.txt", "an ordinary file")
+  writeFile(g / "notes" / "a.txt", "sk-ant-" & repeat('K', 30))
   doAssert gitCode(g, @["add", "--", "notes/a.txt"]) == 0
-  scanCached(v, c, g)
+  var raised = false
+  try:
+    scanCached(v, c, g)
+  except CatchableError:
+    raised = true
+  doAssert raised,
+    "a same-named file in another repository must not be skipped as vaulted"
   removeDir(v)
   removeDir(g)
-  echo "PASS: a vaulted path matches by absolute path, not by stored name"
+  echo "PASS: vaulted matching is by absolute path"
 
 block unsignedRecordDoesNotHideAFileFromScan:
   ## The worktree walk skips vaulted paths. An unsigned record, which anyone

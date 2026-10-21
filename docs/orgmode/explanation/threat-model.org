@@ -152,6 +152,8 @@ Still accepted:
 - Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
 - Key files stay unsigned.
 - Overwriting a file does not erase every copy a filesystem keeps.
+- ~lock~ and cross-device ~mv~ overwrite the source inode before unlinking it,
+  so another hard link to that inode loses the plaintext too.
 - An ~fcntl~ lock is not reliable on NFS.
 - A change to the seal key still re-encrypts every payload.
 - ~add~ writes a new blob before its record. The previous version is not at
