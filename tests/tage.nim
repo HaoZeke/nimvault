@@ -272,5 +272,41 @@ block ageWithAGpgSignerIsRefused:
   removeDir(dir)
   echo "PASS: an age vault refuses signer = gpg"
 
+block missingSshSignerSettingsFail:
+  ## A record whose signature could not be checked was skipped uncounted, so
+  ## unseal reported an empty vault and check asked for a secret key.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-settings")
+  add(dir, f, c)
+  seal(dir, c)
+  removeFile(f)
+  var noAllowed = c
+  noAllowed.allowedSigners = ""
+  var lostAllowed = c
+  lostAllowed.allowedSigners = dir / "no-such-allowed-signers"
+  var noIdentity = c
+  noIdentity.signerIdentity = ""
+  for (broken, want) in [(noAllowed, "no allowed_signers"),
+                         (lostAllowed, "allowed_signers not found"),
+                         (noIdentity, "no signer_identity")]:
+    var msg = ""
+    try:
+      unseal(dir, broken)
+    except CatchableError as e:
+      msg = e.msg
+    doAssert want in msg, "unseal: " & want & ": " & msg
+    doAssert not fileExists(f)
+    msg = ""
+    try:
+      check(dir, broken)
+    except CatchableError as e:
+      msg = e.msg
+    doAssert want in msg, "check: " & want & ": " & msg
+  unseal(dir, c)
+  doAssert readFile(f).strip() == "age-settings"
+  removeDir(dir)
+  echo "PASS: missing ssh signer settings fail unseal and check"
+
 removeDir(work)
 echo "All age backend tests passed."

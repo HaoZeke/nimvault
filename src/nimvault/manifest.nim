@@ -217,13 +217,11 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
+    # Every failure here is fatal. A missing allowed_signers, signer_identity
+    # or ssh-keygen means the signature cannot be checked, which says nothing
+    # about whether the record is for this machine.
     if verifySig or checkPresent:
-      try:
-        verifyManifest(cfg, path, verifySig, checkPresent)
-      except CatchableError:
-        if sigFailure(getCurrentExceptionMsg()):
-          raise
-        continue
+      verifyManifest(cfg, path, verifySig, checkPresent)
     paths.add(path)
   let plains = decryptManyToString(cfg, paths, verifySig, checkPresent)
   for i, path in paths:
