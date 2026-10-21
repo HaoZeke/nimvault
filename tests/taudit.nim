@@ -1273,7 +1273,7 @@ block unsealReportsRecordsItCouldNotOpen:
   removeFile(remote)
   let binDir = buildCli()
   let (outp, code) = execCmdEx((binDir / "nimvault").quoteShell & " unseal --vault " &
-                               r.quoteShell)
+                               r.quoteShell, workingDir = r)
   doAssert code == 0, outp
   doAssert "could not open 1 record" in outp, outp
   doAssert readFile(local) == "local-secret"
