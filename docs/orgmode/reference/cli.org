@@ -272,7 +272,7 @@ the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
 ~--cached~ reads the git index. ~--rev REV~ reads blobs introduced by a
 commit (that commit and its ancestors) or by an ~A..B~ range, including a
 secret added and then removed before the tip. A vaulted path in the index or
-in those commits is reported even when its bytes do not match a pattern.
+in those commits is skipped the same way the worktree walk skips it.
 ~.vault/~ itself is not scanned. ~--remote NAME~ leaves out commits that
 ~NAME~'s remote-tracking refs already reach. A commit in ~REV~ that this clone
 does not have is an error that says to fetch first.
@@ -390,22 +390,27 @@ See the [[file:../howto/private-vault-repo.org][private vault repository how-to]
 
 * Security model
 
-All encryption operations also GPG-sign the payload. On ~unseal~, signatures and
-blob hashes are verified before any plaintext is written to disk:
+Payload signatures depend on the format. Direct gpg blobs (v5) carry an in-band
+GPG signature. Age blobs and v6 enveloped blobs do not; for those, authenticity
+comes from the signed records plus the blob digest. On ~unseal~:
 
 1. Manifest signature is checked during decryption, and must come from a key
    the config names (see [[file:config.org][configuration]])
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
-4. Blobs are decrypted to temporary files
+4. Blobs are decrypted to temporary files beside the destination
 5. Signatures are verified on each blob that carries one in band. gpg blobs
    encrypted to a recipient do; age blobs and v6 enveloped blobs do not, and
    take the same guarantee from the signed manifest plus the digest checked at
    step 2
 6. Only after all checks pass are files moved to their final paths
 
-This design prevents forgery, ciphertext swapping, path traversal, and release
-of unverified plaintext.
+For direct gpg blobs, step 4 means plaintext is staged before step 5 checks the
+in-band signature; an interrupted run leaves that staging file for ~gc~.
+
+This design prevents forgery and ciphertext swapping, and refuses escaped record
+paths. Commands that reopen plaintext paths by name still rely on the path check
+remaining true while the path is reopened.
 
 ** Known limitations
 

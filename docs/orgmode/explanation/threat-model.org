@@ -159,6 +159,11 @@ Still accepted:
 - ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
   some records on the previous wrapping. The data key bytes are unchanged, and
   a second ~rotate~ finishes the job.
+- ~unseal~ now stages, renames and shreds plaintext through one opened parent
+  descriptor, so swapping that parent after checks does not redirect writes.
+  Commands that still reopen plaintext paths by name (for example ~seal~ reads,
+  and ~mv~ source reads) keep a check-to-use race if another writer can replace
+  a writable parent between the check and the open.
 - ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
   mode 0600. A rename on one filesystem is what keeps a destination symlink
   from being followed. The price is plaintext in that directory until the

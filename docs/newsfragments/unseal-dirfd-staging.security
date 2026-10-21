@@ -1,0 +1,1 @@
+`unseal` now stages, renames, and cleanup-shreds plaintext through one opened parent directory descriptor (`openat`/`renameat`/`unlinkat`), so a swapped parent cannot redirect those writes.

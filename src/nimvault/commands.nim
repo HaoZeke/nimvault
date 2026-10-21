@@ -4,7 +4,7 @@
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
-            tables, posix]
+            tables, posix, sysrand]
 import ./gpg, ./manifest, ./crypto, ./lock, ./dek
 # NimvaultError, nvRaise, nvQuiet from gpg
 
@@ -72,6 +72,16 @@ proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
   if not insideBase(resolvedBase(base), real):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
+proc assertParentWithinBoundary(cfg: GpgConfig, absDir: string) =
+  ## `absDir` is already resolved as far as currently-existing components go.
+  ## The final file may not exist yet, so this check is lexical against the
+  ## resolved boundary root.
+  let base = boundaryBase(cfg, absDir)
+  if base.len == 0:
+    return
+  if not insideBase(resolvedBase(base), normalizedPath(absDir)):
+    nvRaise(&"FATAL: refusing path outside the vault root: {absDir}")
+
 proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
   ## Refuse a directory symlink above `path` that resolves outside the vault
   ## root (or $HOME). The final component is the caller's to judge.
@@ -113,6 +123,153 @@ proc assertReadPath(cfg: GpgConfig, repo, src: string) =
   ## file's bytes into the blob that record vouches for.
   assertAncestorsContained(cfg, repo, src, "read")
   assertResolvedWithinBoundary(cfg, src)
+
+const
+  ONoFollow = 131072  ## Linux O_NOFOLLOW.
+  ODirectory = 65536  ## Linux O_DIRECTORY.
+
+proc openAt(dirFd: cint, path: cstring, flags: cint): cint
+  {.importc: "openat", header: "<fcntl.h>".}
+proc openAtMode(dirFd: cint, path: cstring, flags: cint, mode: Mode): cint
+  {.importc: "openat", header: "<fcntl.h>".}
+proc mkdirAt(dirFd: cint, path: cstring, mode: Mode): cint
+  {.importc: "mkdirat", header: "<sys/stat.h>".}
+proc renameAtFd(oldDirFd: cint, oldPath: cstring, newDirFd: cint,
+                newPath: cstring): cint
+  {.importc: "renameat", header: "<stdio.h>".}
+proc unlinkAt(dirFd: cint, path: cstring, flags: cint): cint
+  {.importc: "unlinkat", header: "<fcntl.h>".}
+
+type StagedPath = object
+  ## Plaintext staged beside a destination, anchored to one opened parent dir.
+  dirFd: cint
+  dirPath: string
+  destName: string
+  tmpName: string
+  tmpPath: string
+
+proc closeStage(sp: var StagedPath) =
+  if sp.dirFd >= 0:
+    discard posix.close(sp.dirFd)
+    sp.dirFd = -1
+
+proc resolvedParentForWrite(path: string): string =
+  ## Resolve the existing prefix of `path.parentDir` once, then append any
+  ## missing tail components. This keeps symlinked HOME/root paths working
+  ## while still letting the later descriptor walk refuse swapped symlinks.
+  var parent = normalizedPath(path.parentDir)
+  if parent.len == 0:
+    parent = "/"
+  if dirExists(parent):
+    return normalizedPath(expandFilename(parent))
+  var missing: seq[string] = @[]
+  var cur = parent
+  while cur.len > 1 and not dirExists(cur):
+    missing.insert(cur.extractFilename, 0)
+    cur = cur.parentDir
+  if not dirExists(cur):
+    nvRaise(&"FATAL: cannot resolve parent directory: {path}")
+  result = normalizedPath(expandFilename(cur))
+  for part in missing:
+    result = result / part
+
+proc openDirFd(path: string, createMissing: bool): cint =
+  ## Open `path` without following directory symlinks. Missing components are
+  ## created when `createMissing` is true.
+  let norm = normalizedPath(path)
+  if not norm.isAbsolute:
+    nvRaise(&"FATAL: expected an absolute path, got: {path}")
+  # Keep the descriptor across exec so gpg can write to /proc/self/fd/<dirfd>/.
+  let flags = posix.O_RDONLY or ODirectory or ONoFollow
+  result = posix.open("/".cstring, flags)
+  if result < 0:
+    nvRaise("FATAL: cannot open / for secure path walk")
+  if norm == "/":
+    return
+  for part in norm.split(DirSep):
+    if part.len == 0 or part == ".":
+      continue
+    if part == "..":
+      discard posix.close(result)
+      nvRaise(&"FATAL: refusing parent component in path: {path}")
+    var next = openAt(result, part.cstring, flags)
+    if next < 0 and createMissing and posix.errno == posix.ENOENT:
+      if mkdirAt(result, part.cstring, 0o777.Mode) != 0 and posix.errno != posix.EEXIST:
+        discard posix.close(result)
+        nvRaise(&"FATAL: cannot create destination directory under {path}")
+      next = openAt(result, part.cstring, flags)
+    if next < 0:
+      discard posix.close(result)
+      if posix.errno == posix.ELOOP:
+        nvRaise(&"FATAL: refusing directory symlink on write path: {path}")
+      nvRaise(&"FATAL: cannot open destination directory: {path}")
+    discard posix.close(result)
+    result = next
+
+proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
+  ## Stage plaintext under a stable parent descriptor, then address the temp
+  ## file through /proc/self/fd/<dirfd>/<name> so later name swaps cannot
+  ## redirect where gpg writes.
+  let parent = resolvedParentForWrite(dest)
+  assertParentWithinBoundary(cfg, parent)
+  let dirFd = openDirFd(parent, createMissing = true)
+  let tmpName = ".nimvault-" & genId() & ".tmp"
+  let fd = openAtMode(dirFd, tmpName.cstring,
+                      posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                      O_CLOEXEC or ONoFollow, 0o600.Mode)
+  if fd < 0:
+    discard posix.close(dirFd)
+    nvRaise(&"FATAL: cannot create temporary plaintext in {parent}")
+  discard posix.close(fd)
+  result = StagedPath(
+    dirFd: dirFd,
+    dirPath: parent,
+    destName: dest.extractFilename,
+    tmpName: tmpName,
+    tmpPath: "/proc/self/fd/" & $dirFd & "/" & tmpName)
+
+proc shredStaged(sp: StagedPath) =
+  ## Overwrite then unlink a staged plaintext file by descriptor-relative name.
+  if sp.dirFd < 0:
+    return
+  let fd = openAt(sp.dirFd, sp.tmpName.cstring,
+                  posix.O_WRONLY or O_CLOEXEC or ONoFollow)
+  if fd >= 0:
+    var st: Stat
+    if fstat(fd, st) == 0 and posix.S_ISREG(st.st_mode):
+      var left = st.st_size
+      var buf: array[8192, byte]
+      while left > 0:
+        let n = min(left.int, buf.len)
+        if not urandom(buf):
+          for i in 0 ..< buf.len:
+            buf[i] = 0
+        let wrote = posix.write(fd, addr buf[0], n)
+        if wrote <= 0:
+          break
+        left -= wrote
+      discard posix.fsync(fd)
+    discard posix.close(fd)
+  if unlinkAt(sp.dirFd, sp.tmpName.cstring, 0) != 0 and posix.errno != posix.ENOENT:
+    discard
+
+proc renameIntoPlace(sp: StagedPath) =
+  if renameAtFd(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
+    shredStaged(sp)
+    nvRaise(&"FATAL: could not place plaintext at {sp.dirPath / sp.destName}")
+
+proc setUnsealedPermissions(sp: StagedPath) =
+  ## Default to 0600; grant +x for shebang scripts.
+  let fd = openAt(sp.dirFd, sp.destName.cstring,
+                  posix.O_RDONLY or O_CLOEXEC or ONoFollow)
+  if fd < 0:
+    return
+  var mode = 0o600.Mode
+  var head: array[2, char]
+  if posix.read(fd, addr head[0], 2) == 2 and head[0] == '#' and head[1] == '!':
+    mode = 0o700.Mode
+  discard posix.fchmod(fd, mode)
+  discard posix.close(fd)
 
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
@@ -306,14 +463,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # umask 077 so the tmp files are not world-readable (gpg -o otherwise
   # inherits a typical 022).
   let batchSize = gpgParallelism()
-  var tmpPaths: seq[string] = @[]
-  type DecryptResult = tuple[entry: VaultEntry, tmpPath, status: string,
-                             code: int, enveloped: bool]
+  var staged: seq[StagedPath] = @[]
+  type DecryptResult = tuple[entry: VaultEntry, staged: StagedPath,
+                             status: string, code: int, enveloped: bool]
   var results: seq[DecryptResult] = @[]
-
-  proc stageBeside(dest: string): string =
-    createDir(dest.parentDir)
-    result = dest.parentDir / (".nimvault-" & genId() & ".tmp")
 
   # A vault may hold both formats while a migration drains: an entry with a
   # data key is v6, one without is encrypted straight to the recipient. The
@@ -325,45 +478,46 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   withPrivateUmask:
     for e in entries:
       let dest = resolvePath(cfg, e.path)
-      let tmpPath = stageBeside(dest)
+      let stagedPath = stageBeside(dest, cfg)
+      staged.add(stagedPath)
       if deks.hasKey(e.id):
-        tmpPaths.add(tmpPath)
         var status = ""
         var code = 0
         try:
-          decryptWithDek(cfg, deks[e.id], resolveBlob(repo, cfg, e.id, e.hash), tmpPath)
+          decryptWithDek(cfg, deks[e.id], resolveBlob(repo, cfg, e.id, e.hash),
+                         stagedPath.tmpPath)
         except CatchableError as err:
           status = err.msg
           code = 1
-        results.add((e, tmpPath, status, code, true))
+        results.add((e, stagedPath, status, code, true))
       else:
         direct.add(e)
 
   withPrivateUmask:
     for batchStart in countup(0, direct.high, batchSize):
       let batchEnd = min(batchStart + batchSize - 1, direct.high)
-      var procs: seq[(VaultEntry, string, Process)] = @[]
+      var procs: seq[(VaultEntry, StagedPath, Process)] = @[]
       for i in batchStart .. batchEnd:
         let e = direct[i]
         let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-        let tmpPath = stageBeside(resolvePath(cfg, e.path))
-        tmpPaths.add(tmpPath)
-        let p = decryptProcess(cfg, inPath, tmpPath)
-        procs.add((e, tmpPath, p))
+        let stagedPath = stageBeside(resolvePath(cfg, e.path), cfg)
+        staged.add(stagedPath)
+        let p = decryptProcess(cfg, inPath, stagedPath.tmpPath)
+        procs.add((e, stagedPath, p))
 
       # Collect results for this batch
-      for (e, tmpPath, p) in procs:
+      for (e, stagedPath, p) in procs:
         discard p.outputStream.readAll()  # empty with -o
         let status = p.errorStream.readAll()
         let code = p.waitForExit()
         p.close()
-        results.add((e, tmpPath, status, code, false))
+        results.add((e, stagedPath, status, code, false))
 
   # Abort helper: shred every temp before exiting. Unlink is not enough;
   # the bytes are the plaintext.
   template abortUnseal(msgs: varargs[string]) =
-    for tp in tmpPaths:
-      shredFile(tp)
+    for sp in staged:
+      shredStaged(sp)
     var acc = ""
     for msg in msgs:
       acc.add msg & "\n"
@@ -403,29 +557,13 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # does not fall back to a copy that follows a symlink.
   try:
     for r in results:
-      let outPath = resolvePath(cfg, r.entry.path)
-      renameOver(r.tmpPath, outPath)
-      # Default to user-only 0600; give +x when the file is a shebang-style
-      # script. Without this, unseal silently breaks hooks (e.g. the Claude
-      # Code rtk-rewrite.sh PreToolUse hook would fail with "Permission
-      # denied" on the next Bash call after a fresh machine was unsealed).
-      var perms = {fpUserRead, fpUserWrite}
-      try:
-        var f: File
-        if open(f, outPath, fmRead):
-          defer: f.close()
-          var head: array[2, char]
-          let n = f.readBuffer(addr head[0], 2)
-          if n == 2 and head[0] == '#' and head[1] == '!':
-            perms.incl(fpUserExec)
-      except IOError:
-        discard
-      setFilePermissions(outPath, perms)
+      renameIntoPlace(r.staged)
+      setUnsealedPermissions(r.staged)
       nvEcho(&"  {r.entry.path}")
   finally:
-    for tp in tmpPaths:
-      if fileExists(tp):
-        shredFile(tp)
+    for sp in staged.mitems:
+      shredStaged(sp)
+      closeStage(sp)
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
@@ -893,7 +1031,7 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
 
 proc listReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly list (no terminal styling). Used by CLI and C ABI.
-  let entries = loadManifest(repo, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   if entries.len == 0:
     return "vault is empty\n"
   for e in entries:
@@ -1183,12 +1321,8 @@ proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
     return
   let abs = normalizedPath(gitRepo / rel)
   if abs in vaulted or rel in vaulted:
-    var nbytes = 0
-    let sz = gitCapture(gitRepo, @["cat-file", "-s", "--", spec])
-    if sz.code == 0:
-      try: nbytes = parseInt(sz.outp.strip) except ValueError: discard
-    noteHit(hits, seen, (abs, "vault-plaintext", 1, nbytes))
-    inc scanned
+    # Worktree scan skips vaulted paths; the index/revision scans should keep
+    # the same contract for staged hooks.
     return
   if isBinaryExt(rel):
     return
@@ -1251,7 +1385,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
   ## Holds the vault lock for the pending-blob rename in `resolveBlob`.
   let lk {.used.} = acquire(repo)
-  let entries = loadManifest(repo, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   if entries.len == 0:
     return "vault is empty\n"
 
@@ -1336,15 +1470,6 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   ## old key (Everspaugh et al., CRYPTO 2017,
   ## doi:10.1007/978-3-319-63697-9_4). Churn is the intent, so it deliberately
   ## bypasses the incremental skip.
-  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  let entries = meta.entries
-  if entries.len == 0:
-    if splitRecordIds(repo).len > 0:
-      nvRaise("FATAL: no records this identity can open.\n" &
-              "  Refusing to treat the vault as empty (unread wrap groups stay).")
-    nvEcho("vault is empty")
-    return
-
   if rekey:
     banner("Rekeying vault ...")
     seal(repo, cfg, force = true)
@@ -1353,6 +1478,14 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
 
   banner("Rewrapping data keys ...")
   let lk {.used.} = acquire(repo)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let entries = meta.entries
+  if entries.len == 0:
+    if splitRecordIds(repo).len > 0:
+      nvRaise("FATAL: no records this identity can open.\n" &
+              "  Refusing to treat the vault as empty (unread wrap groups stay).")
+    nvEcho("vault is empty")
+    return
   let deks = loadDeks(repo, cfg)
   if deks.len == 0:
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
@@ -1571,7 +1704,7 @@ proc status*(repo: string, cfg: GpgConfig) =
   ## Terminal status (colors). Delegates logic to statusReport for library reuse.
   ## Holds the vault lock for the pending-blob rename in `resolveBlob`.
   let lk {.used.} = acquire(repo)
-  let entries = loadManifest(repo, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   if entries.len == 0:
     echo "vault is empty"
     return
