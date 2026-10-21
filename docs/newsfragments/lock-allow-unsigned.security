@@ -1,0 +1,4 @@
+`lock` now enforces record signatures by default the same way `unseal` does.
+On a `signer = none` vault it refuses with "signature required" unless
+`--allow-unsigned` is passed; with that flag, present signatures still must
+verify.

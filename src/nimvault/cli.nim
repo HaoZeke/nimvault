@@ -143,10 +143,10 @@ proc doWho(recipient = "", vault = "") =
     let (repo, cfg) = resolve(recipient, vault)
     commands.who(repo, cfg)
 
-proc doLock(recipient = "", vault = "") =
+proc doLock(recipient = "", allowUnsigned = false, vault = "") =
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    commands.lockPlaintext(repo, cfg)
+    commands.lockPlaintext(repo, cfg, allowUnsigned)
 
 proc doInit(recipient = "", vault = "") =
   cliRun:
@@ -213,7 +213,8 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doWho, cmdName = "who",
      help = {"recipient": rh, "vault": vh}],
     [doLock, cmdName = "lock",
-     help = {"recipient": rh, "vault": vh}],
+     help = {"recipient": rh, "vault": vh,
+             "allowUnsigned": "accept records with no signature; a present one must verify"}],
     [doInit, cmdName = "init",
      help = {"recipient": rh, "vault": vh}],
     [doHook, cmdName = "hook",
