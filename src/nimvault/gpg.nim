@@ -263,7 +263,19 @@ proc exactKeySpec(s: string): bool =
   ## anywhere in a user ID, so `Alice` also names `Malice <malice@...>`.
   parseEmailSpec(s).len > 0 or isHexSpec(s)
 
+const AgeGpgSigner* = "signer = gpg does not sign an age vault: gpg signs " &
+  "only what it encrypts.\n  Use signer = ssh with sign_key, allowed_signers " &
+  "and signer_identity."
+
 proc checkGpgConfig(cfg: GpgConfig) =
+  ## Refuse a config whose signer would sign and verify nothing without
+  ## saying so.
+  if cfg.backend notin ["gpg", "age"]:
+    nvRaise(&"FATAL: unknown backend `{cfg.backend}`; use gpg or age")
+  if cfg.signer notin ["gpg", "ssh", "none"]:
+    nvRaise(&"FATAL: unknown signer `{cfg.signer}`; use gpg, ssh or none")
+  if cfg.backend == "age" and cfg.signer == "gpg":
+    nvRaise("FATAL: " & AgeGpgSigner)
   if cfg.backend == "gpg":
     for spec in vaultSignerSpecs(cfg):
       if not exactKeySpec(spec):

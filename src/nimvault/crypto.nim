@@ -6,7 +6,7 @@
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
-                  signingKey
+                  signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 
@@ -282,7 +282,10 @@ proc signManifest*(cfg: GpgConfig, path: string) =
   ## all, which is why an age vault defaults to an ssh signer.
   case cfg.effectiveSigner
   of "ssh": sshSign(cfg, path)
-  of "none", "gpg": discard
+  of "gpg":
+    if cfg.usesAge:
+      nvRaise("FATAL: " & AgeGpgSigner)
+  of "none": discard
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
 
 proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
@@ -318,7 +321,10 @@ proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
     return
   case cfg.effectiveSigner
   of "ssh": sshVerify(cfg, path)
-  of "gpg": discard  ## checked inline while decrypting
+  of "gpg":
+    # Checked inline while decrypting, which an age record has nothing for.
+    if cfg.usesAge:
+      nvRaise("FATAL: signature verification failed: " & AgeGpgSigner)
   of "none":
     nvRaise("FATAL: signature required but this vault is configured with " &
             "`signer = none`.\n  Pass --allow-unsigned to read it anyway.")
