@@ -101,10 +101,11 @@ Exits non-zero if:
 
 *** ~--allow-unsigned~
 
-Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
-(~BADSIG~) are still fatal even with this flag. Use this only for migrating
+Accept unsigned legacy records. Missing signatures are accepted, but blob-hash
+verification and path-safety checks still run. A bad signature (~BADSIG~) or a
+signature by an unconfigured key is still fatal. Use this only for migrating
 legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
-the vault to signed v2 format.
+the vault to signed records.
 
 An unadopted fragment under ~.vault/a/~ is not written unless this flag is
 passed. A fragment whose path matches a signed record is refused even with
@@ -219,18 +220,23 @@ process has no secret key. Neither comparison decrypts a payload. Exit 2 when
 anything is inconsistent, so a pre-push hook or a CI job can gate on it.
 
 With a secret key the anchor is the manifest. The hashes live in the encrypted
-records, so ~check~ decrypts those records and does not decrypt the payloads.
-A public key alone cannot open the records. A missing blob, a hash that does
-not match, a v1 entry with no hash, and a payload id that is not in the records
-are problems. Without a secret key the anchor is the blob-index (id and
-ciphertext sha256, no paths): added, changed and missing ids. If there is no
-index and no digest list, and ciphertext exists, that itself is a problem.
+records, so ~check~ decrypts those records, verifies their signatures, and
+does not decrypt the payloads. It reports how many records it could not open
+with the available secret keys. A corrupt record that is not a missing secret
+key fails the command. A missing blob, a hash that does not match, a v1 entry
+with no hash, and a payload id that is not in the records are problems. When
+no record opens at all, the message says to import the secret key. A public
+key alone cannot open the records. Without a secret key the anchor is the
+blob-index (id and ciphertext sha256, no paths): added, changed and missing
+ids. If there is no index and no digest list, and ciphertext exists, that
+itself is a problem.
 
 ~--digests FILE~ diffs a previous snapshot of every file under ~.vault/~
 except ~config~ and ~*.tmp~. A delta exits 2, including an intentional add.
 ~--write-digests FILE~ writes that snapshot of the bytes on disk.
-~--json~ prints one object: ~ok~, ~keyless~, ~anchor~, ~checked~, ~problems~,
-and ~manifest~ / ~digests~ objects with ~added~, ~changed~, ~missing~.
+~--json~ prints one object: ~ok~, ~keyless~, ~anchor~, ~checked~, ~unopened~,
+~problems~, and ~manifest~ / ~digests~ objects with ~added~, ~changed~,
+~missing~.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about
@@ -252,9 +258,10 @@ secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
 A ~.pending~ file whose hash a record names is kept, and so is one whose record
-this machine cannot open. Any other ~.pending~ file is removed, as are
-=<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed ~add~ or ~seal~ was
-still writing.
+this machine cannot open. A ~.pending~ file is also kept while an in-flight
+record write exists at =~.vault/e/<id>.<ext>.tmp=. Any other ~.pending~ file is
+removed, as are =<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed
+~add~ or ~seal~ was still writing.
 
 ~gc~ also shreds =.nimvault-<id>.tmp= files beside the entries this machine
 can open. Those are plaintext an interrupted ~unseal~ staged; see ~unseal~.

@@ -6,7 +6,7 @@
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgParallelism, sha256sum, pinentryInsert, gpgFailureCode,
-                  gpgVerdict, vaultSigners
+                  gpgVerdict, vaultSigners, signingKey
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 
@@ -379,7 +379,8 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
     args.add(@["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always"])
     if sign:
-      args.add("--sign")
+      let signer = signingKey(cfg)
+      args.add(@["--local-user", signer, "--sign"])
     args.add("-e")
     for r in recipients:
       if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
@@ -408,9 +409,11 @@ proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
     if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
        '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
       nvRaise("FATAL: invalid recipient")
+    let signer = signingKey(cfg)
     var args = @[
       "--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
       "--trust-model", "always",
+      "--local-user", signer,
       "--sign", "-e", "--recipient=" & cfg.recipient,
       "--set-filename", "", "-o", outPath, "--", inPath]
     pinentryInsert(args)

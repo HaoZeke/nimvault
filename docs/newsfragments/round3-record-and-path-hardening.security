@@ -1,0 +1,5 @@
+Path writes and plaintext shredding now reject ancestor symlink escapes from `$HOME` or a configured `root`, including `~/` spellings whose real path leaves that boundary. `mv` now refuses destination symlinks and uses a cross-filesystem fallback that cannot copy through them.
+
+Split-record loading now skips only genuine no-secret-key records; corrupt decryptable records fail `check` and `unseal` loudly. `check` reports how many records this machine could not open. `gc` also keeps `.pending` blobs named by in-flight `e/<id>.<ext>.tmp` records.
+
+GPG signer resolution is exact: email specs match the exact `<addr>`, key IDs/fingerprints match exactly, and signing selects an allowed signer explicitly with `--local-user`. `add`/`seal` now fail with a clear error when no allowed secret key is present.

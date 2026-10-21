@@ -151,11 +151,18 @@ Long key IDs are recommended for unambiguous matching.
 With ~signer = gpg~, a record or blob verifies only when gpg reports a good
 signature whose primary key is one the config names: ~recipient~ or a
 recipient in a ~wrap~ rule. A good signature from any other key in the
-keyring is refused. gpg signs with the first secret key in the keyring, so
-that key has to be one of those recipients on every machine that seals.
+keyring is refused. ~add~ and ~seal~ sign with an allowed key explicitly
+(~--local-user~). If this machine has no allowed secret key, they fail.
 
-An email matches every key in the keyring that carries it. Use a fingerprint
-or long key ID when another key with the same email could be imported.
+This signer set is vault-wide. Any configured recipient (base ~recipient~ or a
+recipient listed in any ~wrap~ rule) can sign records for any path in the
+vault. ~wrap~ controls *decryption scope* only; it does not scope who may sign
+which path. Per-glob signer scoping is a known limit.
+
+An email spec is matched as an exact address (~<user@example.com>~), and
+matches every key in the keyring that carries that exact email. Use a
+fingerprint or long key ID when another key with the same email could be
+imported.
 
 ** Finding your key ID
 

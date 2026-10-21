@@ -47,6 +47,17 @@ fatal. An unsigned fragment does not replace the data key in a signed
 record. ~check --digests~ against a snapshot from outside the change is the
 keyless detector.
 
+* Signer authority
+
+With ~signer = gpg~, the allowed signer set is the configured ~recipient~ plus
+every recipient named in any ~wrap~ rule. Any one of those keys can sign a
+record for any path in the vault. ~wrap~ scopes who can decrypt records, not
+who can sign which path.
+
+Email specs are matched as exact addresses (the ~<addr>~ form), but they still
+authorize every key in the keyring that carries that exact email. Signing
+uses ~--local-user~ with one secret key from that set, in config order.
+
 * Limits that stay
 
 - Filenames are hidden; counts, sizes and mtimes of blobs are not.
@@ -126,7 +137,8 @@ Still accepted:
   lines over 2000 characters, and dependency directories on a worktree walk.
 - ~--allow-unsigned~ reads a legacy unsigned manifest and writes an
   unadopted ~.vault/a/~ fragment. A fragment whose path matches a signed
-  record is refused either way.
+  record is refused either way. It accepts missing signatures from legacy
+  records, and it does not skip blob-hash verification.
 - Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
 - Key files stay unsigned.
 - Overwriting a file does not erase every copy a filesystem keeps.
@@ -145,4 +157,8 @@ Still accepted:
 - An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
   record are renamed in two steps. A crash between them leaves the new
   signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
-  write. A signing failure leaves the old pair in place.
+  write (~mv .vault/e/<id>.age.tmp .vault/e/<id>.age~), then ~nimvault seal~
+  refreshes signatures and hashes. A signing failure leaves the old pair in
+  place.
+- Per-glob signer scoping is not implemented. Any configured or wrap-rule
+  recipient key can sign records for any path.

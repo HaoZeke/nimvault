@@ -1,6 +1,6 @@
 ## GPG encryption/decryption and recipient resolution.
 
-import std/[os, osproc, strutils, strformat, streams]
+import std/[os, osproc, strutils, strformat, streams, sequtils]
 import checksums/sha2
 
 type
@@ -238,40 +238,114 @@ proc vaultSignerSpecs*(cfg: GpgConfig): seq[string] =
     for r in rule[idx + 1 .. ^1].split(','):
       keep(result, r)
 
-proc signerFingerprints*(specs: seq[string]): seq[string] =
-  ## Primary-key fingerprints, upper case, of every public key in the
-  ## keyring that one of `specs` names. A specifier that matches nothing
-  ## contributes nothing; one that matches several keys (an email shared by
-  ## two keys) contributes all of them, so a fingerprint is the strict form.
-  var args = @["--batch", "--no-options", "--with-colons", "--fingerprint",
-               "--list-keys", "--"]
-  let fixed = args.len
-  for s in specs:
+proc normalizeHexSpec(s: string): string =
+  var t = s.strip()
+  if t.len >= 2 and (t[0] == '0') and (t[1] in {'x', 'X'}):
+    t = t[2 .. ^1]
+  t.toUpperAscii()
+
+proc isHexSpec(s: string): bool =
+  let t = normalizeHexSpec(s)
+  if t.len < 8:
+    return false
+  for ch in t:
+    if ch notin {'0'..'9', 'A'..'F'}:
+      return false
+  true
+
+proc parseEmailSpec(s: string): string =
+  var t = s.strip()
+  if t.startsWith("<") and t.endsWith(">") and t.len > 2:
+    t = t[1 ..< t.len - 1].strip()
+  if t.len == 0 or '@' notin t:
+    return ""
+  if ' ' in t or '\t' in t:
+    return ""
+  t.toLowerAscii()
+
+proc uidEmail(uid: string): string =
+  let lo = uid.rfind('<')
+  if lo >= 0:
+    let hi = uid.find('>', lo + 1)
+    if hi > lo + 1:
+      return uid[lo + 1 ..< hi].strip().toLowerAscii()
+  let t = uid.strip()
+  if '@' in t and ' ' notin t and '\t' notin t:
+    return t.toLowerAscii()
+  ""
+
+type ListedKey = tuple[keyId, fpr: string, emails: seq[string]]
+
+proc parseListedKeys(listing: string): seq[ListedKey] =
+  var cur = -1
+  var needFpr = false
+  for line in listing.splitLines:
+    let fields = line.split(':')
+    if fields.len < 10:
+      continue
+    case fields[0]
+    of "pub", "sec":
+      result.add((fields[4].toUpperAscii(), "", @[]))
+      cur = result.high
+      needFpr = true
+    of "fpr":
+      if cur >= 0 and needFpr and fields[9].len > 0:
+        result[cur].fpr = fields[9].toUpperAscii()
+        needFpr = false
+    of "uid":
+      if cur >= 0 and fields[9].len > 0:
+        let email = uidEmail(fields[9])
+        if email.len > 0 and email notin result[cur].emails:
+          result[cur].emails.add(email)
+    else:
+      discard
+
+proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
+  ## Primary-key fingerprints, upper case, of every key in the keyring that one
+  ## of `specs` names. Email specs are exact (`<addr>`), and key IDs or
+  ## fingerprints are exact hex matches.
+  for raw in specs:
+    let s = raw.strip()
     if s.len == 0 or s[0] == '-' or '\n' in s or '\r' in s or '\0' in s:
       continue
-    args.add(s)
-  if args.len == fixed:
-    return
-  let p = startProcess("gpg", args = args, options = {poUsePath, poStdErrToStdOut})
-  let listing = p.outputStream.readAll()
-  discard p.waitForExit()
-  p.close()
-  var afterPub = false
-  for line in listing.splitLines:
-    if line.startsWith("pub:"):
-      afterPub = true
-    elif line.startsWith("fpr:") and afterPub:
-      let fields = line.split(':')
-      if fields.len > 9 and fields[9].len > 0:
-        let fpr = fields[9].toUpperAscii()
-        if fpr notin result:
-          result.add(fpr)
-      afterPub = false
-    elif not line.startsWith("fpr:"):
-      afterPub = false
+    let email = parseEmailSpec(s)
+    let hex = if email.len == 0 and isHexSpec(s): normalizeHexSpec(s) else: ""
+    let query = if email.len > 0: "<" & email & ">"
+                elif hex.len > 0: hex
+                else: s
+    var args = @["--batch", "--no-options", "--with-colons", "--fingerprint",
+                 (if secretOnly: "--list-secret-keys" else: "--list-keys"), "--",
+                 query]
+    let p = startProcess("gpg", args = args, options = {poUsePath, poStdErrToStdOut})
+    let listing = p.outputStream.readAll()
+    discard p.waitForExit()
+    p.close()
+    for key in parseListedKeys(listing):
+      let keyId = normalizeHexSpec(key.keyId)
+      let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
+      let ok =
+        if email.len > 0:
+          key.emails.anyIt(it == email)
+        elif hex.len > 0:
+          fpr == hex or keyId == hex or
+            (hex.len <= keyId.len and hex.len in [8, 16] and keyId.endsWith(hex))
+        else:
+          true
+      if ok and fpr.len > 0 and fpr notin result:
+        result.add(fpr)
 
 proc vaultSigners*(cfg: GpgConfig): seq[string] =
   signerFingerprints(vaultSignerSpecs(cfg))
+
+proc signingKey*(cfg: GpgConfig): string =
+  ## Pick an allowed signer key this machine can use, in config order.
+  let specs = vaultSignerSpecs(cfg)
+  for spec in specs:
+    let mine = signerFingerprints(@[spec], secretOnly = true)
+    if mine.len > 0:
+      return mine[0]
+  nvRaise("FATAL: no allowed secret key is available for signing.\n" &
+          "  Signers are the recipient and the wrap-rule recipients in .vault/config.")
 
 proc validSigners*(status: string): seq[string] =
   ## Primary-key fingerprint of each VALIDSIG line, upper case. gpg omits the
@@ -308,9 +382,11 @@ proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
      '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
     nvRaise("FATAL: invalid recipient")
+  let signer = signingKey(cfg)
   var args = @[
     "--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
     "--trust-model", "always",
+    "--local-user", signer,
     "--sign", "-e", "--recipient=" & cfg.recipient,
     "--set-filename", "", "-o", outPath, "--", inPath]
   pinentryInsert(args)
@@ -336,6 +412,10 @@ proc gpgVerdict*(status, path: string, code: int, verifySig: bool,
   if verifySig:
     return gpgSignerProblem(status, path, allowed)
   ""
+
+proc gpgNoSecretKey*(status: string): bool =
+  ## True when a GPG decrypt failure is specifically "no secret key".
+  gpgStatusHas(status, "NO_SECKEY") or ("no secret key" in status.toLowerAscii)
 
 proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path. With `verifySig` the

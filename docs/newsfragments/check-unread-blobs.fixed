@@ -1,0 +1,1 @@
+`check` does not report a blob as added when a signed record names it but this machine cannot open that record. The unopened count covers those records.

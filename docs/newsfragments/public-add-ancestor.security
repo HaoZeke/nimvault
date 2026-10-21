@@ -1,0 +1,1 @@
+Public-key add uses the same resolved-path boundary as add. A `~/` path whose real path leaves `$HOME` or the vault root is refused before an unsigned fragment is written.

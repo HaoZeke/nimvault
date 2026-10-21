@@ -236,7 +236,8 @@ proc recalledRecord(path: string): string =
 
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
                        verifySig = false): tuple[entries: seq[VaultEntry],
-                                                 deks: DekTable] =
+                                                 deks: DekTable,
+                                                 unread: int] =
   ## Union of every per-entry record this machine can open.
   let dir = entryDir(repo)
   if not dirExists(dir):
@@ -248,6 +249,12 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
     verifySig and ("signature verification failed" in msg or
                    "missing signature" in msg or
                    "signature required" in msg)
+  proc noSecretKey(msg: string): bool =
+    if cfg.usesAge:
+      let low = msg.toLowerAscii()
+      ("no identity matched" in low) or ("no identities matched" in low)
+    else:
+      gpgNoSecretKey(msg)
   var paths: seq[string] = @[]
   for kind, path in walkDir(dir):
     if kind != pcFile:
@@ -271,7 +278,10 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
     if err.len > 0:
       if sigFailure(err):
         nvRaise(err)
-      continue
+      if noSecretKey(err):
+        result.unread.inc
+        continue
+      nvRaise(err)
     rememberRecord(path, plain)
     let parsed = parseEntryPlain(plain)
     if parsed.ok:
@@ -435,7 +445,8 @@ proc loadAppendEntries(repo: string, cfg: GpgConfig): seq[VaultEntry] =
 proc loadManifestMeta*(repo: string, verifySig = false,
                        cfg = GpgConfig()): tuple[entries: seq[VaultEntry],
                                                  sealKey: string,
-                                                 envelope: bool] =
+                                                 envelope: bool,
+                                                 unopened: int] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
   ## Returns empty seq if no manifest exists.
@@ -453,6 +464,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   if sealed:
     let split = loadSplitEntries(repo, cfg, verifySig)
     result.entries = split.entries
+    result.unopened = split.unread
     result.envelope = true
     var seen = initHashSet[string]()
     for e in result.entries:
@@ -480,7 +492,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "", false)
+    return (@[], "", false, 0)
   verifyManifest(cfg, enc, verifySig)
   let plain = decryptToString(cfg, enc, verifySig)
   for line in plain.splitLines:
