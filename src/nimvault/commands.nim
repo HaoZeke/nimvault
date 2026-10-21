@@ -1453,25 +1453,28 @@ proc lockPlaintext*(repo: string, cfg: GpgConfig) =
   ## A modified file is refused: lock is not a way to discard unsealed edits.
   ## The blob has to match the record first. Otherwise the plaintext is the
   ## only remaining copy, and deleting it is not a lock.
+  ##
+  ## Records are verified as `unseal` verifies them: lock deletes the paths a
+  ## record names, so an unsigned record would choose what gets shredded.
+  ## Editor backups go only with an entry that is present and matches its
+  ## recorded hash; for any other entry the record is the sole evidence that
+  ## the backup is a copy of a vaulted file.
   let lk {.used.} = acquire(repo)
-  let entries = loadManifest(repo, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   if entries.len == 0:
     nvEcho("vault is empty")
     return
+  for e in entries:
+    if not isPathSafe(cfg, e.path):
+      stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
+      nvRaise("  Possible directory traversal attack.")
   var doomed: seq[string] = @[]
   for e in entries:
     let local = resolvePath(cfg, e.path)
-    let present = fileExists(local)
-    if present and (e.contentHash.len == 0 or sha256sum(local) != e.contentHash):
-      nvRaise(&"FATAL: {e.path} is modified; seal or restore it before lock")
-    var residue = false
-    if not present:
-      for extra in editorLeftovers(local):
-        if fileExists(extra) or symlinkExists(extra):
-          residue = true
-          break
-    if not present and not residue:
+    if not fileExists(local):
       continue
+    if e.contentHash.len == 0 or sha256sum(local) != e.contentHash:
+      nvRaise(&"FATAL: {e.path} is modified; seal or restore it before lock")
     let blob = resolveBlob(repo, cfg, e.id, e.hash)
     if e.hash.len == 0 or not fileExists(blob) or sha256sum(blob) != e.hash:
       nvRaise(&"FATAL: {e.path} has no intact blob; refusing to delete plaintext")
