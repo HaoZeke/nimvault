@@ -99,6 +99,13 @@ proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
   ## `createDir` would follow an ancestor and write the plaintext outside.
   assertAncestorsContained(cfg, repo, dest, "write")
 
+proc assertReadPath(cfg: GpgConfig, repo, src: string) =
+  ## Plaintext a record names is read only from inside the vault root (or
+  ## $HOME). A swapped directory or file symlink would otherwise put another
+  ## file's bytes into the blob that record vouches for.
+  assertAncestorsContained(cfg, repo, src, "read")
+  assertResolvedWithinBoundary(cfg, src)
+
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
   ## leading `!` is a negation, and `*` is a glob, so the written line is
@@ -466,6 +473,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     if not fileExists(src):
       stderr.writeLine &"FATAL: plaintext missing: {src}"
       nvRaise("  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry.")
+    assertReadPath(cfg, repo, src)
 
   let currentKey = sealKey(cfg)
   # No recorded key means a v4 or older manifest: seal everything once to
