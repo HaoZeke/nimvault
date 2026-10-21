@@ -345,18 +345,25 @@ proc decryptWithDekStream*(cfg: GpgConfig, dek, inPath: string,
     let identFile = work / "identity"
     writeFile(identFile, dek & "\n")
     setFilePermissions(identFile, {fpUserRead, fpUserWrite})
-    startProcess(ageBinary(),
+    result = startProcess(ageBinary(),
       args = @["-d", "-i", identFile, "--", inPath],
       options = {poUsePath})
   else:
-    let p = startProcess("gpg",
+    result = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
                "--passphrase-fd", "0", "--pinentry-mode", "loopback",
                "--", inPath],
       options = {poUsePath})
-    p.inputStream.write(dek & "\n")
-    p.inputStream.close()
-    p
+    # A gpg that exits before reading the key fails on its own; the caller
+    # still has to reap it, so a closed pipe is not raised from here.
+    try:
+      result.inputStream.write(dek & "\n")
+    except IOError, OSError:
+      discard
+    try:
+      result.inputStream.close()
+    except IOError, OSError:
+      discard
 
 proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
   ## Plaintext in memory. The data key for age still needs an identity file;

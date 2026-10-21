@@ -617,6 +617,109 @@ block unsealUsesDescriptorAnchoredStaging:
   removeDir(wrapBin)
   echo "PASS: unseal stages and renames under a stable directory descriptor"
 
+proc stagingFiles(dir: string): seq[string] =
+  for path in walkDirRec(dir, yieldFilter = {pcFile, pcLinkToFile}):
+    if path.extractFilename.startsWith(".nimvault-"):
+      result.add(path)
+
+block unsealRefusedSwapLeavesNoStagingFile:
+  ## Both entry directories are swapped for links out of the root while the
+  ## first entry decrypts. The second is refused. The first entry's staging
+  ## file sat in a directory that is now elsewhere, and a raise outside the
+  ## cleanup left it there with the plaintext in it.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let outside = createTempDir("nimvault_audit_", "_outside")
+  for d in ["a", "b"]:
+    createDir(r / d)
+    writeFile(r / d / "secret.txt", "swap-secret-" & d)
+    add(r, r / d / "secret.txt", c)
+  seal(r, c)
+  for d in ["a", "b"]:
+    removeFile(r / d / "secret.txt")
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let wrapper = wrapBin / "gpg"
+  writeFile(wrapper, payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  var swapCmd = ""
+  for d in ["a", "b"]:
+    let p = (r / d).quoteShell
+    swapCmd.add(&"mv {p} {(r / (d & \".moved\")).quoteShell} && " &
+                &"ln -s {outside.quoteShell} {p} && ")
+  swapCmd.add("true")
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+  var raised = false
+  try:
+    unseal(r, c)
+  except CatchableError:
+    raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_SWAP_CMD")
+    delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
+  doAssert raised, "unseal must refuse an entry whose directory now leaves the root"
+  doAssert stagingFiles(r).len == 0,
+    "a refused unseal must not leave staged plaintext: " & $stagingFiles(r)
+  doAssert stagingFiles(outside).len == 0
+  for kind, path in walkDir(outside):
+    doAssert false, "unseal wrote outside the root: " & path
+  removeDir(r)
+  removeDir(outside)
+  removeDir(wrapBin)
+  echo "PASS: a refused swap leaves no staging file"
+
+block directEntryIsStagedOnce:
+  ## A direct v5 entry was staged twice, once with the v6 entries and once
+  ## in its own batch, and the first file sat empty for the whole run.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let old = r / "old.txt"
+  writeFile(old, "staged-once")
+  createDir(r / ".vault")
+  let id = "5b5b5b5b5b5b5b5b"
+  let blob = crypto.blobPath(r, c, id)
+  encryptFile(c, old, blob)
+  saveManifest(r, @[(id, "old.txt", sha256sum(blob), ekFile, sha256sum(old))], c,
+               sealKey(c))
+  removeFile(old)
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let log = wrapBin / "staged.log"
+  writeFile(wrapBin / "gpg", """#!/bin/sh
+last=""
+for arg in "$@"; do last="$arg"; done
+case "$last" in
+  */.vault/e/*) ;;
+  */.vault/[0-9a-f]*.gpg)
+    ls -A """ & r.quoteShell & """ | grep -c '^\.nimvault-' >>""" & log.quoteShell & """ || true
+    ;;
+esac
+exec """ & findExe("gpg").quoteShell & """ "$@"
+""")
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    unseal(r, c)
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert readFile(old) == "staged-once"
+  var counts: seq[string] = @[]
+  for line in readFile(log).splitLines:
+    if line.len > 0:
+      counts.add(line)
+  doAssert counts.len > 0, "the wrapper never saw the payload decrypt"
+  for n in counts:
+    doAssert parseInt(n) <= 1,
+      "a direct entry must have one staging file at most: " & $counts
+  doAssert stagingFiles(r).len == 0
+  removeDir(r)
+  removeDir(wrapBin)
+  echo "PASS: a direct entry is staged once"
+
 block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
   let oldHome = getEnv("HOME")
   let base = createTempDir("nimvault_audit_", "_home")
@@ -1320,6 +1423,33 @@ block unsealWorksWithoutProc:
     doAssert getFilePermissions(r / "sub" / "a.txt") == {fpUserRead, fpUserWrite}
     removeDir(r)
     echo "PASS: unseal works with /proc hidden"
+
+block unsealUnderALowDescriptorLimit:
+  ## Every staged entry kept its directory open until the end of the run,
+  ## so a vault larger than the descriptor limit could not be unsealed.
+  let r = setupRepo()
+  createDir(r / ".vault")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+  let c = GpgConfig(recipient: keyId, root: r)
+  let tree = r / "tree"
+  for i in 0 ..< 80:
+    createDir(tree / &"d{i:02}")
+    writeFile(tree / &"d{i:02}" / "f.txt", &"fd-limit-{i}")
+  addDir(r, tree, c)
+  seal(r, c)
+  removeDir(tree)
+  let p = startProcess("/bin/sh", workingDir = r,
+    args = @["-c", "ulimit -n 64 && exec " & cliExe().quoteShell & " unseal"],
+    options = {poStdErrToStdOut})
+  let outp = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  doAssert code == 0, "unseal must restore 80 entries under ulimit -n 64:\n" & outp
+  for i in 0 ..< 80:
+    doAssert readFile(tree / &"d{i:02}" / "f.txt") == &"fd-limit-{i}"
+  doAssert stagingFiles(r).len == 0, $stagingFiles(r)
+  removeDir(r)
+  echo "PASS: unseal restores 80 entries under ulimit -n 64"
 
 block corruptRecordFailsCheckAndUnseal:
   ## A record this machine should be able to decrypt must not be skipped when
