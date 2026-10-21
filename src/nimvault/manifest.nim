@@ -164,8 +164,9 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
     result.ok = false
 
 var recordCache {.threadvar.}: Table[string, tuple[cipherHash, plain: string]]
-  ## Plaintext of split records this process decrypted, by path, with the
-  ## ciphertext digest seen at read time. A record rewritten since is read
+  ## Plaintext of split records this process decrypted, by path, keyed by the
+  ## digest of the exact ciphertext bytes copied into the decrypt snapshot.
+  ## When live bytes move, the cache entry is ignored and the record is read
   ## again.
 
 proc recordCipherHash(path: string): string =
@@ -175,14 +176,13 @@ proc recordCipherHash(path: string): string =
   except CatchableError:
     ""
 
-proc rememberRecord(path, plain: string) =
-  let digest = recordCipherHash(path)
+proc rememberRecord(path, digest, plain: string) =
   if digest.len > 0:
     recordCache[path] = (digest, plain)
 
 proc recalledRecord(path: string): string =
-  ## The cached plaintext of `path` when its ciphertext bytes still match what
-  ## this process verified and decrypted; empty otherwise.
+  ## The cached plaintext of `path` when live ciphertext still hashes to the
+  ## digest of the bytes this process verified and decrypted; empty otherwise.
   if not recordCache.hasKey(path):
     return ""
   let (digest, plain) = recordCache[path]
@@ -225,8 +225,11 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
     let snapSig = snap & ".sig"
     var plain = ""
     var err = ""
+    var digest = ""
     try:
-      writeFile(snap, readFile(path))
+      let cipher = readFile(path)
+      digest = sha256sumBytes(cipher)
+      writeFile(snap, cipher)
       let sig = path & ".sig"
       if fileExists(sig):
         writeFile(snapSig, readFile(sig))
@@ -246,7 +249,7 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
         result.unread.inc
         continue
       nvRaise(err)
-    rememberRecord(path, plain)
+    rememberRecord(path, digest, plain)
     let parsed = parseEntryPlain(plain)
     if parsed.ok:
       result.entries.add(parsed.entry)
@@ -273,7 +276,7 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   finally:
     discardPrivate(work)
   publishSigned(cfg, tmp, dest)
-  rememberRecord(dest, content)
+  rememberRecord(dest, recordCipherHash(dest), content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =

@@ -1,0 +1,3 @@
+loadSplitEntries now binds cached record plaintext to the hash of the exact
+ciphertext bytes copied into the decrypt snapshot, so a swapped live record
+cannot be treated as unchanged.
