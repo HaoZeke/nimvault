@@ -1,4 +1,4 @@
-With no `root`, `unseal` now re-walks each destination parent from the `$HOME`
-boundary path both before and after `renameat`. If the parent moved or now
-resolves outside the boundary after placement, the plaintext is overwritten
-through its descriptor and unlinked, and that entry fails.
+With no `root`, `unseal` re-walks each destination parent from the `$HOME`
+boundary path immediately before and after `renameat`. If the parent moved or
+resolves outside the boundary at those checks, the plaintext is overwritten
+through its descriptor, unlinked, and that entry fails.
