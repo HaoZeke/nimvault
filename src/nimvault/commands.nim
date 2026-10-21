@@ -309,6 +309,9 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     nvRaise(acc.strip())
 
   # Verify all decryption results and signatures
+  let signers = if requireSig and cfg.signaturesInBand and direct.len > 0:
+                  vaultSigners(cfg)
+                else: @[]
   for r in results:
     if r.code != 0:
       abortUnseal(&"FATAL: failed to unseal {r.entry.path}", r.status)
@@ -327,6 +330,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
        not gpgStatusHas(r.status, "GOODSIG"):
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
+    if cfg.signaturesInBand and not r.enveloped and requireSig:
+      let problem = gpgSignerProblem(r.status, r.entry.path, signers)
+      if problem.len > 0:
+        abortUnseal(problem)
 
   # All verified: rename temps onto the final paths. Same directory, so this
   # does not fall back to a copy that follows a symlink.

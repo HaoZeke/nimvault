@@ -348,7 +348,8 @@ See the [[file:../howto/private-vault-repo.org][private vault repository how-to]
 All encryption operations also GPG-sign the payload. On ~unseal~, signatures and
 blob hashes are verified before any plaintext is written to disk:
 
-1. Manifest signature is checked during decryption
+1. Manifest signature is checked during decryption, and must come from a key
+   the config names (see [[file:config.org][configuration]])
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
 4. Blobs are decrypted to temporary files

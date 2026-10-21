@@ -389,7 +389,7 @@ block gpgOperandDashDash:
     let outp = tmp / "out.gpg"
     gpgEncrypt(cfg, "--version", outp)
     let back = tmp / "back.txt"
-    gpgDecrypt(outp, back, verifySig = true)
+    gpgDecrypt(cfg, outp, back, verifySig = true)
     doAssert readFile(back) == "operand-secret"
   finally:
     setCurrentDir(cwd)
@@ -660,6 +660,101 @@ block movedLockDoesNotCloseStdin:
   doAssert fcntl(0.cint, F_GETFD) != -1, "moving a vault lock must not close stdin"
   removeDir(r)
   echo "PASS: moving a vault lock does not close stdin"
+
+proc genKey(home, name, email: string): string =
+  let script = home / (name & ".keygen")
+  writeFile(script, &"""
+%no-protection
+Key-Type: RSA
+Key-Length: 2048
+Subkey-Type: RSA
+Subkey-Length: 2048
+Name-Real: {name}
+Name-Email: {email}
+Expire-Date: 0
+%commit
+""")
+  let (output, code) = execCmdEx(&"gpg --batch --gen-key {script.quoteShell}")
+  doAssert code == 0, output
+  let (listed, lcode) = execCmdEx(
+    &"gpg --list-keys --keyid-format long --with-colons {email}")
+  doAssert lcode == 0, listed
+  for line in listed.splitLines:
+    if line.startsWith("pub:"):
+      return line.split(':')[4]
+  doAssert false, "no key id for " & email
+
+block recordSignedByAnotherKeyIsRefused:
+  ## GOODSIG only says some key in the keyring signed. A record signed by a
+  ## key the vault is not configured for must not be trusted.
+  let home = createTempDir("nimvault_audit_", "_twokeys")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let real = r / "real.txt"
+    writeFile(real, "real-secret")
+    add(r, real, c)
+    seal(r, c)
+    doAssert get(r, real, c) == "real-secret", "the vault's own records verify"
+
+    let id = "cccccccccccccccc"
+    let work = createTempDir("nimvault_audit_", "_forge")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-other-key")
+    let key = newDek(c)
+    let blob = crypto.blobPath(r, c, id)
+    encryptWithDek(c, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    let rec = entryFile(r, c, id)
+    let (signed, scode) = execCmdEx("gpg --batch --yes --quiet --no-options " &
+      "--trust-model always --local-user " & otherKey.quoteShell &
+      " --sign -e --recipient=" & vaultKey.quoteShell &
+      " --set-filename '' -o " & rec.quoteShell & " -- " & plain.quoteShell)
+    doAssert scode == 0, signed
+    let (status, _) = execCmdEx("gpg --batch --status-fd 1 -d -o /dev/null -- " &
+                                rec.quoteShell)
+    doAssert "[GNUPG:] GOODSIG" in status,
+      "the forged record carries a good signature from the other key"
+    removeDir(work)
+
+    let planted = r / "planted.txt"
+    var raised = false
+    try:
+      unseal(r, c)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal must refuse a record signed by an unconfigured key"
+    doAssert not fileExists(planted), "unseal must not write the planted file"
+    raised = false
+    try:
+      discard get(r, planted, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get must refuse a record signed by an unconfigured key"
+    raised = false
+    try:
+      discard get(r, real, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get must refuse while any record has a foreign signer"
+
+    var both = c
+    both.wraps = @[&"**:{vaultKey},{otherKey}"]
+    doAssert get(r, planted, both) == "planted-by-other-key",
+      "a key named in a wrap rule is a configured signer"
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: a record signed by an unconfigured key is refused"
 
 removeDir(creds.home)
 delEnv("GNUPGHOME")
