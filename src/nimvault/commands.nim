@@ -64,36 +64,40 @@ proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
   if not insideBase(base, real):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
-proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
-  ## Refuse a directory symlink that resolves outside the vault root (or
-  ## $HOME). The final path may itself be a symlink: `rename` replaces it.
-  ## `createDir` would follow an ancestor and write the plaintext outside.
-  if not isPathSafe(cfg, storePath(cfg, dest, repo)):
-    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
-  let base = boundaryBase(cfg, dest)
+proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
+  ## Refuse a directory symlink above `path` that resolves outside the vault
+  ## root (or $HOME). The final component is the caller's to judge.
+  if not isPathSafe(cfg, storePath(cfg, path, repo)):
+    nvRaise(&"FATAL: refusing to {verb} outside the vault root: {path}")
+  let base = boundaryBase(cfg, path)
   if base.len == 0:
     return
-  if not insideBase(base, dest):
-    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
-  let parent = dest.parentDir
+  if not insideBase(base, path):
+    nvRaise(&"FATAL: refusing to {verb} outside the vault root: {path}")
+  let parent = path.parentDir
   if parent.len == 0:
     return
   let rel = relativePath(parent, base)
   if rel.startsWith(".."):
-    nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+    nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
   var acc = base
   for part in rel.split(DirSep):
     if part.len == 0 or part == ".":
       continue
     if part == "..":
-      nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+      nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     acc = acc / part
     if symlinkExists(acc):
       let real = expandFilename(acc)
       if not insideBase(base, real):
-        nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+        nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     elif not dirExists(acc):
       break
+
+proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
+  ## The final path may itself be a symlink: `rename` replaces it.
+  ## `createDir` would follow an ancestor and write the plaintext outside.
+  assertAncestorsContained(cfg, repo, dest, "write")
 
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
@@ -812,6 +816,9 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   else:
     expandHome(newPath)
 
+  # `rename` follows a directory symlink above the source as readily as one
+  # above the destination, and would move a file from outside the root.
+  assertAncestorsContained(cfg, repo, oldAbs, "move")
   let newStored = storePath(cfg, newAbs, repo)
   if not isPathSafe(cfg, newStored):
     nvRaise(&"FATAL: refusing path outside the vault root: {newAbs}")

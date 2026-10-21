@@ -364,6 +364,70 @@ block mvDoesNotCopyThroughSymlinkAcrossFilesystems:
       removeDir(shm)
     echo "PASS: cross-device mv does not copy through a destination symlink"
 
+block mvRefusesSourceUnderSymlinkedAncestor:
+  ## `rename` follows a directory symlink above the source. With the entry's
+  ## directory swapped for a link out of the root, mv would pull the outside
+  ## file into the vault's tree and remove it from where it was.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "nested")
+  let src = r / "nested" / "secret.txt"
+  writeFile(src, "in-root")
+  add(r, src, c)
+  seal(r, c)
+  removeFile(src)
+  removeDir(r / "nested")
+  let outside = createTempDir("nimvault_audit_", "_mvsrc")
+  writeFile(outside / "secret.txt", "outside-bytes")
+  createSymlink(outside, r / "nested")
+  let dst = r / "moved.txt"
+  var raised = false
+  try:
+    move(r, src, dst, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "mv must refuse a source reached through a symlink out of the root"
+  doAssert readFile(outside / "secret.txt") == "outside-bytes",
+    "mv must leave the outside file where it is"
+  doAssert not fileExists(dst), "mv must not place the outside file in the root"
+  removeDir(outside)
+  removeDir(r)
+  echo "PASS: mv refuses a source under a symlinked ancestor"
+
+block mvRefusesSourceUnderSymlinkedAncestorWithoutRoot:
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  let outside = base / "outside"
+  createDir(home)
+  createDir(outside)
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    createDir(home / "nested")
+    writeFile(home / "nested" / "secret.txt", "in-home")
+    add(r, "~/nested/secret.txt", c)
+    seal(r, c)
+    removeFile(home / "nested" / "secret.txt")
+    removeDir(home / "nested")
+    writeFile(outside / "secret.txt", "outside-bytes")
+    createSymlink(outside, home / "nested")
+    var raised = false
+    try:
+      move(r, "~/nested/secret.txt", "~/moved.txt", c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "mv must refuse a source reached through a symlink out of HOME"
+    doAssert readFile(outside / "secret.txt") == "outside-bytes",
+      "mv must leave the file outside HOME where it is"
+    doAssert not fileExists(home / "moved.txt")
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: mv refuses a source under a symlinked ancestor without root"
+
 block addRefusesSymlink:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
