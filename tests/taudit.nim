@@ -47,6 +47,7 @@ proc setupRepo(): string =
 
 proc genKey(home, name, email: string): string
 proc cliExe(): string
+proc runCli(dir: string, args: seq[string]): tuple[outp: string, code: int]
 
 proc gitCode(repo: string, args: seq[string]): int =
   let p = startProcess("git", args = @["-C", repo] & args,
@@ -1392,21 +1393,42 @@ block moveRefusesUnsignedLegacyDek:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let legacy = r / "legacy.txt"
+  let renamed = r / "renamed.txt"
   writeFile(legacy, "legacy")
   add(r, legacy, c)
   seal(r, c)
   let entry = loadManifest(r, cfg = c)[0]
   saveEntryRecord(r, c, entry, "")
   plantUnsignedDekFile(r, c, entry.id, repeat('e', 64))
-  var raised = false
+  let oldRecipient = getEnv("NIMVAULT_GPG_RECIPIENT")
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  var got: tuple[outp: string, code: int]
+  var checked: tuple[outp: string, code: int]
   try:
-    move(r, legacy, r / "renamed.txt", c)
-  except CatchableError as e:
-    raised = true
-    doAssert "seal --force" in e.msg, e.msg
-  doAssert raised, "move must refuse key-file-only legacy DEKs"
+    got = runCli(r, @["mv", "legacy.txt", "renamed.txt"])
+    checked = runCli(r, @["check"])
+  finally:
+    if oldRecipient.len > 0:
+      putEnv("NIMVAULT_GPG_RECIPIENT", oldRecipient)
+    else:
+      delEnv("NIMVAULT_GPG_RECIPIENT")
+  doAssert got.code != 0, "move must refuse key-file-only legacy DEKs"
+  doAssert "nimvault seal --force" in got.outp, got.outp
+  doAssert fileExists(legacy), "a refused move must keep plaintext at old path"
+  doAssert not fileExists(renamed), "a refused move must not create new path"
+  doAssert loadManifest(r, cfg = c)[0].path == "legacy.txt",
+    "a refused move must not rewrite the record path"
+  doAssert checked.code == 0,
+    "a refused move should leave the vault consistent"
   doAssert signedRecordDek(r, c, entry.id).len == 0,
     "move must not sign an unsigned legacy DEK"
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  let recovered = runCli(r, @["seal", "--force"])
+  if oldRecipient.len > 0:
+    putEnv("NIMVAULT_GPG_RECIPIENT", oldRecipient)
+  else:
+    delEnv("NIMVAULT_GPG_RECIPIENT")
+  doAssert recovered.code == 0, recovered.outp
   removeDir(r)
   echo "PASS: move refuses unsigned legacy DEKs"
 
