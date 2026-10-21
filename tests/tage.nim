@@ -5,7 +5,7 @@
 ## test that quietly does nothing is worse than one that is not there.
 
 import std/[os, osproc, strutils, strformat, tempfiles]
-import nimvault/[gpg, manifest, commands, crypto]
+import nimvault/[gpg, manifest, commands, crypto, dek]
 
 proc have(bin: string): bool = findExe(bin).len > 0
 
@@ -208,6 +208,69 @@ block allowUnsignedStillVerifiesAPresentSshSignature:
   doAssert readFile(f).strip() == "age-flag", "the flag accepts a missing signature"
   removeDir(dir)
   echo "PASS: age --allow-unsigned verifies a detached signature that is present"
+
+block ageWithAGpgSignerIsRefused:
+  ## gpg signs only what it encrypts, so `signer = gpg` on an age vault signed
+  ## and verified nothing. With that one config line, an unsigned record built
+  ## from the public recipient went through a plain unseal.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-honest")
+  add(dir, f, c)
+  seal(dir, c)
+  let id = "fefefefefefefefe"
+  let scratch = createTempDir("nimvault_age_", "_forge")
+  let payload = scratch / "payload"
+  writeFile(payload, "planted")
+  let key = newDek(c)
+  let blob = crypto.blobPath(dir, c, id)
+  encryptWithDek(c, key, payload, blob)
+  let plain = scratch / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+  encryptFileTo(c, @[c.recipient], plain, entryFile(dir, c, id), sign = false)
+  removeDir(scratch)
+
+  let config = readFile(dir / ".vault" / "config")
+  proc loadError(text: string): string =
+    writeFile(dir / ".vault" / "config", text)
+    try:
+      discard initGpgConfig("", dir)
+    except CatchableError as e:
+      return e.msg
+  doAssert "signer = gpg does not sign an age vault" in
+    loadError(config.replace("signer = ssh", "signer = gpg"))
+  doAssert "unknown signer" in loadError(config.replace("signer = ssh", "signer = sshh"))
+  doAssert "unknown backend" in loadError(config.replace("backend = age", "backend = agee"))
+  doAssert loadError(config.replace("signer = ssh", "signer = none")) == ""
+  writeFile(dir / ".vault" / "config", config)
+
+  var bypass = c
+  bypass.signer = "gpg"
+  removeFile(f)
+  var msg = ""
+  try:
+    unseal(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg,
+    "an age vault with signer = gpg unsealed: " & msg
+  doAssert not fileExists(dir / "planted.txt") and not fileExists(f)
+  msg = ""
+  try:
+    check(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg, "check passed: " & msg
+  writeFile(f, "age-edit")
+  msg = ""
+  try:
+    seal(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg, "seal wrote an unsigned record: " & msg
+  removeDir(dir)
+  echo "PASS: an age vault refuses signer = gpg"
 
 removeDir(work)
 echo "All age backend tests passed."
