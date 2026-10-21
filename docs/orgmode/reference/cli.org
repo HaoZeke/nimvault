@@ -163,7 +163,9 @@ is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.
 
 A symlink at either path is refused, and so is a directory symlink above
-either path that resolves outside ~$HOME~ or ~root~.
+either path that resolves outside ~$HOME~ or ~root~. Across filesystems the
+file is copied beside the new path, owner-only, given the source's mode, and
+renamed into place.
 
 ** get
 

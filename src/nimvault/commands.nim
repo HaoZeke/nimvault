@@ -797,8 +797,16 @@ proc safeMovePath(oldAbs, newAbs: string) =
     return
   if posix.errno != posix.EXDEV:
     nvRaise(&"FATAL: could not move {oldAbs} -> {newAbs}")
+  # `copyFile` creates the copy with the process umask, which left a 0600
+  # secret 0644. Create it owner-only, then give it the source's mode.
   let tmp = newAbs.parentDir / (".nimvault-mv-" & genId() & ".tmp")
-  copyFile(oldAbs, tmp)
+  try:
+    withPrivateUmask:
+      copyFile(oldAbs, tmp)
+    setFilePermissions(tmp, getFilePermissions(oldAbs))
+  except CatchableError:
+    shredFile(tmp)
+    raise
   renameOver(tmp, newAbs)
   removeFile(oldAbs)
 

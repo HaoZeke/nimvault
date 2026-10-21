@@ -1,0 +1,1 @@
+A cross-filesystem `mv` keeps the source's mode. The copy fallback created the new file with the process umask, so a 0600 secret arrived 0644 and readable by other local users.
