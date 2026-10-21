@@ -527,6 +527,37 @@ block scanRevSeesSecretRemovedLater:
   removeDir(r)
   echo "PASS: scan --rev sees a secret that the tip no longer has"
 
+block scanGitSeesOddNames:
+  ## git hands these names over NUL-separated and they reach git again as
+  ## `<rev>:<name>`, so neither a leading dash nor a newline is an option.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  for name in ["-leak.txt", "new\nline.txt"]:
+    let (baseRaw, bcode) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert bcode == 0, baseRaw
+    writeFile(r / name, "sk-ant-" & repeat('E', 30))
+    doAssert gitCode(r, @["add", "--", name]) == 0
+    var raised = false
+    try:
+      scanCached(r, c, r)
+    except CatchableError as e:
+      raised = true
+      doAssert "sk-ant-" notin e.msg
+    doAssert raised, "scan --cached must see a staged " & name.escape
+    doAssert gitCode(r, @["commit", "-q", "-m", "odd name"]) == 0
+    let (headRaw, hcode) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert hcode == 0, headRaw
+    raised = false
+    try:
+      scanRev(r, c, r, baseRaw.strip() & ".." & headRaw.strip())
+    except CatchableError:
+      raised = true
+    doAssert raised, "scan --rev must see a committed " & name.escape
+    doAssert gitCode(r, @["rm", "-q", "--", name]) == 0
+    doAssert gitCode(r, @["commit", "-q", "-m", "drop odd name"]) == 0
+  removeDir(r)
+  echo "PASS: scan --cached and --rev see names with a dash or a newline"
+
 block hookScansIndexAndPushedCommits:
   let r = setupRepo()
   installHooks(r)
