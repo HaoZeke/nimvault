@@ -68,6 +68,15 @@ Whitespace around the ~=~ is ignored. Recognized keys:
 - ~allowed_signers~ :: SSH allowed-signers file used to verify that signature.
 - ~signer_identity~ :: Principal to match inside ~allowed_signers~.
 
+** The config is trusted as written
+
+~.vault/config~ is plaintext, committed and unsigned. The ~recipient~ and
+~wrap~ lines decide who may sign records and who the next ~seal~ encrypts to;
+~allowed_signers~ and ~signer_identity~ decide whose ssh signature verifies.
+Whoever can change the file can change who may sign and who can read. Review
+a diff to it as you would review code, before the next ~unseal~ or ~seal~.
+See the [[file:../explanation/threat-model.org][threat model]].
+
 * Per-path recipients
 
 Not every machine should read every secret. A ~wrap~ rule maps a path pattern
@@ -151,6 +160,11 @@ This signer set is vault-wide. Any configured recipient (base ~recipient~ or a
 recipient listed in any ~wrap~ rule) can sign records for any path in the
 vault. ~wrap~ controls *decryption scope* only; it does not scope who may sign
 which path. Per-glob signer scoping is a known limit.
+
+So a key named only in a ~wrap~ rule can write every path. In the example
+above, the build box can sign a record for =~/.bashrc= or
+=~/.ssh/authorized_keys=, and the laptop writes it on the next ~unseal~. Name
+a machine in a ~wrap~ rule only if you would let it write those files.
 
 An email spec is matched as an exact address (~<user@example.com>~), and
 matches every key in the keyring that carries that exact email. Use a
