@@ -1743,6 +1743,68 @@ block allowUnsignedRefusesAnUnconfiguredBlobSigner:
     removeDir(home)
   echo "PASS: --allow-unsigned refuses a v5 blob signed by an unconfigured key"
 
+block nameSpecifierIsRefused:
+  ## A spec that is neither an email nor hex went to gpg as a substring, so
+  ## `recipient = Alice` let a record signed by Malice through a plain unseal.
+  let home = createTempDir("nimvault_audit_", "_names")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let alice = genKey(home, "Alice", "alice@example.com")
+    let malice = genKey(home, "Malice", "malice@example.com")
+    doAssert signerFingerprints(@["Alice"]).len == 0,
+      "a name matched keys by substring: " & $signerFingerprints(@["Alice"])
+    let honest = GpgConfig(recipient: alice, root: r)
+    writeFile(r / "real.txt", "real-secret")
+    add(r, r / "real.txt", honest)
+    seal(r, honest)
+    let id = "abababababababab"
+    let work = createTempDir("nimvault_audit_", "_forge-name")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-malice")
+    let key = newDek(honest)
+    let blob = crypto.blobPath(r, honest, id)
+    encryptWithDek(honest, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    gpgSignEncrypt(malice, alice, plain, entryFile(r, honest, id))
+    removeDir(work)
+    var msg = ""
+    try:
+      unseal(r, GpgConfig(recipient: "Alice", root: r))
+    except CatchableError as e:
+      msg = e.msg
+    doAssert "signature verification failed" in msg,
+      "recipient Alice accepted a record signed by Malice: " & msg
+    doAssert not fileExists(r / "planted.txt")
+
+    createDir(r / ".vault")
+    proc loadError(config, cli: string): string =
+      writeFile(r / ".vault" / "config", config)
+      try:
+        discard initGpgConfig(cli, r)
+      except CatchableError as e:
+        return e.msg
+    for (config, cli) in [("recipient = Alice\n", ""),
+                          ("recipient = alice@example.com\nwrap = **:Alice\n", ""),
+                          (&"recipient = {alice}\nwrap = **:{malice},Alice\n", ""),
+                          ("recipient = alice@example.com\n", "Alice")]:
+      let err = loadError(config, cli)
+      doAssert "`Alice` does not name one key" in err,
+        "config loaded with a name spec: " & config & " / " & cli & ": " & err
+    for config in ["recipient = alice@example.com\n",
+                   "recipient = <alice@example.com>\n",
+                   &"recipient = {alice}\nwrap = **:0x{malice}\n"]:
+      doAssert loadError(config, "") == "", config
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: a recipient that is not an email or key ID is refused"
+
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."

@@ -87,6 +87,8 @@ proc resolveRecipient*(cli, env, configRecipient: string): string =
     return configRecipient
   nvRaise("FATAL: no GPG recipient found. Set via --recipient, NIMVAULT_GPG_RECIPIENT env, or .vault/config")
 
+proc checkGpgConfig(cfg: GpgConfig)
+
 proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
   ## Build a GpgConfig by resolving recipient and root from the 3-tier chain.
   let configPath = repo / ".vault" / "config"
@@ -130,6 +132,7 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
     signerIdentity: c.signerIdentity,
     wraps: c.wraps,
   )
+  checkGpgConfig(result)
 
 proc gpgStatusHas*(status, token: string): bool =
   ## True when a `[GNUPG:] TOKEN` field is present. A UID that happens
@@ -230,9 +233,9 @@ proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
       continue
     let email = parseEmailSpec(s)
     let hex = if email.len == 0 and isHexSpec(s): normalizeHexSpec(s) else: ""
-    let query = if email.len > 0: "<" & email & ">"
-                elif hex.len > 0: hex
-                else: s
+    if email.len == 0 and hex.len == 0:
+      continue
+    let query = if email.len > 0: "<" & email & ">" else: hex
     var args = @["--batch", "--no-options", "--with-colons", "--fingerprint",
                  (if secretOnly: "--list-secret-keys" else: "--list-keys"), "--",
                  query]
@@ -246,16 +249,27 @@ proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
       let ok =
         if email.len > 0:
           key.emails.anyIt(it == email)
-        elif hex.len > 0:
+        else:
           fpr == hex or keyId == hex or
             (hex.len <= keyId.len and hex.len in [8, 16] and keyId.endsWith(hex))
-        else:
-          true
       if ok and fpr.len > 0 and fpr notin result:
         result.add(fpr)
 
 proc vaultSigners*(cfg: GpgConfig): seq[string] =
   signerFingerprints(vaultSignerSpecs(cfg))
+
+proc exactKeySpec(s: string): bool =
+  ## An email address, key ID or fingerprint. gpg matches any other string
+  ## anywhere in a user ID, so `Alice` also names `Malice <malice@...>`.
+  parseEmailSpec(s).len > 0 or isHexSpec(s)
+
+proc checkGpgConfig(cfg: GpgConfig) =
+  if cfg.backend == "gpg":
+    for spec in vaultSignerSpecs(cfg):
+      if not exactKeySpec(spec):
+        nvRaise(&"FATAL: recipient `{spec}` does not name one key.\n" &
+                "  Use an email address, a key ID or a fingerprint. gpg " &
+                "matches any other string anywhere in a user ID.")
 
 proc signingKey*(cfg: GpgConfig): string =
   ## Pick an allowed signer key this machine can use, in config order.

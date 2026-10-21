@@ -71,12 +71,12 @@ Not every machine should read every secret. A ~wrap~ rule maps a path pattern
 to the recipients allowed to open those entries:
 
 #+begin_src ini
-recipient = LAPTOPKEY
+recipient = laptop@example.com
 
 # Specific rules first: the first match decides.
-wrap = ~/.ssh/**:LAPTOPKEY
-wrap = ~/.gnupg/**:LAPTOPKEY
-wrap = **:LAPTOPKEY,BUILDBOXKEY
+wrap = ~/.ssh/**:laptop@example.com
+wrap = ~/.gnupg/**:laptop@example.com
+wrap = **:laptop@example.com,buildbox@example.com
 #+end_src
 
 Order in the file is precedence, so the narrow rules go above the general one.
@@ -122,11 +122,17 @@ threshold scheme or any additional machinery.
 
 * GPG key ID
 
-The recipient value is any string GPG accepts as a recipient identifier:
+The recipient, and each recipient in a ~wrap~ rule, must name a key
+exactly:
 
 - Long key ID: ~9CCCE36402CB49A6~
 - Fingerprint: ~ABCD1234...~
-- Email: ~user@example.com~
+- Email: ~user@example.com~ or ~<user@example.com>~
+
+Any other string, such as a name, is refused when the config loads, whether
+it comes from ~.vault/config~, ~--recipient~ or ~NIMVAULT_GPG_RECIPIENT~. gpg
+matches such a string anywhere in a user ID, so ~Alice~ also names
+~Malice <malice@example.com>~, and that key could then sign records.
 
 Long key IDs are recommended for unambiguous matching.
 
