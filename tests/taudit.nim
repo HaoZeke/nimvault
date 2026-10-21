@@ -672,6 +672,60 @@ block unsealRefusedSwapLeavesNoStagingFile:
   removeDir(wrapBin)
   echo "PASS: a refused swap leaves no staging file"
 
+block unsealWithoutRootStaysInHomeAfterASwap:
+  ## With no root the boundary is $HOME. It was taken from the parent as
+  ## resolved at staging time, so a parent swapped for a link out of $HOME
+  ## after the checks gave no boundary at all, and the plaintext went there.
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  let outside = base / "outside"
+  createDir(home)
+  createDir(outside)
+  let r = setupRepo()
+  putEnv("HOME", home)
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let oldPath = getEnv("PATH")
+  var raised = false
+  try:
+    let c = GpgConfig(recipient: keyId)
+    for d in ["a", "b"]:
+      createDir(home / d)
+      writeFile(home / d / "secret.txt", "home-secret-" & d)
+      add(r, &"~/{d}/secret.txt", c)
+    seal(r, c)
+    for d in ["a", "b"]:
+      removeFile(home / d / "secret.txt")
+    writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+    setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+    var swapCmd = ""
+    for d in ["a", "b"]:
+      let p = (home / d).quoteShell
+      swapCmd.add(&"mv {p} {(home / (d & \".moved\")).quoteShell} && " &
+                  &"ln -s {outside.quoteShell} {p} && ")
+    swapCmd.add("true")
+    putEnv("PATH", wrapBin & ":" & oldPath)
+    putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+    putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_SWAP_CMD")
+    delEnv("NIMVAULT_SWAP_MARKER")
+    putEnv("HOME", oldHome)
+  doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
+  doAssert raised, "unseal must refuse a parent swapped out of HOME"
+  for kind, path in walkDir(outside):
+    doAssert false, "unseal wrote outside HOME: " & path
+  doAssert stagingFiles(home).len == 0, $stagingFiles(home)
+  removeDir(r)
+  removeDir(base)
+  removeDir(wrapBin)
+  echo "PASS: unseal without root stays in HOME after a parent swap"
+
 block directEntryIsStagedOnce:
   ## A direct v5 entry was staged twice, once with the v6 entries and once
   ## in its own batch, and the first file sat empty for the whole run.
