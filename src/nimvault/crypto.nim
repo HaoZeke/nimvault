@@ -226,15 +226,16 @@ proc decryptFile*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   if cfg.usesAge: ageDecrypt(cfg, inPath, outPath)
   else: gpgDecrypt(cfg, inPath, outPath, verifySig)
 
-proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false): string =
+proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                      checkPresent = false): string =
   if cfg.usesAge: ageDecryptToString(cfg, inPath)
-  else: gpgDecryptToString(cfg, inPath, verifySig)
+  else: gpgDecryptToString(cfg, inPath, verifySig, checkPresent)
 
 type Decrypted* = tuple[plain, err: string]
   ## One file's plaintext, or the message `decryptToString` would have raised.
 
 proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
-                          verifySig = false): seq[Decrypted] =
+                          verifySig = false, checkPresent = false): seq[Decrypted] =
   ## `decryptToString` over many small files, in the same order, with no
   ## raise: each failure comes back as its message. gpg runs
   ## `gpgParallelism()` processes at a time; a vault of a few hundred split
@@ -250,7 +251,7 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
         result[i] = ("", err.msg)
     return
   let batch = gpgParallelism()
-  let allowed = if verifySig: vaultSigners(cfg) else: @[]
+  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
   for start in countup(0, paths.high, batch):
     let stop = min(start + batch - 1, paths.high)
     var procs: seq[(int, Process)] = @[]
@@ -263,7 +264,8 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
       let status = p.errorStream.readAll()
       let code = p.waitForExit()
       p.close()
-      let problem = gpgVerdict(status, paths[i], code, verifySig, allowed)
+      let problem = gpgVerdict(status, paths[i], code, verifySig, allowed,
+                               checkPresent)
       result[i] = if problem.len > 0: ("", problem) else: (plain, "")
 
 proc effectiveSigner*(cfg: GpgConfig): string =
@@ -306,8 +308,13 @@ proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
   moveFile(tmp, dest)
   syncParentDir(dest)
 
-proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool) =
+proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
+                     checkPresent = false) =
+  ## `checkPresent` (`--allow-unsigned`) lets a missing detached signature
+  ## pass and still verifies one that is there.
   if not requireSig:
+    if checkPresent and cfg.effectiveSigner == "ssh" and fileExists(path & ".sig"):
+      sshVerify(cfg, path)
     return
   case cfg.effectiveSigner
   of "ssh": sshVerify(cfg, path)

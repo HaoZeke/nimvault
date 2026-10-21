@@ -317,16 +317,20 @@ proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
     nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
 
 proc gpgVerdict*(status, path: string, code: int, verifySig: bool,
-                 allowed: seq[string]): string =
+                 allowed: seq[string], checkPresent = false): string =
   ## Empty when a decrypt that exited with `code` and wrote `status` is
-  ## acceptable; otherwise the message to raise.
-  if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
+  ## acceptable; otherwise the message to raise. `checkPresent` is what
+  ## `--allow-unsigned` asks for: a missing signature passes, but one that is
+  ## there must verify and come from a key in `allowed`.
+  let strict = verifySig or checkPresent
+  if strict and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
     return &"FATAL: signature verification failed for {path}"
   if code != 0:
     return &"FATAL: gpg decrypt failed (exit {code})\n{status}"
   if verifySig and not gpgStatusHas(status, "GOODSIG"):
     return &"FATAL: missing signature on {path}. Pass --allow-unsigned to accept unsigned vaults."
-  if verifySig:
+  if verifySig or (checkPresent and (gpgStatusHas(status, "GOODSIG") or
+                                     validSigners(status).len > 0)):
     return gpgSignerProblem(status, path, allowed)
   ""
 
@@ -350,8 +354,9 @@ proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   if problem.len > 0:
     nvRaise(problem)
 
-proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false): string =
-  let allowed = if verifySig: vaultSigners(cfg) else: @[]
+proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                         checkPresent = false): string =
+  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", inPath],
     options = {poUsePath})
@@ -359,7 +364,7 @@ proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false): str
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
-  let problem = gpgVerdict(status, inPath, code, verifySig, allowed)
+  let problem = gpgVerdict(status, inPath, code, verifySig, allowed, checkPresent)
   if problem.len > 0:
     nvRaise(problem)
 

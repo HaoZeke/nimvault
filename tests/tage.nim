@@ -156,5 +156,58 @@ block tamperedRecordIsRefused:
   writeFile(rec, original)
   echo "PASS: age refuses a tampered entry record"
 
+proc freshAgeVault(): (string, GpgConfig) =
+  ## Another vault under the same identity and signing key, so a block can
+  ## tamper with it without disturbing the round trip above.
+  let dir = createTempDir("nimvault_age_", "_vault")
+  discard execCmdEx(&"git init -q {dir.quoteShell}")
+  createDir(dir / ".vault")
+  writeFile(dir / ".vault" / "config", readFile(work / ".vault" / "config"))
+  (dir, initGpgConfig("", dir))
+
+block allowUnsignedStillVerifiesAPresentSshSignature:
+  ## --allow-unsigned accepts a record with no detached signature. A record
+  ## signed by a key outside allowed_signers is not unsigned.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-flag")
+  add(dir, f, c)
+  seal(dir, c)
+  let rec = entryFile(dir, c, loadManifest(dir, cfg = c)[0].id)
+  let otherKey = work / "otherkey"
+  let (kout, kcode) = execCmdEx(
+    &"ssh-keygen -q -t ed25519 -N '' -f {otherKey.quoteShell} -C other")
+  doAssert kcode == 0, kout
+  removeFile(rec & ".sig")
+  let (sout, scode) = execCmdEx(
+    &"ssh-keygen -Y sign -f {otherKey.quoteShell} -n nimvault {rec.quoteShell}")
+  doAssert scode == 0, sout
+  removeFile(f)
+  var raised = false
+  try:
+    unseal(dir, c, allowUnsigned = true)
+  except CatchableError as e:
+    raised = true
+    doAssert "signature verification failed" in e.msg, e.msg
+  doAssert raised, "unseal --allow-unsigned must refuse a signer outside allowed_signers"
+  doAssert not fileExists(f)
+  raised = false
+  try:
+    discard get(dir, f, c, allowUnsigned = true)
+  except CatchableError:
+    raised = true
+  doAssert raised, "get --allow-unsigned must refuse a signer outside allowed_signers"
+  removeFile(rec & ".sig")
+  raised = false
+  try:
+    unseal(dir, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "unseal without the flag must refuse a missing signature"
+  unseal(dir, c, allowUnsigned = true)
+  doAssert readFile(f).strip() == "age-flag", "the flag accepts a missing signature"
+  removeDir(dir)
+  echo "PASS: age --allow-unsigned verifies a detached signature that is present"
+
 removeDir(work)
 echo "All age backend tests passed."

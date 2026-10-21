@@ -1520,6 +1520,130 @@ block recordSignedByAnotherKeyIsRefused:
     removeDir(home)
   echo "PASS: a record signed by an unconfigured key is refused"
 
+proc gpgSignEncrypt(signer, recipient, inPath, outPath: string, sign = true) =
+  let signArgs = if sign: " --local-user " & signer.quoteShell & " --sign" else: ""
+  let (output, code) = execCmdEx("gpg --batch --yes --quiet --no-options " &
+    "--trust-model always" & signArgs & " -e --recipient=" & recipient.quoteShell &
+    " --set-filename '' -o " & outPath.quoteShell & " -- " & inPath.quoteShell)
+  doAssert code == 0, output
+
+block allowUnsignedRefusesAnUnconfiguredRecordSigner:
+  ## --allow-unsigned accepts a record with no signature. A record that
+  ## carries a good signature from a key the vault is not configured for is
+  ## not unsigned, and must not be accepted.
+  let home = createTempDir("nimvault_audit_", "_unsignedflag")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner-flag@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other-flag@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let real = r / "real.txt"
+    writeFile(real, "real-secret")
+    add(r, real, c)
+    seal(r, c)
+    let id = "cdcdcdcdcdcdcdcd"
+    let work = createTempDir("nimvault_audit_", "_forge-flag")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-other-key")
+    let key = newDek(c)
+    let blob = crypto.blobPath(r, c, id)
+    encryptWithDek(c, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    let rec = entryFile(r, c, id)
+    let planted = r / "planted.txt"
+    gpgSignEncrypt(otherKey, vaultKey, plain, rec)
+    var raised = false
+    try:
+      unseal(r, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal --allow-unsigned must refuse an unconfigured signer"
+    doAssert not fileExists(planted), "unseal must not write the planted file"
+    raised = false
+    try:
+      discard get(r, planted, c, allowUnsigned = true)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get --allow-unsigned must refuse an unconfigured signer"
+
+    gpgSignEncrypt("", vaultKey, plain, rec, sign = false)
+    raised = false
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "unseal without the flag must refuse an unsigned record"
+    doAssert get(r, planted, c, allowUnsigned = true) == "planted-by-other-key",
+      "the flag still accepts a record with no signature"
+    removeDir(work)
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: --allow-unsigned refuses a record signed by an unconfigured key"
+
+block allowUnsignedRefusesAnUnconfiguredBlobSigner:
+  ## A v5 blob carries its signature in band. With the flag, a good signature
+  ## from an unconfigured key must still be refused by unseal and get.
+  let home = createTempDir("nimvault_audit_", "_unsignedblob")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner-blob@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other-blob@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let id = "dcdcdcdcdcdcdcdc"
+    let work = createTempDir("nimvault_audit_", "_forge-blob")
+    let payload = work / "payload"
+    writeFile(payload, "v5-blob-by-other-key")
+    let blob = crypto.blobPath(r, c, id)
+    createDir(r / ".vault")
+    gpgSignEncrypt(otherKey, vaultKey, payload, blob)
+    saveManifest(r, @[(id, "planted.txt", sha256sum(blob), ekFile,
+                       sha256sum(payload))], c)
+    let planted = r / "planted.txt"
+    var raised = false
+    try:
+      unseal(r, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal --allow-unsigned must refuse a blob by an unconfigured signer"
+    doAssert not fileExists(planted)
+    raised = false
+    try:
+      discard get(r, planted, c, allowUnsigned = true)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get --allow-unsigned must refuse a blob by an unconfigured signer"
+
+    gpgSignEncrypt("", vaultKey, payload, blob, sign = false)
+    saveManifest(r, @[(id, "planted.txt", sha256sum(blob), ekFile,
+                       sha256sum(payload))], c)
+    raised = false
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "unseal without the flag must refuse an unsigned blob"
+    unseal(r, c, allowUnsigned = true)
+    doAssert readFile(planted) == "v5-blob-by-other-key",
+      "the flag still accepts a blob with no signature"
+    removeDir(work)
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: --allow-unsigned refuses a v5 blob signed by an unconfigured key"
+
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."
