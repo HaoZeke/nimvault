@@ -1,0 +1,3 @@
+Clarified SIGPIPE handling in the CLI comment and narrowed the Nim 2.0
+mutable `=destroy` fallback to Nim doc builds to avoid deprecated warnings in
+normal Nim 2.0 compilation.

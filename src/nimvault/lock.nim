@@ -59,9 +59,10 @@ proc release*(l: var VaultLock) =
   ## Drop the lock. Safe to call twice; the kernel would release on exit anyway.
   dropOwned(l)
 
-when NimMajor == 2 and NimMinor == 0:
+when NimMajor == 2 and NimMinor == 0 and defined(nimdoc):
   proc `=destroy`(l: var VaultLock) =
-    ## Nim 2.0 requires a mutable `=destroy` parameter.
+    ## Nim 2.0's doc pass rejects the immutable signature this lock uses for
+    ## normal compilation, so docs keep the mutable form for compatibility.
     dropOwned(l)
 else:
   proc `=destroy`(l: VaultLock) =
