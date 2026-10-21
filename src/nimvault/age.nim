@@ -156,7 +156,7 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   if not fileExists(sigPath):
     nvRaise(&"FATAL: ssh-keygen reported success but wrote no signature at {sigPath}")
 
-proc sshVerifyPayload(cfg: GpgConfig, path, payload: string) =
+proc sshVerifyBytes*(cfg: GpgConfig, path, payload: string) =
   ## Verify `<path>.sig` against the allowed-signers file. A missing signature
   ## is a failure, not a skip: an unsigned manifest is exactly what an attacker
   ## who replaced it would produce.
@@ -184,8 +184,5 @@ proc sshVerifyPayload(cfg: GpgConfig, path, payload: string) =
   if code != 0:
     nvRaise(&"FATAL: signature verification failed for {path}:\n{output}")
 
-proc sshVerify*(cfg: GpgConfig, path, payload: string) =
-  sshVerifyPayload(cfg, path, payload)
-
 proc sshVerify*(cfg: GpgConfig, path: string) =
-  sshVerifyPayload(cfg, path, readFile(path))
+  sshVerifyBytes(cfg, path, readFile(path))
