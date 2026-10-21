@@ -472,6 +472,52 @@ block hookScansIndexAndPushedCommits:
   removeDir(r)
   echo "PASS: hooks scan the index and the pushed commits"
 
+block checkWithoutSecretKey:
+  ## The blob digests are inside the encrypted records. A public key can
+  ## verify a signature; it cannot read those digests.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "check-needs-the-secret")
+  add(r, f, c)
+  seal(r, c)
+  doAssert checkVault(r, c).problems.len == 0
+  let home = getEnv("GNUPGHOME")
+  let (exported, ecode) = execCmdEx("gpg --batch --export --armor " &
+                                    keyId.quoteShell)
+  doAssert ecode == 0, exported
+  doAssert "BEGIN PGP PUBLIC KEY BLOCK" in exported
+  doAssert "PRIVATE KEY" notin exported
+  let pubHome = createTempDir("nimvault_audit_", "_pub")
+  setFilePermissions(pubHome, {fpUserRead, fpUserWrite, fpUserExec})
+  writeFile(pubHome / "pub.asc", exported)
+  try:
+    putEnv("GNUPGHOME", pubHome)
+    let (imported, icode) = execCmdEx(
+      "gpg --batch --import " & (pubHome / "pub.asc").quoteShell)
+    doAssert icode == 0, imported
+    let (pubs, pcode) = execCmdEx("gpg --list-keys --with-colons")
+    doAssert pcode == 0 and "pub:" in pubs, pubs
+    let (secs, _) = execCmdEx("gpg --list-secret-keys --with-colons")
+    doAssert "sec:" notin secs and "ssb:" notin secs, secs
+    let looked = checkVault(r, c)
+    doAssert looked.problems == @[
+      "no records this identity can open; unread wrap groups remain"],
+      "check without a secret key returned: " & $looked.problems
+    var raised = false
+    try:
+      check(r, c)
+    except CatchableError as e:
+      raised = true
+      doAssert "check-needs-the-secret" notin e.msg
+      doAssert "entries consistent with the manifest" notin e.msg
+    doAssert raised, "check must not succeed without the secret key"
+  finally:
+    putEnv("GNUPGHOME", home)
+    removeDir(pubHome)
+  removeDir(r)
+  echo "PASS: check cannot read the digests without the secret key"
+
 block getDoesNotWritePlaintextToTheRuntimeDir:
   let shm = "/dev/shm/nimvault-get-" & $getCurrentProcessId()
   createDir(shm)

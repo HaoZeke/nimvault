@@ -168,9 +168,10 @@ nothing decorative shares the stream with a secret.
 nimvault check [--recipient KEY]
 #+end_src
 
-Verify every blob against the hash the manifest records for it. Decrypts
-nothing and needs no key material, so it is cheap enough for a pre-push hook or
-a continuous-integration job. Exits non-zero when anything is inconsistent.
+Verify every blob against the hash the manifest records for it. Those hashes
+are stored in the encrypted manifest and the per-entry records, so ~check~
+decrypts the records and does not decrypt the payload blobs. Exits non-zero
+when a blob differs or when the records will not open.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about

@@ -97,6 +97,10 @@ Accepted:
 - A tab or newline in a path was stored in the record and shifted its columns.
 - ~scan~ skipped every directory named ~tmp~. That skip now applies only
   under ~.claude~ or ~.codex~.
+- The docs called ~check~ keyless. The blob digests are inside the encrypted
+  records. With only the public key imported, ~check~ reports that this
+  identity cannot open the records and does not compare the blobs. It does
+  not decrypt the payloads.
 
 Still accepted:
 

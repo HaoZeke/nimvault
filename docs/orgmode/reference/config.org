@@ -91,8 +91,9 @@ written to its own ~.vault/keys.<group>.gpg~ encrypted to that group alone. A
 machine decrypts the group files its key opens and no others, so it can read
 exactly the entries meant for it.
 
-~unseal~ on such a machine restores what it can read. ~check~ needs no key at
-all, so vault integrity is verifiable from anywhere.
+~unseal~ on such a machine restores what it can read. ~check~ compares
+payload blobs with the recorded digests and does not decrypt the payloads.
+The digests are stored in the encrypted records.
 
 Patterns: ~*~ matches within one path segment, ~**~ spans separators, and a
 pattern ending in ~/~ covers everything beneath it. Patterns are anchored at
