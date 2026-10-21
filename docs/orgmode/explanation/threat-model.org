@@ -35,8 +35,9 @@ for those is the signed manifest plus the blob digest ~unseal~ and ~get~
 check before decrypting. The bytes that are hashed are the bytes decrypted:
 the commands do not hash one path read and then reopen that path later.
 
-Key files are encrypted and not signed. A tampered key file fails to
-decrypt rather than forging plaintext.
+Key files are encrypted and not signed. Commands never re-sign a DEK that
+came only from ~keys.*~; they use the signed record's DEK, or refuse and ask
+for an explicit migrate step (for example ~seal --force~).
 
 * The config is trusted as written
 
