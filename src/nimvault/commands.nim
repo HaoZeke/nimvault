@@ -497,15 +497,10 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   nvEcho(&"  {storedPath}")
 
 type BlobSnapshot = object
-  path: string
-  work: string
+  cipher: string
 
 proc discardSnapshot(snap: var BlobSnapshot) =
-  if snap.work.len == 0:
-    return
-  discardPrivate(snap.work)
-  snap.work = ""
-  snap.path = ""
+  snap.cipher.setLen(0)
 
 proc assertBlobMatches(repo: string, cfg: GpgConfig, e: VaultEntry,
                        requireSig: bool) =
@@ -530,17 +525,13 @@ proc assertBlobMatches(repo: string, cfg: GpgConfig, e: VaultEntry,
 
 proc snapshotBlob(repo: string, cfg: GpgConfig, e: VaultEntry,
                   requireSig: bool): BlobSnapshot =
-  ## Hash and decrypt the same bytes by decrypting a private snapshot.
+  ## Hash and decrypt the same bytes by decrypting the in-memory ciphertext.
   assertBlobMatches(repo, cfg, e, requireSig)
   let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-  let cipher = readFile(inPath)
-  if e.hash.len > 0 and sha256sumBytes(cipher) != e.hash:
+  result.cipher = readFile(inPath)
+  if e.hash.len > 0 and sha256sumBytes(result.cipher) != e.hash:
     stderr.writeLine &"FATAL: integrity check failed for {e.path}"
     nvRaise("  The vault blob may have been tampered with.")
-  result.work = privateWorkDir()
-  result.path = result.work / (e.id & cfg.blobExt)
-  writeFile(result.path, cipher)
-  setFilePermissions(result.path, {fpUserRead, fpUserWrite})
 
 proc deksForEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
                     verified: DekTable): DekTable =
@@ -611,9 +602,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # path. moveFile's copy fallback follows that symlink when the runtime
   # directory is a different device, which is the usual split between
   # XDG_RUNTIME_DIR and $HOME.
-  # The staging file is created 0600 here and gpg or age only writes to a
-  # pipe. umask 077 keeps a missing parent directory owner-only as well.
-  let batchSize = gpgParallelism()
+  # The staging file is created 0600. umask 077 keeps a missing parent
+  # directory owner-only as well.
 
   # A vault may hold both formats while a migration drains: an entry with a
   # data key is v6, one without is encrypted straight to the recipient. The
@@ -624,95 +614,56 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   for e in entries:
     if deks.hasKey(e.id): enveloped.add(e) else: direct.add(e)
 
-  # A direct gpg blob signs its plaintext inside the ciphertext, so reading
-  # the signature means decrypting. Do that first with the output discarded:
-  # nothing is written until every signature has passed. age blobs and v6
-  # enveloped blobs carry none; the signed record and the digest checked
-  # above vouch for them.
-  let inBand = cfg.signaturesInBand and direct.len > 0
-  let signers = if inBand: vaultSigners(cfg) else: @[]
-  if inBand:
-    for first in countup(0, direct.high, batchSize):
-      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
-      var snaps: seq[BlobSnapshot] = @[]
-      try:
-        var jobs = startAll(batch.len, proc (i: int): Drain =
-          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
-          snaps.add(snap)
-          Drain(p: decryptStream(cfg, snap.path), outFd: -1))
-        drain(jobs)
-        for k, e in batch:
-          var problem = decryptFailure(e, jobs[k])
-          if problem.len == 0:
-            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
-          if problem.len > 0:
-            nvRaise(problem)
-      finally:
-        for snap in snaps.mitems:
-          discardSnapshot(snap)
-
-  # Then each entry is staged, decrypted, checked and placed before the next
-  # is staged (direct blobs a batch at a time), so the descriptors held do not
-  # grow with the vault. A failure here stops the run; what was already
-  # placed passed every check above.
+  # Each entry is staged, decrypted from the exact bytes hashed in
+  # `snapshotBlob`, and placed before the next starts. A failure stops the run;
+  # what was already placed passed every check above.
   var placed = 0
   template refuse(problem: string) =
     nvRaise(if placed == 0: problem
             else: problem & &"\n  {placed} of {entries.len} file(s) were " &
                   "restored before this one.")
+  proc stagedWrite(plain: string, sp: StagedPath): Drain =
+    if plain.len > 0:
+      result.writeErr = writeAll(sp.fd, unsafeAddr plain[0], plain.len)
+      let keep = min(2, plain.len)
+      result.head = plain[0 ..< keep]
 
   withPrivateUmask:
     for e in enveloped:
       let sp = stageBeside(resolvePath(cfg, e.path), cfg)
-      var work = ""
       var snap: BlobSnapshot
       try:
         snap = snapshotBlob(repo, cfg, e, requireSig)
-        var jobs = @[Drain(p: decryptWithDekStream(cfg, deks[e.id], snap.path, work),
-                           outFd: sp.fd)]
-        drain(jobs)
-        let problem = decryptFailure(e, jobs[0])
+        let plain = decryptWithDekBytesToString(cfg, deks[e.id], snap.cipher)
+        let staged = stagedWrite(plain, sp)
+        let problem = decryptFailure(e, staged)
         if problem.len > 0:
           refuse(problem)
-        assertBlobMatches(repo, cfg, e, requireSig)
-        placeStaged(sp, jobs[0])
+        placeStaged(sp, staged)
       finally:
         discardStaged(sp)
         discardSnapshot(snap)
-        discardPrivate(work)
       inc placed
       nvEcho(&"  {e.path}")
 
-    for first in countup(0, direct.high, batchSize):
-      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
-      var sps: seq[StagedPath] = @[]
-      var snaps: seq[BlobSnapshot] = @[]
+    for e in direct:
+      let sp = stageBeside(resolvePath(cfg, e.path), cfg)
+      var snap: BlobSnapshot
       try:
-        for e in batch:
-          sps.add(stageBeside(resolvePath(cfg, e.path), cfg))
-        var jobs = startAll(batch.len, proc (i: int): Drain =
-          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
-          snaps.add(snap)
-          Drain(p: decryptStream(cfg, snap.path),
-                outFd: sps[i].fd))
-        drain(jobs)
-        for k, e in batch:
-          var problem = decryptFailure(e, jobs[k])
-          if problem.len == 0 and inBand:
-            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
-          if problem.len > 0:
-            refuse(problem)
-        for e in batch:
-          assertBlobMatches(repo, cfg, e, requireSig)
-        for k, e in batch:
-          placeStaged(sps[k], jobs[k])
-          inc placed
-          nvEcho(&"  {e.path}")
+        snap = snapshotBlob(repo, cfg, e, requireSig)
+        let plain = decryptBytesToString(cfg, snap.cipher, e.path,
+                                         verifySig = requireSig,
+                                         checkPresent = true)
+        let staged = stagedWrite(plain, sp)
+        let problem = decryptFailure(e, staged)
+        if problem.len > 0:
+          refuse(problem)
+        placeStaged(sp, staged)
       finally:
-        for sp in sps:
-          discardStaged(sp)
-        for snap in snaps.mitems:
-          discardSnapshot(snap)
+        discardStaged(sp)
+        discardSnapshot(snap)
+      inc placed
+      nvEcho(&"  {e.path}")
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
@@ -1084,12 +1035,11 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
         # came from the signed manifest and the digest checked in snapshotBlob.
         # Decrypt to memory. A file under the runtime directory is plaintext
         # another uid can read for as long as the process is decrypting.
-        let plain = decryptWithDekToString(cfg, deks[e.id], snap.path)
-        assertBlobMatches(repo, cfg, e, requireSig)
+        let plain = decryptWithDekBytesToString(cfg, deks[e.id], snap.cipher)
         return plain
-      let plain = decryptToString(cfg, snap.path, verifySig = requireSig,
-                                  checkPresent = true)
-      assertBlobMatches(repo, cfg, e, requireSig)
+      let plain = decryptBytesToString(cfg, snap.cipher, e.path,
+                                       verifySig = requireSig,
+                                       checkPresent = true)
       return plain
     finally:
       discardSnapshot(snap)

@@ -36,6 +36,7 @@ import std/[os, osproc, streams, strutils, strformat, sysrand, tables,
 import ./gpg
 from ./age import ageKeygenBinary, ageRecipientForIdentity, ageBinary
 import ./crypto
+from ./fsat import runWithInput
 
 const
   KeysFileStem* = "keys"
@@ -357,40 +358,8 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
   moveFile(tmp, outPath)
   syncParentDir(outPath)
 
-proc decryptWithDekStream*(cfg: GpgConfig, dek, inPath: string,
-                           work: var string): Process =
-  ## Spawn a decryption of a v6 payload that writes the plaintext to stdout.
-  ## For age the data key is an identity file in `work`, a private directory
-  ## the caller discards once the process has exited.
-  work = ""
-  if cfg.usesAge:
-    work = privateWorkDir()
-    let identFile = work / "identity"
-    writeFile(identFile, dek & "\n")
-    setFilePermissions(identFile, {fpUserRead, fpUserWrite})
-    result = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "--", inPath],
-      options = {poUsePath})
-  else:
-    result = startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--decrypt",
-               "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "--", inPath],
-      options = {poUsePath})
-    # A gpg that exits before reading the key fails on its own; the caller
-    # still has to reap it, so a closed pipe is not raised from here.
-    try:
-      result.inputStream.write(dek & "\n")
-    except IOError, OSError:
-      discard
-    try:
-      result.inputStream.close()
-    except IOError, OSError:
-      discard
-
-proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
-  ## Plaintext in memory. The data key for age still needs an identity file;
-  ## the plaintext itself is not written.
+proc decryptWithDekBytesToString*(cfg: GpgConfig, dek, cipher: string): string =
+  ## Plaintext in memory from ciphertext bytes already read by the caller.
   if cfg.usesAge:
     let work = privateWorkDir()
     let identFile = work / "identity"
@@ -399,25 +368,36 @@ proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
     defer:
       discardPrivate(work)
     let p = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "--", inPath],
+      args = @["-d", "-i", identFile, "--", "-"],
       options = {poUsePath})
-    result = p.outputStream.readAll()
-    let err = p.errorStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+    let io = runWithInput(p, cipher)
+    if io.writeErr != 0:
+      nvRaise("FATAL: age decrypt failed while writing ciphertext: " &
+              osErrorMsg(OSErrorCode(io.writeErr)))
+    if io.code != 0:
+      nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
+    result = io.outp
   else:
+    let work = privateWorkDir()
+    defer:
+      discardPrivate(work)
+    let passFile = work / "passphrase"
+    writeFile(passFile, dek & "\n")
+    setFilePermissions(passFile, {fpUserRead, fpUserWrite})
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
-               "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "--", inPath],
+               "--passphrase-file", passFile, "--pinentry-mode", "loopback",
+               "--", "-"],
       options = {poUsePath})
-    p.inputStream.write(dek & "\n")
-    p.inputStream.close()
-    result = p.outputStream.readAll()
-    let err = p.errorStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {code}):\n{err}")
+    let io = runWithInput(p, cipher)
+    if io.writeErr != 0 and io.code == 0:
+      nvRaise("FATAL: gpg symmetric decrypt failed while writing ciphertext: " &
+              osErrorMsg(OSErrorCode(io.writeErr)))
+    if io.code != 0:
+      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {io.code}):\n{io.err}")
+    result = io.outp
+
+proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
+  ## Plaintext in memory. The data key for age still needs an identity file;
+  ## the plaintext itself is not written.
+  decryptWithDekBytesToString(cfg, dek, readFile(inPath))

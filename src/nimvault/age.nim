@@ -19,6 +19,7 @@
 
 import std/[os, osproc, streams, strformat, strutils]
 from ./gpg import GpgConfig, nvRaise
+from ./fsat import runWithInput
 
 const
   ageBins = ["age", "rage"]        ## rage is a drop-in; prefer whichever exists
@@ -105,14 +106,13 @@ proc ageDecryptBytesToString*(cfg: GpgConfig, cipher: string): string =
   let p = startProcess(ageBinary(),
     args = @["-d", "-i", ident, "--", "-"],
     options = {poUsePath})
-  p.inputStream.write(cipher)
-  p.inputStream.close()
-  result = p.outputStream.readAll()
-  let err = p.errorStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
-    nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+  let io = runWithInput(p, cipher)
+  if io.writeErr != 0:
+    nvRaise("FATAL: age decrypt failed while writing ciphertext: " &
+            osErrorMsg(OSErrorCode(io.writeErr)))
+  if io.code != 0:
+    nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
+  result = io.outp
 
 proc ageDecryptToString*(cfg: GpgConfig, inPath: string): string =
   ageDecryptBytesToString(cfg, readFile(inPath))

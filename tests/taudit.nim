@@ -646,6 +646,10 @@ case " $* " in
   *" -d "*|*" --decrypt "*) decrypt=1 ;;
   *) decrypt="" ;;
 esac
+case " $* " in
+  *" --passphrase-file "*|*" --passphrase-fd "*) payload=1 ;;
+  *) payload="" ;;
+esac
 if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
    [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
   base="${last##*/}"
@@ -654,8 +658,14 @@ if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
     *)
       case "$base" in
         [0-9a-f]*.gpg)
-          sh -c "$NIMVAULT_SWAP_CMD"
+          NIMVAULT_DECRYPT_TARGET="$last" sh -c "$NIMVAULT_SWAP_CMD"
           : >"$NIMVAULT_SWAP_MARKER"
+          ;;
+        *)
+          if [ -n "$payload" ] && [ -n "${NIMVAULT_SWAP_ON_STDIN:-}" ]; then
+            sh -c "$NIMVAULT_SWAP_CMD"
+            : >"$NIMVAULT_SWAP_MARKER"
+          fi
           ;;
       esac
       ;;
@@ -714,6 +724,7 @@ block unsealUsesDescriptorAnchoredStaging:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   var raised = false
   try:
     try:
@@ -724,6 +735,7 @@ block unsealUsesDescriptorAnchoredStaging:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(marker), "test wrapper did not swap the parent symlink"
   doAssert raised, "unseal must refuse a parent changed after path checks"
   doAssert not fileExists(inside / "secret.txt"),
@@ -821,6 +833,7 @@ block unsealRefusedSwapLeavesNoStagingFile:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   var raised = false
   try:
     unseal(r, c)
@@ -830,6 +843,7 @@ block unsealRefusedSwapLeavesNoStagingFile:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
   doAssert raised, "unseal must refuse an entry whose directory now leaves the root"
   doAssert stagingFiles(r).len == 0,
@@ -871,6 +885,7 @@ block unsealWithoutRootStaysInHomeAfterASwap:
     putEnv("PATH", wrapBin & ":" & oldPath)
     putEnv("NIMVAULT_SWAP_CMD", swapCmd)
     putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+    putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
     try:
       unseal(r, c)
     except CatchableError:
@@ -879,6 +894,7 @@ block unsealWithoutRootStaysInHomeAfterASwap:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
     putEnv("HOME", oldHome)
   doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
   doAssert raised, "unseal must fail after a parent rename out of HOME"
@@ -907,43 +923,21 @@ block directEntryIsStagedOnce:
   saveManifest(r, @[(id, "old.txt", sha256sum(blob), ekFile, sha256sum(old))], c,
                sealKey(c))
   removeFile(old)
-  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
-  let log = wrapBin / "staged.log"
-  writeFile(wrapBin / "gpg", """#!/bin/sh
-last=""
-for arg in "$@"; do last="$arg"; done
-base="${last##*/}"
-case "$last" in
-  */.vault/e/*) ;;
-  *)
-    case "$base" in
-      [0-9a-f]*.gpg)
-        ls -A """ & r.quoteShell & """ | grep -c '^\.nimvault-' >>""" & log.quoteShell & """ || true
-        ;;
-    esac
-    ;;
-esac
-exec """ & findExe("gpg").quoteShell & """ "$@"
-""")
-  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
-  let oldPath = getEnv("PATH")
-  putEnv("PATH", wrapBin & ":" & oldPath)
+  var counts: seq[int] = @[]
+  unsealBeforeRenameHook = proc(destPath: string) =
+    doAssert destPath == normalizedPath(old), destPath
+    counts.add(stagingFiles(r).len)
   try:
     unseal(r, c)
   finally:
-    putEnv("PATH", oldPath)
+    unsealBeforeRenameHook = nil
   doAssert readFile(old) == "staged-once"
-  var counts: seq[string] = @[]
-  for line in readFile(log).splitLines:
-    if line.len > 0:
-      counts.add(line)
-  doAssert counts.len > 0, "the wrapper never saw the payload decrypt"
+  doAssert counts.len == 1, "one direct entry should be staged once"
   for n in counts:
-    doAssert parseInt(n) <= 1,
+    doAssert n <= 1,
       "a direct entry must have one staging file at most: " & $counts
   doAssert stagingFiles(r).len == 0
   removeDir(r)
-  removeDir(wrapBin)
   echo "PASS: a direct entry is staged once"
 
 block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
@@ -1591,6 +1585,8 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.gpg"
   encryptWithDek(c, dek, payload, badBlob)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
   let badHash = sha256sum(badBlob)
   let plain = forged / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -1613,17 +1609,66 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   let got = runCli(r, @["unseal"])
   putEnv("PATH", oldPath)
   delEnv("NIMVAULT_SWAP_CMD")
   delEnv("NIMVAULT_SWAP_MARKER")
+  delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(marker), "test wrapper did not swap the split record:\n" & got.outp
-  doAssert got.code != 0, "unseal must fail after the split-record/blob swap:\n" & got.outp
-  doAssert not fileExists(f), "unseal must not write plaintext after the swap"
+  if got.code == 0:
+    doAssert fileExists(f), got.outp
+    doAssert readFile(f) == "ORIGINAL-PLAINTEXT",
+      "a post-verify swap must not change unsealed plaintext:\n" & got.outp
+  else:
+    doAssert not fileExists(f), "unseal must not write plaintext after a refused swap"
   removeDir(r)
   removeDir(forged)
   removeDir(wrapBin)
-  echo "PASS: unseal refuses split-record/blob swaps after the verified read"
+  echo "PASS: split-record/blob swaps after verify do not change plaintext"
+
+block getDecryptsVerifiedSnapshotBytes:
+  ## A blob swap hook can only target a path argument. `get` must decrypt the
+  ## bytes it already hashed, not reopen a path the hook can replace.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  let plain = "ORIGINAL-PLAINTEXT"
+  writeFile(f, plain)
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  let entry = loadManifest(r, cfg = c)[0]
+  let dek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.gpg"
+  encryptWithDek(c, dek, payload, badBlob)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let marker = wrapBin / "swapped"
+  writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badBlob.quoteShell & " > \"$NIMVAULT_DECRYPT_TARGET\""
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  let got = runCli(r, @["get", "secret.txt"])
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert got.code == 0, got.outp
+  doAssert got.outp == plain,
+    "get must return the original plaintext after a swap attempt:\n" & got.outp
+  doAssert not fileExists(marker),
+    "the decrypt hook should see no blob path reopen during get"
+  removeDir(r)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: get decrypts the verified snapshot bytes"
 
 block vaultedPlaintextFailsTheCommitAndPushScans:
   ## The pre-commit hook runs `scan --cached` and the pre-push hook runs

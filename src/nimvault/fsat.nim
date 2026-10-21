@@ -69,6 +69,8 @@ type Drain* = object
   ## stderr is kept in `err`.
   p*: Process
   outFd*: cint
+  capture*: bool
+  outp*: string
   err*: string
   head*: string    ## first bytes of stdout, at most two
   writeErr*: cint  ## errno of a write to `outFd` that failed, else 0
@@ -123,6 +125,99 @@ proc drain*(jobs: var openArray[Drain]) =
           inc j
         if jobs[i].outFd >= 0 and jobs[i].writeErr == 0:
           jobs[i].writeErr = writeAll(jobs[i].outFd, addr buf[0], n)
+        elif jobs[i].capture:
+          let at = jobs[i].outp.len
+          jobs[i].outp.setLen(at + n)
+          copyMem(addr jobs[i].outp[at], addr buf[0], n)
   for i in 0 .. jobs.high:
     jobs[i].code = jobs[i].p.waitForExit()
     jobs[i].p.close()
+
+type FeedResult* = tuple[outp, err: string, code: int, writeErr: cint]
+
+proc runWithInput*(p: Process, input: string): FeedResult =
+  ## Feed `input` to `p` while draining stdout and stderr together.
+  var inOpen = true
+  var outOpen = true
+  var errOpen = true
+  var off = 0
+  let inFd = p.inputHandle.cint
+  let inFlags = fcntl(inFd, F_GETFL, 0)
+  if inFlags >= 0:
+    discard fcntl(inFd, F_SETFL, inFlags or O_NONBLOCK)
+  if input.len == 0:
+    inOpen = false
+    discard posix.close(inFd)
+  var buf: array[65536, char]
+  while inOpen or outOpen or errOpen:
+    var fds: seq[TPollfd] = @[]
+    var owner: seq[int] = @[]
+    if inOpen:
+      fds.add(TPollfd(fd: inFd, events: POLLOUT))
+      owner.add(0)
+    if outOpen:
+      fds.add(TPollfd(fd: p.outputHandle.cint, events: POLLIN))
+      owner.add(1)
+    if errOpen:
+      fds.add(TPollfd(fd: p.errorHandle.cint, events: POLLIN))
+      owner.add(2)
+    if fds.len == 0:
+      break
+    if poll(addr fds[0], fds.len.Tnfds, -1) < 0:
+      if errno == EINTR:
+        continue
+      if result.writeErr == 0:
+        result.writeErr = EIO
+      break
+    for k in 0 .. fds.high:
+      if fds[k].revents == 0:
+        continue
+      case owner[k]
+      of 0:
+        if off >= input.len:
+          if posix.close(inFd) != 0 and result.writeErr == 0:
+            result.writeErr = errno
+          inOpen = false
+          continue
+        let take = min(input.len - off, 16384)
+        let n = posix.write(fds[k].fd, unsafeAddr input[off], take)
+        if n < 0:
+          if errno == EINTR or errno == EAGAIN:
+            continue
+          if errno != EPIPE and result.writeErr == 0:
+            result.writeErr = errno
+          discard posix.close(inFd)
+          inOpen = false
+        elif n == 0:
+          if result.writeErr == 0:
+            result.writeErr = EIO
+          discard posix.close(inFd)
+          inOpen = false
+        else:
+          off += n
+          if off >= input.len:
+            if posix.close(inFd) != 0 and result.writeErr == 0:
+              result.writeErr = errno
+            inOpen = false
+      of 1:
+        let n = posix.read(fds[k].fd, addr buf[0], buf.len)
+        if n < 0 and (errno == EINTR or errno == EAGAIN):
+          continue
+        if n <= 0:
+          outOpen = false
+        else:
+          let at = result.outp.len
+          result.outp.setLen(at + n)
+          copyMem(addr result.outp[at], addr buf[0], n)
+      else:
+        let n = posix.read(fds[k].fd, addr buf[0], buf.len)
+        if n < 0 and (errno == EINTR or errno == EAGAIN):
+          continue
+        if n <= 0:
+          errOpen = false
+        else:
+          let at = result.err.len
+          result.err.setLen(at + n)
+          copyMem(addr result.err[at], addr buf[0], n)
+  result.code = p.waitForExit()
+  p.close()
