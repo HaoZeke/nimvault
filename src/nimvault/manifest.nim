@@ -63,6 +63,10 @@ proc isPathSafe*(cfg: GpgConfig, manifestPath: string): bool =
   if cfg.root.len > 0:
     let root = normalizedPath(cfg.root)
     resolved == root or resolved.startsWith(root & "/")
+  elif ".." in manifestPath.split('/'):
+    # No root bounds the result, so nothing short of the raw components can
+    # tell a deliberate absolute path from one that climbs out of it.
+    false
   elif manifestPath.startsWith("~/"):
     let home = normalizedPath(getHomeDir()).strip(leading = false, trailing = true, chars = {'/'})
     resolved.startsWith(home & "/")

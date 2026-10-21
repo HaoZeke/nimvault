@@ -42,4 +42,17 @@ block isPathSafeHomeMode:
   doAssert not isPathSafe(cfg, "~/../../etc/passwd"), "Home traversal should be unsafe"
   echo "PASS: isPathSafe home mode"
 
+block isPathSafeNoRootRejectsTraversal:
+  ## Without a root, an absolute or relative record path is still refused
+  ## when it climbs with `..`.
+  let cfg = GpgConfig(recipient: "test")
+  doAssert not isPathSafe(cfg, "../../outside"), "relative traversal must be unsafe"
+  doAssert not isPathSafe(cfg, "../outside/notes"), "relative traversal must be unsafe"
+  doAssert not isPathSafe(cfg, "/tmp/../etc/passwd"), "absolute traversal must be unsafe"
+  doAssert not isPathSafe(cfg, "~/../outside/notes"), "home traversal must be unsafe"
+  doAssert not isPathSafe(cfg, "~/a/../../outside"), "home traversal must be unsafe"
+  doAssert isPathSafe(cfg, "/etc/nimvault/token"), "an absolute path is the caller's choice"
+  doAssert isPathSafe(cfg, "~/.config/app/key"), "a home path is safe"
+  echo "PASS: isPathSafe without a root rejects .."
+
 echo "All manifest tests passed."
