@@ -1877,19 +1877,20 @@ proc editorLeftovers(path: string): seq[string] =
   for ext in [".swp", ".swo", ".swn", ".swx"]:
     result.add(dir / ("." & name & ext))
 
-proc lockPlaintext*(repo: string, cfg: GpgConfig) =
+proc lockPlaintext*(repo: string, cfg: GpgConfig, allowUnsigned = false) =
   ## Remove in-sync plaintext. The vault entry stays; unseal brings it back.
   ## A modified file is refused: lock is not a way to discard unsealed edits.
   ## The blob has to match the record first. Otherwise the plaintext is the
   ## only remaining copy, and deleting it is not a lock.
   ##
-  ## Records are verified as `unseal` verifies them: lock deletes the paths a
-  ## record names, so an unsigned record would choose what gets shredded.
+  ## Records are verified as `unseal` verifies them. `--allow-unsigned`
+  ## accepts missing signatures; a present one must still verify.
   ## Editor backups go only with an entry that is present and matches its
   ## recorded hash; for any other entry the record is the sole evidence that
   ## the backup is a copy of a vaulted file.
   let lk {.used.} = acquire(repo)
-  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let entries = loadManifest(repo, verifySig = not allowUnsigned, cfg = cfg,
+                             checkPresent = true)
   if entries.len == 0:
     nvEcho("vault is empty")
     return

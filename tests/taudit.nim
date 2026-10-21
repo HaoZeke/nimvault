@@ -121,6 +121,32 @@ block lockRemovesEditorBackups:
   removeDir(r)
   echo "PASS: lock removes editor backups of an in-sync file"
 
+block lockRequiresUnsignedFlagWhenSignerIsNone:
+  ## lock must require the same signature policy as unseal.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "lock-none-signer")
+  add(r, f, c)
+  seal(r, c)
+  var none = c
+  none.signer = "none"
+  var raised = false
+  var msg = ""
+  try:
+    lockPlaintext(r, none)
+  except CatchableError as e:
+    raised = true
+    msg = e.msg
+  doAssert raised, "lock must refuse signer=none without --allow-unsigned"
+  doAssert "signature required" in msg, msg
+  doAssert fileExists(f), "a refused lock must keep the plaintext"
+  lockPlaintext(r, none, allowUnsigned = true)
+  doAssert not fileExists(f),
+    "lock --allow-unsigned should remove in-sync plaintext for signer=none"
+  removeDir(r)
+  echo "PASS: lock requires --allow-unsigned when signer=none"
+
 proc forgeUnsignedRecord(r: string, c: GpgConfig, id, path: string) =
   ## What anyone with push access can commit: a junk blob and a record that
   ## names it, encrypted to the vault key and signed by nobody.
@@ -169,13 +195,13 @@ block lockIgnoresForgedRecords:
     var unsigned = c
     unsigned.signer = "none"
     dropEntryRecord(r, c, "bbbbbbbbbbbbbbbb")
-    lockPlaintext(r, unsigned)
+    lockPlaintext(r, unsigned, allowUnsigned = true)
     doAssert readFile(thesisBackup) == "thesis-draft",
       "lock must not shred backups of an entry that is not present"
     forgeUnsignedRecord(r, c, "bbbbbbbbbbbbbbbb", "~/../outside/notes")
     raised = false
     try:
-      lockPlaintext(r, unsigned)
+      lockPlaintext(r, unsigned, allowUnsigned = true)
     except CatchableError:
       raised = true
     doAssert raised, "lock must refuse a record path that climbs out of HOME"

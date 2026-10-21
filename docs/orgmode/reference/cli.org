@@ -339,7 +339,9 @@ does not delete the only remaining copy. The file is overwritten before it
 is unlinked. Editor backups beside it (=name~=, =#name#=, =.name.swp=) are
 removed the same way, and only when the file itself is present and in sync.
 A symlink is unlinked and not followed. Records are verified as ~unseal~
-verifies them, and a record path that fails the traversal check is refused.
+verifies them. With ~signer = none~, lock refuses unless
+~--allow-unsigned~ is passed. A record path that fails the traversal check is
+refused.
 
 ** init
 
