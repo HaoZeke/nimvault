@@ -330,7 +330,7 @@ Print which wrap-rule recipients can open each entry.
 ** lock
 
 #+begin_src text
-nimvault lock [--recipient KEY] [--vault DIR]
+nimvault lock [--recipient KEY] [--allow-unsigned] [--vault DIR]
 #+end_src
 
 Remove in-sync plaintext. Vault entries stay; ~unseal~ restores them. A
