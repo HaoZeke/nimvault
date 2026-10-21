@@ -147,15 +147,16 @@ proc sealKey*(cfg: GpgConfig): string =
 proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: string] =
   var got = false
   for line in plain.splitLines:
-    let stripped = line.strip()
+    # A pre-v6 entry has no data key, so its record ends in a tab.
+    let stripped = line.strip(chars = Whitespace - {'\t'})
     if stripped.len == 0 or stripped.startsWith("#"):
       continue
     let parts = stripped.split('\t')
-    if parts.len < 6:
+    if parts.len < 5:
       continue
     let kind = if parts[3] == "dir": ekDir else: ekFile
     result.entry = (parts[0], parts[1], parts[2], kind, parts[4])
-    result.dek = parts[5]
+    result.dek = if parts.len > 5: parts[5] else: ""
     result.ok = true
     got = true
     break
@@ -188,8 +189,9 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
                        verifySig = false,
                        checkPresent = false): tuple[entries: seq[VaultEntry],
                                                     deks: DekTable,
-                                                    unread: int] =
-  ## Union of every per-entry record this machine can open.
+                                                    unread, unparsed: int] =
+  ## Union of every per-entry record this machine can open. `unparsed` counts
+  ## records that opened and verified but hold no entry line.
   let dir = entryDir(repo)
   if not dirExists(dir):
     return
@@ -239,6 +241,8 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       result.entries.add(parsed.entry)
       if parsed.dek.len > 0:
         result.deks[parsed.entry.id] = parsed.dek
+    else:
+      result.unparsed.inc
 
 proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
   ## Write one signed encrypted record. A different id is a different path,
@@ -300,10 +304,11 @@ proc loadManifestMeta*(repo: string, verifySig = false,
                        checkPresent = false): tuple[entries: seq[VaultEntry],
                                                     sealKey: string,
                                                     envelope: bool,
-                                                    unopened: int] =
+                                                    unopened, unparsed: int] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
-  ## Returns empty seq if no manifest exists.
+  ## Returns empty seq if no manifest exists. `unparsed` counts records and
+  ## manifest lines that opened but hold no entry this binary can read.
   ## Supports v1–v5 (v4 adds plaintext contentHash for fast `status`;
   ## v5 adds the `# vault-seal-key` header).
   ##
@@ -317,6 +322,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     let split = loadSplitEntries(repo, cfg, verifySig, checkPresent)
     result.entries = split.entries
     result.unopened = split.unread
+    result.unparsed = split.unparsed
     result.envelope = true
     # Seal key still lives on the stub combined manifest when one exists.
     let encStub = findManifest(repo, cfg)
@@ -336,7 +342,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "", false, 0)
+    return (@[], "", false, 0, 0)
   verifyManifest(cfg, enc, verifySig, checkPresent)
   let plain = decryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:
@@ -350,7 +356,9 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     if stripped.len == 0 or stripped.startsWith("#"):
       continue
     let parts = stripped.split('\t')
-    if parts.len == 2:
+    if parts.len < 2:
+      result.unparsed.inc
+    elif parts.len == 2:
       # v1: id\tpath
       result.entries.add((parts[0], parts[1], "", ekFile, ""))
     elif parts.len == 3:

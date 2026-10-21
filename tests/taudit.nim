@@ -1805,6 +1805,72 @@ block nameSpecifierIsRefused:
     removeDir(home)
   echo "PASS: a recipient that is not an email or key ID is refused"
 
+block preV6EntrySurvivesTheMoveToRecords:
+  ## A v5 entry has no data key, so its per-entry record ends in an empty
+  ## field. The parser stripped that tab, found five fields and dropped the
+  ## record: the entry left list, unseal and check without a word.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let old = r / "old.txt"
+  writeFile(old, "v5-secret")
+  createDir(r / ".vault")
+  let id = "5a5a5a5a5a5a5a5a"
+  let blob = crypto.blobPath(r, c, id)
+  encryptFile(c, old, blob)
+  saveManifest(r, @[(id, "old.txt", sha256sum(blob), ekFile, sha256sum(old))], c,
+               sealKey(c))
+  doAssert loadManifest(r, verifySig = true, cfg = c).len == 1
+  let fresh = r / "new.txt"
+  writeFile(fresh, "v6-secret")
+  add(r, fresh, c)
+  doAssert hasSplitEntries(r), "add should write per-entry records"
+  var paths: seq[string] = @[]
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    paths.add(e.path)
+  doAssert "old.txt" in paths and "new.txt" in paths, $paths
+  let rep = checkVault(r, c)
+  doAssert rep.problems.len == 0 and rep.checked == 2, $rep
+  removeFile(old)
+  removeFile(fresh)
+  unseal(r, c)
+  doAssert readFile(old) == "v5-secret"
+  doAssert readFile(fresh) == "v6-secret"
+  removeDir(r)
+  echo "PASS: a pre-v6 entry keeps its record after add"
+
+block recordThatHoldsNoEntryIsCounted:
+  ## A record that opened and verified but held no entry line was dropped,
+  ## and check called the rest consistent.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "kept.txt", "kept-secret")
+  add(r, r / "kept.txt", c)
+  seal(r, c)
+  let work = createTempDir("nimvault_audit_", "_unparsed")
+  writeFile(work / "record.plain", EntryHeader & "\nnot-an-entry\n")
+  encryptFileTo(c, @[c.recipient], work / "record.plain",
+                entryFile(r, c, "6b6b6b6b6b6b6b6b"))
+  removeDir(work)
+  let rep = checkVault(r, c)
+  doAssert "1 record(s) open but hold no entry this version can read" in
+    rep.problems, $rep
+  var msg = ""
+  try:
+    check(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "inconsistent" in msg, "check passed over a record it dropped: " & msg
+  removeFile(r / "kept.txt")
+  msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "hold no entry" in msg, "unseal dropped a record: " & msg
+  doAssert not fileExists(r / "kept.txt")
+  removeDir(r)
+  echo "PASS: check and unseal count a record that holds no entry"
+
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."
