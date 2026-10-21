@@ -980,7 +980,7 @@ block scanSeesSecretsUnderTmp:
 
 block scanCachedSeesStagedSecret:
   ## The worktree copy can be clean while the index still holds the secret,
-  ## and a vaulted path is skipped by both worktree and index scans.
+  ## and a vaulted path is skipped by the worktree walk.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let notes = r / "notes.txt"
@@ -1003,7 +1003,14 @@ block scanCachedSeesStagedSecret:
   add(r, vaulted, c)
   seal(r, c)
   doAssert gitCode(r, @["add", "-f", "--", "secret.txt"]) == 0
-  scanCached(r, c, r)
+  raised = false
+  try:
+    scanCached(r, c, r)
+  except CatchableError as e:
+    raised = true
+    doAssert "hunter2" notin e.msg
+    doAssert "secret.txt" in e.msg
+  doAssert raised, "a vaulted path forced into the index must be reported"
   removeDir(r)
   echo "PASS: scan --cached sees a staged secret the worktree walk misses"
 
@@ -1160,6 +1167,114 @@ block prePushScansOnlyCommitsNewToTheRemote:
   removeDir(remote)
   removeDir(binDir)
   echo "PASS: pre-push scans only commits new to the remote"
+
+var sharedCliDir = ""
+
+proc cliExe(): string =
+  ## The blocks below that run the command line share one build.
+  if sharedCliDir.len == 0:
+    sharedCliDir = buildCli()
+  sharedCliDir / "nimvault"
+
+proc runCli(dir: string, args: seq[string]): tuple[outp: string, code: int] =
+  let p = startProcess(cliExe(), workingDir = dir, args = args,
+                       options = {poStdErrToStdOut})
+  result.outp = p.outputStream.readAll()
+  result.code = p.waitForExit()
+  p.close()
+
+proc headOf(repo: string): string =
+  let (raw, code) = execCmdEx("git rev-parse HEAD", workingDir = repo)
+  doAssert code == 0, raw
+  raw.strip()
+
+block vaultedPlaintextFailsTheCommitAndPushScans:
+  ## The pre-commit hook runs `scan --cached` and the pre-push hook runs
+  ## `scan --rev`. A vaulted file in the index or in a commit is its plaintext
+  ## entering git history, so both must fail on it, and still name the
+  ## pattern its bytes match.
+  let r = setupRepo()
+  createDir(r / ".vault")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+  let token = "sk-ant-" & repeat('H', 30)
+  writeFile(r / "token.txt", token)
+  var got = runCli(r, @["add", "token.txt"])
+  doAssert got.code == 0, got.outp
+  got = runCli(r, @["seal"])
+  doAssert got.code == 0, got.outp
+  doAssert gitCode(r, @["add", "-A"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "vault"]) == 0
+  let base = headOf(r)
+
+  doAssert gitCode(r, @["add", "-f", "--", "token.txt"]) == 0
+  got = runCli(r, @["scan", "--cached"])
+  doAssert got.code == 1, "a force-added vaulted file must fail scan --cached:\n" & got.outp
+  doAssert "vault-plaintext" in got.outp and "token.txt" in got.outp, got.outp
+  doAssert "anthropic-api-key" in got.outp,
+    "a vaulted blob in the index must still be matched against the patterns:\n" & got.outp
+  doAssert token notin got.outp, got.outp
+  doAssert gitCode(r, @["reset", "-q", "--", "token.txt"]) == 0
+
+  writeFile(r / "notes.txt", "hunter2")
+  got = runCli(r, @["add", "--no-gitignore", "notes.txt"])
+  doAssert got.code == 0, got.outp
+  doAssert gitCode(r, @["add", "-A"]) == 0
+  got = runCli(r, @["scan", "--cached"])
+  doAssert got.code == 1,
+    "add --no-gitignore then git add -A must fail scan --cached:\n" & got.outp
+  doAssert "vault-plaintext" in got.outp and "notes.txt" in got.outp, got.outp
+  doAssert "hunter2" notin got.outp, got.outp
+
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "leak"]) == 0
+  let tip = headOf(r)
+  for rev in [tip, base & ".." & tip]:
+    got = runCli(r, @["scan", "--rev", rev])
+    doAssert got.code == 1,
+      &"scan --rev {rev} must fail on a commit holding vaulted plaintext:\n" & got.outp
+    doAssert "vault-plaintext" in got.outp and "notes.txt" in got.outp, got.outp
+  removeDir(r)
+  echo "PASS: scan --cached and --rev fail on vaulted plaintext"
+
+block vaultedMatchIsByAbsolutePath:
+  ## A record stores `notes/a.txt` relative to its root. The same relative
+  ## name in another repository is a different file and is not vaulted.
+  let v = setupRepo()
+  let g = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: v)
+  createDir(v / "notes")
+  writeFile(v / "notes" / "a.txt", "vaulted-here")
+  add(v, v / "notes" / "a.txt", c)
+  seal(v, c)
+  createDir(g / "notes")
+  writeFile(g / "notes" / "a.txt", "an ordinary file")
+  doAssert gitCode(g, @["add", "--", "notes/a.txt"]) == 0
+  scanCached(v, c, g)
+  removeDir(v)
+  removeDir(g)
+  echo "PASS: a vaulted path matches by absolute path, not by stored name"
+
+block unsignedRecordDoesNotHideAFileFromScan:
+  ## The worktree walk skips vaulted paths. An unsigned record, which anyone
+  ## with the public key can write, must not choose what it skips.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "leak.txt", "sk-ant-" & repeat('J', 30))
+  forgeUnsignedRecord(r, c, "abababababababab", "leak.txt")
+  var raised = false
+  try:
+    scan(r, r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "an unsigned record must not hide a file from scan"
+  doAssert gitCode(r, @["add", "--", "leak.txt"]) == 0
+  raised = false
+  try:
+    scanCached(r, c, r)
+  except CatchableError:
+    raised = true
+  doAssert raised, "an unsigned record must not hide a staged file from scan --cached"
+  removeDir(r)
+  echo "PASS: an unsigned record does not hide a file from scan"
 
 block corruptRecordFailsCheckAndUnseal:
   ## A record this machine should be able to decrypt must not be skipped when
@@ -2131,6 +2246,8 @@ block subkeyRecipientOpensTheVault:
     removeDir(r)
   echo "PASS: a recipient that names the encryption subkey opens the vault"
 
+if sharedCliDir.len > 0:
+  removeDir(sharedCliDir)
 removeDir(creds.home)
 delEnv("GNUPGHOME")
 echo "All audit tests passed."

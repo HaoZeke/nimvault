@@ -272,7 +272,10 @@ the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
 ~--cached~ reads the git index. ~--rev REV~ reads blobs introduced by a
 commit (that commit and its ancestors) or by an ~A..B~ range, including a
 secret added and then removed before the tip. A vaulted path in the index or
-in those commits is skipped the same way the worktree walk skips it.
+in those commits is reported even when its bytes match no pattern: it is the
+plaintext entering git history. Its bytes are matched against the patterns
+too. The worktree walk skips vaulted paths, since unsealed plaintext belongs
+on disk. Vaulted paths come from verified records and match by absolute path.
 ~.vault/~ itself is not scanned. ~--remote NAME~ leaves out commits that
 ~NAME~'s remote-tracking refs already reach. A commit in ~REV~ that this clone
 does not have is an error that says to fetch first.

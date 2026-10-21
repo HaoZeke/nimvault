@@ -1,1 +1,0 @@
-`scan --cached` now skips already-vaulted paths the same way the worktree scan does.
