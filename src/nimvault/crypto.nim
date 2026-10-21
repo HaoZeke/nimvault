@@ -176,9 +176,11 @@ proc resolveBlob*(repo: string, cfg: GpgConfig, id, expectedHash: string): strin
   ## The live blob when it matches `expectedHash`. A `.pending` sibling is
   ## the ciphertext a seal wrote before it could rename it into place; if
   ## that sibling is the one the record names, promote it.
+  if expectedHash.len == 0:
+    return findBlob(repo, cfg, id)
   let live = findBlob(repo, cfg, id)
   proc matches(path: string): bool =
-    expectedHash.len > 0 and fileExists(path) and sha256sum(path) == expectedHash
+    fileExists(path) and sha256sum(path) == expectedHash
   let pend = blobPath(repo, cfg, id) & ".pending"
   if matches(live):
     if fileExists(pend):
@@ -188,11 +190,12 @@ proc resolveBlob*(repo: string, cfg: GpgConfig, id, expectedHash: string): strin
     let dest = blobPath(repo, cfg, id)
     if renameAt(pend.cstring, dest.cstring) != 0:
       if matches(dest): return dest
-      return live
+      if matches(live): return live
+      return ""
     syncPath(dest)
     syncParentDir(dest)
     return dest
-  return live
+  return ""
 
 proc manifestPath*(repo: string, cfg: GpgConfig): string =
   ## Path the configured backend would write. Use `findManifest` to read.

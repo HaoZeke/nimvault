@@ -208,7 +208,6 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       ("no identity matched" in low) or ("no identities matched" in low)
     else:
       gpgNoSecretKey(msg)
-  var paths: seq[string] = @[]
   for kind, path in walkDir(dir):
     if kind != pcFile:
       continue
@@ -217,15 +216,25 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
-    # Every failure here is fatal. A missing allowed_signers, signer_identity
-    # or ssh-keygen means the signature cannot be checked, which says nothing
-    # about whether the record is for this machine.
-    if verifySig or checkPresent:
-      verifyManifest(cfg, path, verifySig, checkPresent)
-    paths.add(path)
-  let plains = decryptManyToString(cfg, paths, verifySig, checkPresent)
-  for i, path in paths:
-    let (plain, err) = plains[i]
+    let work = privateWorkDir()
+    let snap = work / ("record" &
+      (if name.endsWith(".age"): ".age" else: ".gpg"))
+    var plain = ""
+    var err = ""
+    try:
+      writeFile(snap, readFile(path))
+      let sig = path & ".sig"
+      if fileExists(sig):
+        writeFile(snap & ".sig", readFile(sig))
+      # Verify and decrypt the same bytes; the source path may change between
+      # the two calls.
+      if verifySig or checkPresent:
+        verifyManifest(cfg, snap, verifySig, checkPresent)
+      plain = decryptToString(cfg, snap, verifySig, checkPresent)
+    except CatchableError as problem:
+      err = problem.msg
+    finally:
+      discardPrivate(work)
     if err.len > 0:
       if sigFailure(err):
         nvRaise(err)
@@ -302,7 +311,8 @@ proc loadManifestMeta*(repo: string, verifySig = false,
                        checkPresent = false): tuple[entries: seq[VaultEntry],
                                                     sealKey: string,
                                                     envelope: bool,
-                                                    unopened, unparsed: int] =
+                                                    unopened, unparsed: int,
+                                                    deks: DekTable] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
   ## Returns empty seq if no manifest exists. `unparsed` counts records and
@@ -321,6 +331,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     result.entries = split.entries
     result.unopened = split.unread
     result.unparsed = split.unparsed
+    result.deks = split.deks
     result.envelope = true
     # Seal key still lives on the stub combined manifest when one exists.
     let encStub = findManifest(repo, cfg)
@@ -344,7 +355,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "", false, 0, 0)
+    return (@[], "", false, 0, 0, initTable[string, string]())
   verifyManifest(cfg, enc, verifySig, checkPresent)
   let plain = decryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:

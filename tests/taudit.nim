@@ -648,11 +648,16 @@ case " $* " in
 esac
 if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
    [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
+  base="${last##*/}"
   case "$last" in
     */.vault/e/*) ;;
-    */.vault/[0-9a-f]*.gpg)
-      sh -c "$NIMVAULT_SWAP_CMD"
-      : >"$NIMVAULT_SWAP_MARKER"
+    *)
+      case "$base" in
+        [0-9a-f]*.gpg)
+          sh -c "$NIMVAULT_SWAP_CMD"
+          : >"$NIMVAULT_SWAP_MARKER"
+          ;;
+      esac
       ;;
   esac
 fi
@@ -707,7 +712,7 @@ block unsealUsesDescriptorAnchoredStaging:
   removeDir(r)
   removeDir(outside)
   removeDir(wrapBin)
-  echo "PASS: unseal stages and renames under a stable directory descriptor"
+  echo "PASS: unseal refuses a parent changed after path checks"
 
 proc stagingFiles(dir: string): seq[string] =
   for path in walkDirRec(dir, yieldFilter = {pcFile, pcLinkToFile}):
@@ -834,10 +839,15 @@ block directEntryIsStagedOnce:
   writeFile(wrapBin / "gpg", """#!/bin/sh
 last=""
 for arg in "$@"; do last="$arg"; done
+base="${last##*/}"
 case "$last" in
   */.vault/e/*) ;;
-  */.vault/[0-9a-f]*.gpg)
-    ls -A """ & r.quoteShell & """ | grep -c '^\.nimvault-' >>""" & log.quoteShell & """ || true
+  *)
+    case "$base" in
+      [0-9a-f]*.gpg)
+        ls -A """ & r.quoteShell & """ | grep -c '^\.nimvault-' >>""" & log.quoteShell & """ || true
+        ;;
+    esac
     ;;
 esac
 exec """ & findExe("gpg").quoteShell & """ "$@"
@@ -1439,6 +1449,58 @@ proc headOf(repo: string): string =
   let (raw, code) = execCmdEx("git rev-parse HEAD", workingDir = repo)
   doAssert code == 0, raw
   raw.strip()
+
+block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
+  ## Swapping a split record and blob after the verified read must not produce
+  ## plaintext.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "ORIGINAL-PLAINTEXT")
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  let entry = loadManifest(r, cfg = c)[0]
+  let blob = crypto.blobPath(r, c, entry.id)
+  let dek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.gpg"
+  encryptWithDek(c, dek, payload, badBlob)
+  let badHash = sha256sum(badBlob)
+  let plain = forged / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{badHash}\tfile\t{sha256sum(payload)}\t{dek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+  doAssert fileExists(entryFile(r, c, entry.id))
+  doAssert fileExists(blob)
+  doAssert fileExists(badRec)
+  doAssert fileExists(badBlob)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let marker = wrapBin / "swapped"
+  writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badRec.quoteShell & " > " & entryFile(r, c, entry.id).quoteShell &
+                " && cat " & badBlob.quoteShell & " > " & blob.quoteShell
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  let got = runCli(r, @["unseal"])
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert fileExists(marker), "test wrapper did not swap the split record:\n" & got.outp
+  doAssert got.code != 0, "unseal must fail after the split-record/blob swap:\n" & got.outp
+  doAssert not fileExists(f), "unseal must not write plaintext after the swap"
+  removeDir(r)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: unseal refuses split-record/blob swaps after the verified read"
 
 block vaultedPlaintextFailsTheCommitAndPushScans:
   ## The pre-commit hook runs `scan --cached` and the pre-push hook runs

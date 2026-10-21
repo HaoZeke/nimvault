@@ -182,6 +182,33 @@ proc newDek*(cfg: GpgConfig): string =
     for b in buf:
       result.add(b.toHex(2).toLowerAscii())
 
+proc loadDeksFromKeys*(repo: string, cfg: GpgConfig): DekTable =
+  ## Data keys from keys.* files only.
+  let dir = repo / ".vault"
+  if not dirExists(dir):
+    return
+  var candidates: seq[string] = @[]
+  for kind, path in walkDir(dir):
+    if kind != pcFile:
+      continue
+    let name = path.extractFilename
+    if name.startsWith(KeysFileStem & ".") or
+       name == KeysFileStem & ".gpg" or name == KeysFileStem & ".age":
+      candidates.add(path)
+  for path in candidates:
+    var plain = ""
+    try:
+      plain = decryptToString(cfg, path, false)
+    except CatchableError:
+      continue
+    for line in plain.splitLines:
+      let s = line.strip()
+      if s.len == 0 or s.startsWith("#"):
+        continue
+      let parts = s.split('\t')
+      if parts.len >= 2:
+        result[parts[0]] = parts[1]
+
 proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   ## Merge every data-key this machine can actually open.
   ##
@@ -212,32 +239,12 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
         let parts = s.split('\t')
         if parts.len >= 6 and parts[5].len > 0:
           result[parts[0]] = parts[5]
-  var candidates: seq[string] = @[]
-  for kind, path in walkDir(dir):
-    if kind != pcFile:
-      continue
-    let name = path.extractFilename
-    if name.startsWith(KeysFileStem & ".") or
-       name == KeysFileStem & ".gpg" or name == KeysFileStem & ".age":
-      candidates.add(path)
-  for path in candidates:
-    var plain = ""
-    try:
-      plain = decryptToString(cfg, path, false)
-    except CatchableError:
-      continue        # not ours to read
-    for line in plain.splitLines:
-      let s = line.strip()
-      if s.len == 0 or s.startsWith("#"):
-        continue
-      let parts = s.split('\t')
-      if parts.len >= 2 and parts[0] notin result:
-        # A key file is not signed, so a data key in a record wins. The key
-        # file fills any id the records left without one: an id with no
-        # record (a v6 vault mid-migration) and a record whose data-key field
-        # is empty. The records above are read without checking signatures;
-        # callers verify them when they load the manifest.
-        result[parts[0]] = parts[1]
+  for id, key in loadDeksFromKeys(repo, cfg):
+    if id notin result:
+      # A key file is not signed, so a data key in a record wins. The key
+      # file fills any id the records left without one: an id with no record
+      # (a v6 vault mid-migration) and a record whose data-key field is empty.
+      result[id] = key
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
                       groupOf: Table[string, string],
