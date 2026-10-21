@@ -41,7 +41,8 @@ Each entry record at ~.vault/e/<id>.gpg~ (or ~.age~) decrypts to:
 
 - First line: record version header
 - Entry line: one row per file entry
-- ~dek~: per-entry data key (hex), empty for pre-v6 entries
+- ~dek~: per-entry data key: 64 lower-case hex digits for gpg, an
+  ~AGE-SECRET-KEY-1...~ identity for age, empty for pre-v6 entries
 - A record that opens but holds no entry line is counted, not dropped:
   ~check~ reports it and ~unseal~ refuses to run
 
