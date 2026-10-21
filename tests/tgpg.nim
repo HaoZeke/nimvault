@@ -92,7 +92,7 @@ block encryptDecryptCycle:
   gpgEncrypt(cfg, plainIn, encrypted)
   doAssert fileExists(encrypted), "Encrypted file should exist"
 
-  gpgDecrypt(encrypted, plainOut, verifySig = true)
+  gpgDecrypt(cfg, encrypted, plainOut, verifySig = true)
   doAssert fileExists(plainOut), "Decrypted file should exist"
   doAssert readFile(plainOut) == testContent, "Round-trip content mismatch"
 
@@ -109,11 +109,27 @@ block decryptToString:
 
   writeFile(plainIn, testContent)
   gpgEncrypt(cfg, plainIn, encrypted)
-  let result = gpgDecryptToString(encrypted, verifySig = true)
+  let result = gpgDecryptToString(cfg, encrypted, verifySig = true)
   doAssert result == testContent, "gpgDecryptToString content mismatch"
 
   removeDir(tmpDir)
   echo "PASS: gpgDecryptToString (verified)"
+
+block validSigBindsThePrimaryKey:
+  ## The tenth VALIDSIG field is the primary key; the first is the signing
+  ## subkey. Pinning compares the primary key.
+  let status = "[GNUPG:] NEWSIG\n" &
+    "[GNUPG:] GOODSIG 0123456789ABCDEF Someone\n" &
+    "[GNUPG:] VALIDSIG aaaa1111 2026-10-21 1792540800 0 4 0 1 10 00 bbbb2222\n"
+  doAssert validSigners(status) == @["BBBB2222"]
+  doAssert gpgSignerProblem(status, "rec", @["BBBB2222"]) == ""
+  doAssert "not a key this vault is configured for" in
+    gpgSignerProblem(status, "rec", @["AAAA1111"])
+  doAssert "signature verification failed" in
+    gpgSignerProblem("[GNUPG:] GOODSIG X\n", "rec", @["BBBB2222"])
+  let cfg = GpgConfig(recipient: "A1", wraps: @["~/x/**:B2,A1", "**: C3 "])
+  doAssert vaultSignerSpecs(cfg) == @["A1", "B2", "C3"]
+  echo "PASS: VALIDSIG pins the primary key"
 
 block sha256sumTest:
   let tmpDir = createTempDir("nimvault_sha_", "_test")
