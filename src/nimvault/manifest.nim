@@ -185,9 +185,10 @@ proc recalledRecord(path: string): string =
     ""
 
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
-                       verifySig = false): tuple[entries: seq[VaultEntry],
-                                                 deks: DekTable,
-                                                 unread: int] =
+                       verifySig = false,
+                       checkPresent = false): tuple[entries: seq[VaultEntry],
+                                                    deks: DekTable,
+                                                    unread: int] =
   ## Union of every per-entry record this machine can open.
   let dir = entryDir(repo)
   if not dirExists(dir):
@@ -196,9 +197,9 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
   # decrypt is skippable. The first is a replaced trust root, the second is
   # "not for us".
   template sigFailure(msg: string): bool =
-    verifySig and ("signature verification failed" in msg or
-                   "missing signature" in msg or
-                   "signature required" in msg)
+    (verifySig or checkPresent) and ("signature verification failed" in msg or
+                                     "missing signature" in msg or
+                                     "signature required" in msg)
   proc noSecretKey(msg: string): bool =
     if cfg.usesAge:
       let low = msg.toLowerAscii()
@@ -214,15 +215,15 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
-    if verifySig:
+    if verifySig or checkPresent:
       try:
-        verifyManifest(cfg, path, true)
+        verifyManifest(cfg, path, verifySig, checkPresent)
       except CatchableError:
         if sigFailure(getCurrentExceptionMsg()):
           raise
         continue
     paths.add(path)
-  let plains = decryptManyToString(cfg, paths, verifySig)
+  let plains = decryptManyToString(cfg, paths, verifySig, checkPresent)
   for i, path in paths:
     let (plain, err) = plains[i]
     if err.len > 0:
@@ -295,10 +296,11 @@ proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
   # stay until dropEntryRecord names them.
 
 proc loadManifestMeta*(repo: string, verifySig = false,
-                       cfg = GpgConfig()): tuple[entries: seq[VaultEntry],
-                                                 sealKey: string,
-                                                 envelope: bool,
-                                                 unopened: int] =
+                       cfg = GpgConfig(),
+                       checkPresent = false): tuple[entries: seq[VaultEntry],
+                                                    sealKey: string,
+                                                    envelope: bool,
+                                                    unopened: int] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
   ## Returns empty seq if no manifest exists.
@@ -308,8 +310,11 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   ## `cfg` is optional so the many call sites that only read a gpg vault stay
   ## unchanged. `findManifest` still refuses to report a vault sealed by the
   ## other backend as empty, so omitting it fails loudly rather than quietly.
+  ##
+  ## `checkPresent` is `--allow-unsigned`: with `verifySig` off, a signature
+  ## that is present must still verify and come from a configured signer.
   if hasSplitEntries(repo):
-    let split = loadSplitEntries(repo, cfg, verifySig)
+    let split = loadSplitEntries(repo, cfg, verifySig, checkPresent)
     result.entries = split.entries
     result.unopened = split.unread
     result.envelope = true
@@ -332,8 +337,8 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
     return (@[], "", false, 0)
-  verifyManifest(cfg, enc, verifySig)
-  let plain = decryptToString(cfg, enc, verifySig)
+  verifyManifest(cfg, enc, verifySig, checkPresent)
+  let plain = decryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:
     let stripped = line.strip()
     if stripped.startsWith(SealKeyHeader):
@@ -361,9 +366,9 @@ proc loadManifestMeta*(repo: string, verifySig = false,
       result.entries.add((parts[0], parts[1], parts[2], kind, parts[4]))
 
 proc loadManifest*(repo: string, verifySig = false,
-                   cfg = GpgConfig()): seq[VaultEntry] =
+                   cfg = GpgConfig(), checkPresent = false): seq[VaultEntry] =
   ## Entries only; see [loadManifestMeta] when the seal key matters.
-  loadManifestMeta(repo, verifySig, cfg).entries
+  loadManifestMeta(repo, verifySig, cfg, checkPresent).entries
 
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                    sealKey = "", envelope = false,

@@ -85,16 +85,21 @@ read/write only).
 Exits non-zero if:
 - Any blob file is missing
 - Any blob hash does not match the manifest
-- Any signature is invalid or missing (unless ~--allow-unsigned~)
+- Any signature does not verify, or comes from a key the config does not name
+- Any signature is missing (unless ~--allow-unsigned~)
 - Any target path escapes the expected boundary
 
 *** ~--allow-unsigned~
 
-Accept unsigned legacy records. Missing signatures are accepted, but blob-hash
-verification and path-safety checks still run. A bad signature (~BADSIG~) or a
-signature by an unconfigured key is still fatal. Use this only for migrating
-legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
-the vault to signed records.
+Accept a record, manifest or blob that carries no signature. A signature that
+is present is still checked: one that does not verify, and a good one from a
+key the config does not name, are fatal. Blob-hash and path-safety checks
+still run.
+
+The flag authenticates nothing it lets through. Anyone who can write to the
+vault repository and holds the recipient's public key can add an unsigned
+record, and with the flag ~unseal~ writes it. Use it only to migrate a vault
+created before v0.2.0, then run ~nimvault seal~ to sign every record.
 
 ** add-dir
 
@@ -175,8 +180,9 @@ nimvault get <path> [--allow-unsigned]
 
 Print one entry's plaintext on stdout without unsealing the vault or writing
 the plaintext to disk, including the runtime directory. Applies the same
-path-safety and blob-integrity checks ~unseal~ does. Deliberately quiet, so
-nothing decorative shares the stream with a secret.
+path-safety and blob-integrity checks ~unseal~ does, and ~--allow-unsigned~
+means the same as it does there. Deliberately quiet, so nothing decorative
+shares the stream with a secret.
 
 ** check
 

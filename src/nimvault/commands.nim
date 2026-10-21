@@ -240,7 +240,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   ## sits above this one, which is both duplicated and invisible from here.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
+  let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg,
+                                checkPresent = true)
   if allEntries.len == 0:
     nvEcho("vault is empty")
     return
@@ -349,8 +350,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     nvRaise(acc.strip())
 
   # Verify all decryption results and signatures
-  let signers = if requireSig and cfg.signaturesInBand and direct.len > 0:
-                  vaultSigners(cfg)
+  let signers = if cfg.signaturesInBand and direct.len > 0: vaultSigners(cfg)
                 else: @[]
   for r in results:
     if r.code != 0:
@@ -370,7 +370,11 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
        not gpgStatusHas(r.status, "GOODSIG"):
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
-    if cfg.signaturesInBand and not r.enveloped and requireSig:
+    # A signature that is there must come from a configured signer, with or
+    # without --allow-unsigned.
+    if cfg.signaturesInBand and not r.enveloped and
+       (requireSig or gpgStatusHas(r.status, "GOODSIG") or
+        validSigners(r.status).len > 0):
       let problem = gpgSignerProblem(r.status, r.entry.path, signers)
       if problem.len > 0:
         abortUnseal(problem)
@@ -738,7 +742,8 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   ## live one, which a seal in progress may be publishing too.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg,
+                             checkPresent = true)
 
   let absPath = if path.isAbsolute:
     path
@@ -780,7 +785,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       # Decrypt to memory. A file under the runtime directory is plaintext
       # another uid can read for as long as the process is decrypting.
       return decryptWithDekToString(cfg, deks[e.id], inPath)
-    return decryptToString(cfg, inPath, verifySig = requireSig)
+    return decryptToString(cfg, inPath, verifySig = requireSig, checkPresent = true)
 
   nvRaise(&"Not in vault: {path}")
 
