@@ -4,6 +4,7 @@ import std/[os, strutils, strformat, sysrand, tables, sets]
 import ./gpg
 import ./crypto
 import ./dek
+import ./recordcache
 
 type
   EntryKind* = enum
@@ -163,31 +164,6 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
   if not got:
     result.ok = false
 
-var recordCache {.threadvar.}: Table[string, tuple[cipherHash, plain: string]]
-  ## Plaintext of split records this process decrypted, by path, with the
-  ## ciphertext digest seen at read time. A record rewritten since is read
-  ## again.
-
-proc recordCipherHash(path: string): string =
-  ## Hash of the encrypted record bytes; empty when unreadable.
-  try:
-    sha256sum(path)
-  except CatchableError:
-    ""
-
-proc rememberRecord(path, plain: string) =
-  let digest = recordCipherHash(path)
-  if digest.len > 0:
-    recordCache[path] = (digest, plain)
-
-proc recalledRecord(path: string): string =
-  ## The cached plaintext of `path` when its ciphertext bytes still match what
-  ## this process verified and decrypted; empty otherwise.
-  if not recordCache.hasKey(path):
-    return ""
-  let (digest, plain) = recordCache[path]
-  if digest == recordCipherHash(path): plain else: ""
-
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
                        verifySig = false,
                        checkPresent = false): tuple[entries: seq[VaultEntry],
@@ -211,6 +187,7 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       ("no identity matched" in low) or ("no identities matched" in low)
     else:
       gpgNoSecretKey(msg)
+  let scope = cacheScope(cfg)
   for kind, path in walkDir(dir):
     if kind != pcFile:
       continue
@@ -246,7 +223,7 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
         result.unread.inc
         continue
       nvRaise(err)
-    rememberRecord(path, plain)
+    rememberRecordPlain(scope, path, plain)
     let parsed = parseEntryPlain(plain)
     if parsed.ok:
       result.entries.add(parsed.entry)
@@ -273,7 +250,7 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   finally:
     discardPrivate(work)
   publishSigned(cfg, tmp, dest)
-  rememberRecord(dest, content)
+  rememberRecordPlain(cacheScope(cfg), dest, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =
@@ -286,7 +263,7 @@ proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
   let path = findEntryFile(repo, cfg, e.id)
   if path.len == 0:
     return false
-  let plain = recalledRecord(path)
+  let plain = recalledRecordPlain(cacheScope(cfg), path)
   let checked =
     if plain.len > 0:
       plain
