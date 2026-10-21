@@ -1,0 +1,2 @@
+Age decrypt write failures now keep the backend stderr detail in the raised
+error message, so wrong-key failures still surface age's own diagnostic text.
