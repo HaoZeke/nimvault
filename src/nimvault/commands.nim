@@ -1013,16 +1013,42 @@ proc revCharsOk(rev: string): bool =
       return false
   dots == 0 or dots == 2
 
-proc commitsIn(gitRepo, rev: string): seq[string] =
+proc remoteNameOk(name: string): bool =
+  ## A remote name reaches git as `--remotes=<name>`. Letters, digits and
+  ## `._-/` only, so it cannot widen into a glob or another option.
+  if name.len == 0 or name[0] in {'-', '.', '/'} or ".." in name:
+    return false
+  for c in name:
+    if c notin {'a'..'z', 'A'..'Z', '0'..'9', '.', '_', '-', '/'}:
+      return false
+  true
+
+proc commitsIn(gitRepo, rev: string, remote = ""): seq[string] =
+  ## Commits in `rev`, oldest first. With `remote`, commits already reachable
+  ## from that remote's tracking refs are left out: they were scanned, or
+  ## let through, when they were pushed.
   if not revCharsOk(rev):
     nvRaise("FATAL: refusing revision")
+  var ends: seq[string]
   if ".." in rev:
-    let parts = rev.split("..")
-    if parts.len != 2 or not isHexSha(parts[0]) or not isHexSha(parts[1]):
+    ends = rev.split("..")
+    if ends.len != 2 or not isHexSha(ends[0]) or not isHexSha(ends[1]):
       nvRaise("FATAL: refusing revision")
   elif not isHexSha(rev):
     nvRaise("FATAL: refusing revision")
-  let listed = gitMust(gitRepo, @["rev-list", "--reverse", rev])
+  else:
+    ends = @[rev]
+  if remote.len > 0 and not remoteNameOk(remote):
+    nvRaise(&"FATAL: refusing remote name: {remote}")
+  for sha in ends:
+    if gitCapture(gitRepo, @["cat-file", "-e", sha & "^{commit}"]).code != 0:
+      nvRaise(&"FATAL: commit {sha} is not in this repository.\n" &
+              "  The remote has commits this clone has not fetched. Run " &
+              "'git fetch', merge or rebase onto them, and push again.")
+  var args = @["rev-list", "--reverse", rev]
+  if remote.len > 0:
+    args.add(@["--not", "--remotes=" & remote])
+  let listed = gitMust(gitRepo, args)
   for line in listed.splitLines:
     let s = line.strip()
     if s.len == 0: continue
@@ -1100,10 +1126,11 @@ proc scanCached*(repo: string, cfg: GpgConfig, gitRepo: string) =
     considerGitBlob(gitRepo, rel, ":" & rel, vaulted, rules, hits, seen, scanned)
   reportHits(hits, scanned)
 
-proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string) =
+proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string,
+              remote = "") =
   ## Scan blobs introduced by `rev` (`A..B` or one commit and its ancestors).
   ## The diff of the two tips misses a secret that was added and removed
-  ## again inside the range.
+  ## again inside the range. `remote` drops commits that remote already has.
   if gitRepo.len == 0 or not dirExists(gitRepo):
     nvRaise(&"FATAL: not a git repository: {gitRepo}")
   let vaulted = loadVaulted(repo, cfg)
@@ -1111,7 +1138,7 @@ proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string) =
   var hits: seq[SecretHit] = @[]
   var seen = initHashSet[string]()
   var scanned = 0
-  for commit in commitsIn(gitRepo, rev):
+  for commit in commitsIn(gitRepo, rev, remote):
     let listed = gitMust(gitRepo, @[
       "diff-tree", "--root", "-m", "-r", "--no-commit-id", "--name-only",
       "--diff-filter=ACMRT", "-z", commit])
@@ -1584,9 +1611,17 @@ set -eu
 cd "$(git rev-parse --show-toplevel)"
 exec nimvault scan --cached
 """)
+  # A push to a named remote skips commits its tracking refs already reach,
+  # so a new branch is not judged on history that is already public. A push
+  # to a bare URL has no tracking refs and scans everything the range holds.
   writeFile(prePush, """#!/bin/sh
 set -eu
 cd "$(git rev-parse --show-toplevel)"
+remote="${1:-}"
+known=""
+if [ -n "$remote" ] && git config --get "remote.$remote.url" >/dev/null 2>&1; then
+  known="--remote=$remote"
+fi
 status=0
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$local_sha" in
@@ -1594,10 +1629,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   esac
   case "$remote_sha" in
     0000000000000000000000000000000000000000*)
-      nimvault scan --rev "$local_sha" || status=1
+      nimvault scan --rev "$local_sha" $known || status=1
       ;;
     *)
-      nimvault scan --rev "${remote_sha}..${local_sha}" || status=1
+      nimvault scan --rev "${remote_sha}..${local_sha}" $known || status=1
       ;;
   esac
 done

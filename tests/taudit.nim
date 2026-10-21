@@ -598,9 +598,89 @@ block hookScansIndexAndPushedCommits:
   let push = readFile(r / ".git" / "hooks" / "pre-push")
   doAssert "nimvault scan --cached" in pre
   doAssert "nimvault scan --rev" in push
+  doAssert "--remote=" in push
   doAssert "nimvault check" in push
   removeDir(r)
   echo "PASS: hooks scan the index and the pushed commits"
+
+const nimExe = getCurrentCompilerExe()
+const srcRoot = currentSourcePath().parentDir.parentDir
+
+proc buildCli(): string =
+  ## The hooks call `nimvault` from PATH, so the test builds the one it runs.
+  result = createTempDir("nimvault_audit_", "_bin")
+  let (output, code) = execCmdEx(nimExe.quoteShell & " c --hints:off " &
+    "--verbosity:0 -p:" & (srcRoot / "src").quoteShell & " -o:" &
+    (result / "nimvault").quoteShell & " " &
+    (srcRoot / "src" / "nimvault.nim").quoteShell)
+  doAssert code == 0, output
+
+proc runPrePush(repo, binDir, lines: string,
+                args: seq[string]): tuple[outp: string, code: int] =
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", binDir & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  try:
+    let p = startProcess(repo / ".git" / "hooks" / "pre-push", workingDir = repo,
+                         args = args, options = {poStdErrToStdOut})
+    p.inputStream.write(lines)
+    p.inputStream.close()
+    result.outp = p.outputStream.readAll()
+    result.code = p.waitForExit()
+    p.close()
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_GPG_RECIPIENT")
+
+block prePushScansOnlyCommitsNewToTheRemote:
+  ## A new branch used to scan its whole history, so a secret that was
+  ## pushed and removed long ago blocked every new branch. A remote sha
+  ## this clone lacks made rev-list fail with no hint.
+  let binDir = buildCli()
+  let remote = createTempDir("nimvault_audit_", "_remote")
+  doAssert gitCode(remote, @["init", "-q", "--bare"]) == 0
+  let r = setupRepo()
+  let zero = repeat('0', 40)
+  proc head(): string =
+    let (raw, code) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert code == 0, raw
+    raw.strip()
+  doAssert gitCode(r, @["remote", "add", "origin", remote]) == 0
+  writeFile(r / "leak.txt", "sk-ant-" & repeat('F', 30))
+  doAssert gitCode(r, @["add", "--", "leak.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "-m", "old leak"]) == 0
+  doAssert gitCode(r, @["rm", "-q", "--", "leak.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "-m", "drop old leak"]) == 0
+  doAssert gitCode(r, @["push", "-q", "origin", "HEAD:refs/heads/main"]) == 0
+  installHooks(r)
+
+  doAssert gitCode(r, @["checkout", "-q", "-b", "feature"]) == 0
+  writeFile(r / "clean.txt", "nothing secret")
+  doAssert gitCode(r, @["add", "--", "clean.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "clean"]) == 0
+  var got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/feature {zero}\n", @["origin", remote])
+  doAssert got.code == 0,
+    "a new branch must not be blocked by history the remote already has:\n" & got.outp
+
+  writeFile(r / "fresh.txt", "sk-ant-" & repeat('G', 30))
+  doAssert gitCode(r, @["add", "--", "fresh.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "fresh leak"]) == 0
+  got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/feature {zero}\n", @["origin", remote])
+  doAssert got.code != 0, "a new commit with a secret must block the push"
+  doAssert "fresh.txt" in got.outp and "leak.txt" notin got.outp, got.outp
+
+  got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/main {repeat('e', 40)}\n",
+    @["origin", remote])
+  doAssert got.code != 0, "an unknown remote commit must block the push"
+  doAssert "git fetch" in got.outp,
+    "an unknown remote commit must say how to fix it:\n" & got.outp
+  removeDir(r)
+  removeDir(remote)
+  removeDir(binDir)
+  echo "PASS: pre-push scans only commits new to the remote"
 
 block checkWithoutSecretKey:
   ## The blob digests are inside the encrypted records. A public key can
