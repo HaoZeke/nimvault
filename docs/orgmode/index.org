@@ -161,6 +161,7 @@ digraph G {
      howto/private-vault-repo
      howto/service-vault
      howto/headless-gpg
+     howto/machine-writers
 #+end_export
 
 * Reference

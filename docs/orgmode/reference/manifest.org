@@ -114,23 +114,69 @@ The signed manifest is the integrity anchor. On ~unseal~:
    blobs carry one, age blobs and v6 enveloped blobs do not
 5. Only after all checks pass are files moved to their final paths
 
-~nimvault check~ runs step 2 on its own, over every entry, without decrypting
-and without key material.
+With a secret key, ~nimvault check~ runs step 2 over every record it can
+open. Without one, it compares payload ids to ~.vault/blob-index~ and does
+not decrypt. ~--digests~ diffs a previous snapshot of the ciphertext. See
+[[file:../howto/machine-writers.org][machine writers]].
 
-This prevents forgery (attacker encrypts a malicious blob to your public key),
-ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
-substitutes a v1 unsigned manifest).
+For the signed records this prevents forgery (attacker encrypts a malicious
+blob to your public key), ciphertext swapping (attacker renames blobs), and
+manifest replacement (attacker substitutes a v1 unsigned manifest). An
+unsigned ~.vault/a/~ fragment is not that anchor.
 
 * Directory layout
 
 #+begin_src text
 .vault/
-  config            # recipient configuration (plaintext)
-  manifest.gpg      # signed + encrypted manifest
-  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
-  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
-  fedcba9876543210.gpg  # signed + encrypted blob
+  config                 # recipient, wrap rules (plaintext)
+  manifest.gpg           # signed stub: seal key and envelope header
+  blob-index             # plaintext id and ciphertext sha256; no paths
+  keys.<group>.gpg       # per-file data keys for one recipient set
+  e/<id>.gpg             # signed record: path, hashes, data key
+  a/<id>.gpg             # unsigned fragment, same line, public-key append
+  <id>.gpg               # payload
 #+end_src
 
 Only ~.vault/~ is committed to git. The plaintext files live at their target
 paths outside the repository.
+
+* Public-key fragments
+
+~.vault/e/<id>.gpg~ is signed. Appending one needs a secret key, so a writer
+that has none does not decrypt the records already there. It writes
+~.vault/a/<id>.gpg~ instead: the same line, plus a ~# vault-append~ comment,
+encrypted to that entry's recipients and not signed. The path stays inside
+the ciphertext. Existing ~e/~ records, payloads, ~keys.*~ and ~manifest.gpg~
+are not opened and not rewritten.
+
+A signed record wins when both exist for one id. ~rotate~ rewrites every
+openable fragment as a signed ~e/~ record and deletes the fragment. ~seal~
+does that only when the fragment no longer matches the entry.
+
+The fragment is not a signature. A plant is visible to ~check --digests~
+against a snapshot the writer did not rewrite, and to git. An older binary
+ignores ~.vault/a/~.
+
+* Blob index
+
+#+begin_src text
+# nimvault-blob-index-v1
+<id> <sha256 of .vault/<id>.gpg>
+#+end_src
+
+No paths. ~add~ and ~seal~ upsert the id they wrote and leave every other
+line. ~rm~ drops its line. A writer who cannot read the other entries must
+not drop them. Keyless ~check~ diffs top-level 16-hex payloads against this
+file: added, changed, missing.
+
+* Digest list
+
+#+begin_src text
+# nimvault-digests-v1
+<relative path under .vault/> <sha256>
+#+end_src
+
+Every file under ~.vault/~ except ~config~ and ~*.tmp~. ~check --write-digests~
+writes the bytes on disk. ~check --digests~ diffs a previous file. A delta
+exits 2, including an intentional add. Write it after a clean seal, and
+compare against that snapshot.

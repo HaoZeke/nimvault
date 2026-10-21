@@ -107,10 +107,12 @@ proc matchesGlob(pattern, path: string): bool =
     pat.add("**")
   return path.match(re(globToRe(pat)))
 
-proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
-  ## Recipients for one entry: the first matching `wrap` rule wins, and the
-  ## configured recipient is the fallback. Order in the file is the precedence,
-  ## so the specific rules go above the general one.
+proc wrapMatch*(cfg: GpgConfig, path: string): tuple[recipients: seq[string],
+                                                     rule: string] =
+  ## First matching `wrap` rule wins. `rule` is the glob, empty when the
+  ## configured recipient is the fallback. A match that names nobody is an
+  ## error: falling through would seal the entry to the owner, which is a
+  ## different set from the one the rule wrote down.
   for rule in cfg.wraps:
     let idx = rule.rfind(':')
     if idx <= 0:
@@ -125,8 +127,16 @@ proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
        not pat.startsWith("~/"):
       hit = matchesGlob(pat, path[2 .. ^1])
     if hit:
-      return normalizedRecipients(recips)
-  return normalizedRecipients(@[cfg.recipient])
+      let norm = normalizedRecipients(recips)
+      if norm.len == 0:
+        nvRaise(&"FATAL: wrap rule '{pat}' matches {path} but names no recipient")
+      return (norm, pat)
+  (normalizedRecipients(@[cfg.recipient]), "")
+
+proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
+  ## Recipients for one entry. Order in the file is the precedence, so the
+  ## specific rules go above the general one.
+  wrapMatch(cfg, path).recipients
 
 proc groupKeysPath*(repo: string, cfg: GpgConfig, gid: string): string =
   repo / ".vault" / (KeysFileStem & "." & gid & cfg.blobExt)
@@ -185,15 +195,21 @@ proc newDek*(cfg: GpgConfig): string =
 proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   ## Merge every data-key this machine can actually open.
   ##
-  ## Per-entry records under `.vault/e/` are the mergeable source. Grouped
-  ## `keys.*` files still fill ids that have no record yet (a v6 vault
-  ## mid-migration). A file that will not decrypt is not an error: it
-  ## belongs to a group this machine is not in.
+  ## Per-entry records under `.vault/e/` are the mergeable source.
+  ## `.vault/a/` holds the same line, written by a public-key writer that
+  ## could not sign. Grouped `keys.*` files still fill ids that have no
+  ## record yet (a v6 vault mid-migration). A file that will not decrypt is
+  ## not an error: it belongs to a group this machine is not in.
+  ##
+  ## `a/` is read first and `e/` overwrites it, so a signed record wins when
+  ## both exist. `keys.*` still overwrites an id it names.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
-  let edir = dir / "e"
-  if dirExists(edir):
+  for sub in ["a", "e"]:
+    let edir = dir / sub
+    if not dirExists(edir):
+      continue
     for kind, path in walkDir(edir):
       if kind != pcFile:
         continue
