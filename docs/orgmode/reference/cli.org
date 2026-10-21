@@ -236,7 +236,7 @@ does. Churn is the intent, so it bypasses the incremental skip.
 ** scan
 
 #+begin_src text
-nimvault scan [PATH] [--cached | --rev REV] [--vault DIR]
+nimvault scan [PATH] [--cached | --rev REV [--remote NAME]] [--vault DIR]
 #+end_src
 
 Look for plaintext secrets that are not in the vault. With no flag, walk
@@ -247,7 +247,9 @@ the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
 commit (that commit and its ancestors) or by an ~A..B~ range, including a
 secret added and then removed before the tip. A vaulted path in the index or
 in those commits is reported even when its bytes do not match a pattern.
-~.vault/~ itself is not scanned.
+~.vault/~ itself is not scanned. ~--remote NAME~ leaves out commits that
+~NAME~'s remote-tracking refs already reach. A commit in ~REV~ that this clone
+does not have is an error that says to fetch first.
 
 The pattern list skips binaries, files over 2MB, lines over 2000 characters,
 and dependency directories on a worktree walk. It does not print the matching
@@ -317,8 +319,12 @@ nimvault hook [--vault DIR]
 
 Install a ~pre-commit~ hook that runs ~nimvault scan --cached~ and a
 ~pre-push~ hook that runs ~nimvault scan --rev~ on the commits being pushed,
-then ~nimvault check~. Refuses to overwrite existing hooks. Hooks already
-installed keep their previous script until they are replaced by hand.
+then ~nimvault check~. Pushing to a named remote scans only commits that
+remote's tracking refs do not reach, so a new branch is not refused for
+history the remote already has. A push to a bare URL scans the whole range.
+When the remote holds commits this clone has not fetched, the hook refuses
+and says to run ~git fetch~. Refuses to overwrite existing hooks. Hooks
+already installed keep their previous script until they are replaced by hand.
 
 ** doctor
 
