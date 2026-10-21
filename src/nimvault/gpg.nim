@@ -5,6 +5,7 @@ import checksums/sha2
 
 type
   NimvaultError* = object of CatchableError
+    code*: int     ## Process exit. 1 operational, 2 tamper or unhealthy, 3 no prompt.
   GpgConfig* = object
     recipient*: string
     root*: string  ## When non-empty, paths are relative to this dir (not ~/...)
@@ -20,12 +21,91 @@ type
     allowedSigners*: string ## ssh allowed-signers file used to verify it
     signerIdentity*: string ## principal to match within allowed_signers
     wraps*: seq[string]     ## `<glob>:<recipient>[,...]` rules, in file order
+    publicOnly*: bool       ## Encrypt to public keys and do not touch a secret key.
 
-proc nvRaise*(msg: string) =
-  ## Library-safe failure (no process exit). CLI catches and quits.
-  raise newException(NimvaultError, msg)
+proc nvRaise*(msg: string, code = 1) =
+  ## Library-safe failure (no process exit). CLI catches and quits with `code`.
+  ## A zero code would look like success, so an unset field still exits 1.
+  let e = newException(NimvaultError, msg)
+  e.code = if code <= 0: 1 else: code
+  raise e
 
 var nvQuiet* {.threadvar.}: bool  ## When true, suppress banners/echo (C ABI / MCP in-process)
+var nvNonInteractive* {.threadvar.}: bool
+  ## Refuse pinentry. A missing passphrase or secret key is an error, not a prompt.
+
+var secretKeyCache {.threadvar.}: tuple[home: string, known, present: bool]
+
+proc pinentryInsert*(args: var seq[string]) =
+  ## `--batch` alone still starts pinentry when a secret key is locked.
+  ## `--pinentry-mode error` makes that a fast failure instead of a hang.
+  if not nvNonInteractive:
+    return
+  var i = 0
+  while i < args.len:
+    if args[i] == "--batch":
+      args.insert("--pinentry-mode", i + 1)
+      args.insert("error", i + 2)
+      return
+    inc i
+  args = @["--pinentry-mode", "error"] & args
+
+proc gpgFailureCode*(output: string): int =
+  ## Non-interactive callers need a distinct code when gpg wanted a human.
+  if not nvNonInteractive:
+    return 1
+  let l = output.toLowerAscii
+  if "no secret key" in l or "pinentry" in l or "inappropriate ioctl" in l or
+     "cancelled" in l or "canceled" in l or "unusable secret key" in l or
+     "signing failed" in l or "batchmode" in l:
+    return 3
+  return 1
+
+proc gpgSecretKeyPresent*(): bool =
+  ## True when this GNUPGHOME holds a secret key. Listing does not unlock it.
+  ## Cached per home: add and seal ask more than once, and a test switches homes.
+  let home = getEnv("GNUPGHOME")
+  if secretKeyCache.known and secretKeyCache.home == home:
+    return secretKeyCache.present
+  var present = false
+  if findExe("gpg").len > 0:
+    let p = startProcess("gpg",
+      args = @["--batch", "--pinentry-mode", "error",
+               "--list-secret-keys", "--with-colons"],
+      options = {poUsePath, poStdErrToStdOut})
+    let output = p.outputStream.readAll()
+    discard p.waitForExit()
+    p.close()
+    for line in output.splitLines:
+      if line.startsWith("sec:") or line.startsWith("ssb:"):
+        present = true
+        break
+  secretKeyCache = (home, true, present)
+  present
+
+proc ageIdentityPresent(cfg: GpgConfig): bool =
+  ## The age identity is the decrypt key. A configured path that is not on
+  ## this machine is the same as no key: a CI writer often has the recipient
+  ## in `.vault/config` and nothing else.
+  if cfg.identity.len == 0:
+    return false
+  var p = cfg.identity
+  if p.startsWith("~/"):
+    p = getHomeDir() / p[2 .. ^1]
+  fileExists(p)
+
+proc publicKeyOnly*(cfg: GpgConfig): bool =
+  ## Encrypt to public keys and do not decrypt or sign.
+  ##
+  ## gpg signs in the same operation as `-e`, so a home with no secret key
+  ## cannot produce a signed record. age does not sign; the ssh key does, and
+  ## the identity file is what decrypts. No identity file is that same case.
+  ## `--public-only` forces it when a decrypt key is present and must not be used.
+  if cfg.publicOnly:
+    return true
+  if cfg.backend == "age":
+    return not ageIdentityPresent(cfg)
+  not gpgSecretKeyPresent()
 
 type VaultConfigFile* = tuple[recipient, root, backend, identity, signer,
                               signKey, allowedSigners, signerIdentity: string,
@@ -144,24 +224,28 @@ proc gpgStatusHas*(status, token: string): bool =
 
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## Encrypt and sign a file using GPG with the configured recipient.
-  let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
-             "--trust-model", "always",
-             "--sign", "-e", "-r", cfg.recipient,
-             "--set-filename", "", "-o", outPath, inPath],
+  var args = @[
+    "--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+    "--trust-model", "always",
+    "--sign", "-e", "-r", cfg.recipient,
+    "--set-filename", "", "-o", outPath, inPath]
+  pinentryInsert(args)
+  let p = startProcess("gpg", args = args,
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
   p.close()
   if code != 0:
-    nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
+    nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}",
+            gpgFailureCode(output))
 
 proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path.
-  let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-             "-d", "-o", outPath, inPath],
-    options = {poUsePath})
+  var args = @[
+    "--batch", "--yes", "--quiet", "--status-fd", "2",
+    "-d", "-o", outPath, inPath]
+  pinentryInsert(args)
+  let p = startProcess("gpg", args = args, options = {poUsePath})
   discard p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
@@ -169,14 +253,16 @@ proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
   if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
     nvRaise(&"FATAL: signature verification failed for {inPath}")
   if code != 0:
-    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
+    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}",
+            gpgFailureCode(status))
   if verifySig and not gpgStatusHas(status, "GOODSIG"):
     nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 
 proc gpgDecryptToString*(inPath: string, verifySig = false): string =
-  let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
-    options = {poUsePath})
+  var args = @[
+    "--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath]
+  pinentryInsert(args)
+  let p = startProcess("gpg", args = args, options = {poUsePath})
   result = p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
@@ -184,7 +270,8 @@ proc gpgDecryptToString*(inPath: string, verifySig = false): string =
   if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
     nvRaise(&"FATAL: signature verification failed for {inPath}")
   if code != 0:
-    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
+    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}",
+            gpgFailureCode(status))
   if verifySig and not gpgStatusHas(status, "GOODSIG"):
     nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
 

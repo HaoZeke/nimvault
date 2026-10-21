@@ -4,7 +4,7 @@
 ## add -> list -> seal -> status -> unseal -> rm
 ## Also tests blob hash integrity and path safety.
 
-import std/[os, osproc, strutils, strformat, tempfiles, posix, tables]
+import std/[os, osproc, strutils, strformat, tempfiles, posix, tables, json]
 import nimvault/[gpg, manifest, commands, lock, crypto, dek, vaultrepo]
 
 proc setupTestGpgHome(): string =
@@ -660,6 +660,29 @@ block wrapRulesSelectRecipients:
   var c6 = GpgConfig(recipient: "DEFAULT", root: "/tmp/repo")
   c6.wraps = @["~/.ssh/**:LAPTOP", "**:LAPTOP,TERRA"]
   doAssert recipientsFor(c6, ".ssh/id_ed25519") == @["LAPTOP"]
+
+  # A persona path is sealed to that key and the owner, and to nobody else.
+  var persona = GpgConfig(recipient: "OWNER")
+  persona.wraps = @["personas/mosswell/**:MOSSWELL,OWNER", "**:OWNER"]
+  doAssert recipientsFor(persona, "personas/mosswell/note.md") ==
+           @["MOSSWELL", "OWNER"]
+  doAssert wrapMatch(persona, "personas/mosswell/note.md").rule ==
+           "personas/mosswell/**"
+  doAssert recipientsFor(persona, "personas/other/note.md") == @["OWNER"]
+  doAssert wrapMatch(persona, "personas/other/note.md").rule == "**"
+
+  # A matching rule that names nobody must fail, not fall through to the owner.
+  var nobody = GpgConfig(recipient: "OWNER")
+  nobody.wraps = @["personas/mosswell/**:"]
+  var emptyRule = false
+  try:
+    discard recipientsFor(nobody, "personas/mosswell/note.md")
+  except CatchableError as e:
+    emptyRule = true
+    doAssert "no recipient" in e.msg
+  doAssert emptyRule, "an empty wrap rule must fail"
+  nobody.wraps = @["other/**:"]
+  doAssert recipientsFor(nobody, "personas/mosswell/note.md") == @["OWNER"]
   echo "PASS: wrap rules select recipients by path"
 
 block groupIdDependsOnTheSetNotTheSpelling:
@@ -1129,6 +1152,10 @@ block whoListsWrapRecipients:
   doAssert "mine.txt" in report
   doAssert "LAPTOP" in report
   doAssert "TERRA" in report
+  doAssert "**/mine.txt" in report
+  let parsed = parseJson(whoJson(r, q))
+  doAssert parsed["ok"].getBool
+  doAssert parsed["entries"].len == 2
   removeDir(r)
   echo "PASS: who lists wrap recipients"
 
@@ -1303,6 +1330,288 @@ block addDirRejectsEmpty:
   echo "PASS: addDir rejects an empty directory"
 
 removeDir(incRepo)
+
+block publicKeyWriterSealsWithoutASecretKey:
+  ## A runner that holds only recipient public keys must append an entry
+  ## without decrypting what is already sealed, and a reader of either key
+  ## must be able to open that entry. Signed records stay signed.
+  let ownerHome = getEnv("GNUPGHOME")
+  let ownerKey = keyId
+  var personaHome = ""
+  var pubHome = ""
+  var r = ""
+  nvNonInteractive = false
+  try:
+    personaHome = setupTestGpgHome()
+    let personaKey = getTestKeyId()
+    let personaPub = personaHome / "persona.pub"
+    let (expOut, expCode) = execCmdEx(
+      &"gpg --batch --yes --export --armor -o {personaPub.quoteShell} {personaKey}")
+    doAssert expCode == 0, expOut
+
+    putEnv("GNUPGHOME", ownerHome)
+    let ownerPub = ownerHome / "owner.pub"
+    let (ownOut, ownCode) = execCmdEx(
+      &"gpg --batch --yes --export --armor -o {ownerPub.quoteShell} {ownerKey}")
+    doAssert ownCode == 0, ownOut
+
+    pubHome = createTempDir("nimvault_pub_", "_gpg")
+    setFilePermissions(pubHome, {fpUserRead, fpUserWrite, fpUserExec})
+    putEnv("GNUPGHOME", pubHome)
+    let (imp1, imp1Code) = execCmdEx(&"gpg --batch --import {ownerPub.quoteShell}")
+    doAssert imp1Code == 0, imp1
+    let (imp2, imp2Code) = execCmdEx(&"gpg --batch --import {personaPub.quoteShell}")
+    doAssert imp2Code == 0, imp2
+    doAssert not gpgSecretKeyPresent(), "public home must not hold a secret key"
+
+    r = setupTestRepo()
+    var c = GpgConfig(recipient: ownerKey, root: r)
+    c.wraps = @[
+      &"personas/mosswell/**:{personaKey},{ownerKey}",
+      &"**:{ownerKey}",
+    ]
+
+    putEnv("GNUPGHOME", ownerHome)
+    createDir(r / "secrets")
+    let old = r / "secrets" / "old.txt"
+    writeFile(old, "old-secret")
+    add(r, old, c)
+    seal(r, c)
+    var oldId = ""
+    for e in loadManifest(r, cfg = c):
+      if e.path.endsWith("old.txt"):
+        oldId = e.id
+    doAssert oldId.len > 0
+    let oldRec = readFile(findEntryFile(r, c, oldId))
+    let oldBlob = readFile(findBlob(r, c, oldId))
+    let oldManifest = readFile(findManifest(r, c))
+    var keysBefore = ""
+    for path in keyFiles(r, c):
+      keysBefore.add(readFile(path))
+
+    putEnv("GNUPGHOME", pubHome)
+    createDir(r / "personas" / "mosswell")
+    let note = r / "personas" / "mosswell" / "note.txt"
+    writeFile(note, "private-stance")
+    add(r, note, c)
+    seal(r, c)
+
+    doAssert readFile(findEntryFile(r, c, oldId)) == oldRec,
+      "public-key add must not rewrite an existing record"
+    doAssert readFile(findBlob(r, c, oldId)) == oldBlob,
+      "public-key add must not rewrite an existing blob"
+    doAssert readFile(findManifest(r, c)) == oldManifest,
+      "public-key add must not rewrite the manifest"
+    var keysAfter = ""
+    for path in keyFiles(r, c):
+      keysAfter.add(readFile(path))
+    doAssert keysAfter == keysBefore, "public-key add must not rewrite key files"
+
+    let indexText = readFile(r / ".vault" / "blob-index")
+    doAssert "note.txt" notin indexText
+    doAssert "personas" notin indexText
+    doAssert "private-stance" notin indexText
+
+    var noteId = ""
+    var appendPath = ""
+    for kind, path in walkDir(r / ".vault" / "a"):
+      if kind != pcFile: continue
+      let name = path.extractFilename
+      if name.endsWith(".gpg"):
+        noteId = name.rsplit('.', maxsplit = 1)[0]
+        appendPath = path
+    doAssert noteId.len == 16
+    doAssert not readFile(appendPath).startsWith("# vault")
+    doAssert findEntryFile(r, c, noteId).len == 0
+    doAssert noteId in indexText
+
+    # The writer cannot read the entry back.
+    var denied = false
+    try:
+      discard get(r, note, c, allowUnsigned = false)
+    except NimvaultError as e:
+      denied = true
+      doAssert e.code == 3, e.msg
+    doAssert denied, "a public-key writer must not decrypt"
+
+    let ruled = whoReport(r, c, @[note])
+    doAssert "personas/mosswell/**" in ruled
+    doAssert personaKey in ruled
+    doAssert ownerKey in ruled
+    doAssert parseJson(whoJson(r, c, @[note]))["entries"][0]["rule"].getStr ==
+             "personas/mosswell/**"
+
+    # Keyless tamper report: added, changed, missing, and a previous digest list.
+    var ck = checkVault(r, c)
+    doAssert ck.keyless
+    doAssert ck.problems.len == 0, $ck.problems
+    let dig = r / "digests.txt"
+    writeDigestFile(dig, vaultCipherDigests(r))
+    doAssert checkVault(r, c, dig).problems.len == 0
+
+    # The digest list is the keyless anchor. Drop the blob-index and replace
+    # a signed record with bytes that will not decrypt: check reports the
+    # ciphertext change and does not open the record.
+    let indexPath = r / ".vault" / "blob-index"
+    let indexSaved = readFile(indexPath)
+    removeFile(indexPath)
+    # The snapshot has to describe the tree under test. blob-index was in
+    # the previous one, and removing it is itself a digest change.
+    writeDigestFile(dig, vaultCipherDigests(r))
+    doAssert checkVault(r, c, dig).problems.len == 0
+    let recPath = findEntryFile(r, c, oldId)
+    let recSaved = readFile(recPath)
+    writeFile(recPath, "not-a-gpg-message")
+    let listed = checkVault(r, c, dig)
+    doAssert listed.keyless
+    doAssert "decrypt" notin listed.problems.join("\n")
+    doAssert listed.digestChanged.len > 0
+    writeFile(recPath, recSaved)
+    writeFile(indexPath, indexSaved)
+    writeDigestFile(dig, vaultCipherDigests(r))
+
+    let blob = findBlob(r, c, noteId)
+    let good = readFile(blob)
+    writeFile(blob, good & "x")
+    ck = checkVault(r, c, dig)
+    doAssert noteId in ck.changed
+    doAssert ck.digestChanged.len > 0
+    let cj = parseJson(checkJson(ck))
+    doAssert cj["ok"].getBool == false
+    doAssert cj["anchor"].getStr == "blob-index"
+    writeFile(blob, good)
+
+    removeFile(blob)
+    ck = checkVault(r, c)
+    doAssert noteId in ck.missing
+    writeFile(blob, good)
+
+    let stray = r / ".vault" / "0123456789abcdef.gpg"
+    writeFile(stray, "planted")
+    ck = checkVault(r, c)
+    doAssert "0123456789abcdef" in ck.added
+    removeFile(stray)
+    doAssert checkVault(r, c).problems.len == 0
+
+    # Readers who hold a recipient secret key open the fragment.
+    # A signed record with no signature is still refused.
+    putEnv("GNUPGHOME", ownerHome)
+    doAssert get(r, note, c, allowUnsigned = false) == "private-stance"
+    let whoText = whoReport(r, c)
+    doAssert "personas/mosswell/**" in whoText
+    doAssert parseJson(statusJson(r, c))["ok"].getBool
+    doAssert parseJson(doctorJson(r, c))["ok"].getBool
+    doAssert parseJson(checkJson(checkVault(r, c)))["manifest"].hasKey("added")
+
+    let plant = entryDir(r) / (noteId & ".gpg")
+    copyFile(appendPath, plant)
+    var unsignedRefused = false
+    try:
+      discard loadManifest(r, verifySig = true, cfg = c)
+    except CatchableError as e:
+      unsignedRefused = true
+      doAssert "missing signature" in e.msg, e.msg
+    doAssert unsignedRefused, "an unsigned file in e/ must still be refused"
+    removeFile(plant)
+    doAssert loadManifest(r, verifySig = true, cfg = c).len >= 2
+
+    putEnv("GNUPGHOME", personaHome)
+    doAssert get(r, note, c, allowUnsigned = false) == "private-stance"
+
+    # A rule that seals to nobody writes nothing.
+    putEnv("GNUPGHOME", ownerHome)
+    var bad = c
+    bad.wraps = @["personas/mosswell/**:"]
+    let nope = r / "personas" / "mosswell" / "nope.txt"
+    writeFile(nope, "should-not-seal")
+    var blobsBefore = 0
+    for kind, path in walkDir(r / ".vault"):
+      if kind == pcFile and (path.endsWith(".gpg") or path.endsWith(".age")):
+        blobsBefore.inc
+    var emptyRule = false
+    try:
+      add(r, nope, bad)
+    except CatchableError as e:
+      emptyRule = true
+      doAssert "no recipient" in e.msg
+    doAssert emptyRule
+    var blobsAfter = 0
+    for kind, path in walkDir(r / ".vault"):
+      if kind == pcFile and (path.endsWith(".gpg") or path.endsWith(".age")):
+        blobsAfter.inc
+    doAssert blobsAfter == blobsBefore, "a nobody-rule must not write ciphertext"
+
+    echo "PASS: public-key writer seals without a secret key"
+  finally:
+    nvNonInteractive = false
+    putEnv("GNUPGHOME", ownerHome)
+    if r.len > 0 and dirExists(r):
+      removeDir(r)
+    if personaHome.len > 0 and dirExists(personaHome):
+      removeDir(personaHome)
+    if pubHome.len > 0 and dirExists(pubHome):
+      removeDir(pubHome)
+
+block noninteractiveRefusesPinentry:
+  ## A locked secret key must fail fast, not wait on pinentry.
+  let ownerHome = getEnv("GNUPGHOME")
+  var home = ""
+  var r = ""
+  nvNonInteractive = false
+  try:
+    home = createTempDir("nimvault_locked_", "_gpg")
+    setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+    putEnv("GNUPGHOME", home)
+    let script = home / "keygen.txt"
+    writeFile(script, """
+Key-Type: RSA
+Key-Length: 2048
+Subkey-Type: RSA
+Subkey-Length: 2048
+Name-Real: Locked Key
+Name-Email: locked@nimvault.local
+Expire-Date: 0
+Passphrase: hunter2
+%commit
+""")
+    let (genOut, genCode) = execCmdEx(
+      &"timeout 30 gpg --batch --pinentry-mode loopback --gen-key {script.quoteShell}")
+    doAssert genCode == 0, genOut
+    let (listOut, listCode) = execCmdEx(
+      "gpg --list-secret-keys --keyid-format long --with-colons locked@nimvault.local")
+    doAssert listCode == 0, listOut
+    var kid = ""
+    for line in listOut.splitLines:
+      if line.startsWith("sec:"):
+        let parts = line.split(':')
+        if parts.len > 4:
+          kid = parts[4]
+    doAssert kid.len > 0, listOut
+
+    r = setupTestRepo()
+    let secret = r / "secret.txt"
+    writeFile(secret, "needs-a-passphrase")
+    let c = GpgConfig(recipient: kid, root: r)
+    nvNonInteractive = true
+    var raised = false
+    var code = 0
+    try:
+      add(r, secret, c)
+    except NimvaultError as e:
+      raised = true
+      code = e.code
+      doAssert "gpg encrypt failed" in e.msg or "signing failed" in e.msg.toLowerAscii or
+               "pinentry" in e.msg.toLowerAscii, e.msg
+    doAssert raised, "noninteractive add must not prompt"
+    doAssert code == 3, "expected exit 3, got " & $code
+    echo "PASS: noninteractive mode refuses pinentry"
+  finally:
+    nvNonInteractive = false
+    putEnv("GNUPGHOME", ownerHome)
+    if r.len > 0 and dirExists(r):
+      removeDir(r)
+    if home.len > 0 and dirExists(home):
+      removeDir(home)
 
 # Cleanup
 removeDir(repo)

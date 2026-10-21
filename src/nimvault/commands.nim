@@ -4,7 +4,7 @@
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
-            tables]
+            tables, algorithm, json]
 import ./gpg, ./manifest, ./crypto, ./lock, ./dek
 # NimvaultError, nvRaise, nvQuiet from gpg
 
@@ -123,14 +123,47 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   if not fileExists(absPath):
     nvRaise(&"FATAL: file not found: {absPath}")
   let storedPath = storePath(cfg, absPath, repo)
+  # Fail a wrap rule that names nobody before gitignore or ciphertext exist.
+  discard recipientsFor(cfg, storedPath)
   trackGitignore(repo, absPath, storedPath, cfg, noGitignore)
   let id = genId()
   let outPath = crypto.blobPath(repo, cfg, id)
   let key = newDek(cfg)
   encryptWithDek(cfg, key, absPath, outPath)
+  let blobHash = sha256sum(outPath)
   deks[id] = key
-  entries.add((id, storedPath, sha256sum(outPath), ekFile, sha256sum(absPath)))
+  entries.add((id, storedPath, blobHash, ekFile, sha256sum(absPath)))
+  noteBlob(repo, id, blobHash)
   nvEcho(&"  {storedPath}")
+
+proc addPublicFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
+                   announce: bool) =
+  ## Append one entry without decrypting the manifest and without a secret key.
+  ## The blob is symmetric under a fresh data key. The path and the data key
+  ## live in `.vault/a/<id>`, encrypted to the wrap-rule recipients. Existing
+  ## records and key files are not opened and not rewritten.
+  if not fileExists(absPath):
+    nvRaise(&"FATAL: file not found: {absPath}")
+  if not isPathSafe(cfg, storePath(cfg, absPath, repo)):
+    nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
+  let storedPath = storePath(cfg, absPath, repo)
+  discard recipientsFor(cfg, storedPath)
+  if announce:
+    banner(&"Adding {storedPath} to vault ...")
+  ensureVaultDir(repo)
+  trackGitignore(repo, absPath, storedPath, cfg, noGitignore)
+  let id = genId()
+  let outPath = crypto.blobPath(repo, cfg, id)
+  let key = newDek(cfg)
+  encryptWithDek(cfg, key, absPath, outPath)
+  let blobHash = sha256sum(outPath)
+  let entry = (id, storedPath, blobHash, ekFile, sha256sum(absPath))
+  saveAppendRecord(repo, cfg, entry, key)
+  noteBlob(repo, id, blobHash)
+  nvEcho(&"  {storedPath}")
+  nvEcho(&"  id:   {id}")
+  nvEcho(&"  path: {storedPath}")
+  nvEcho(&"  blob: .vault/{id}{cfg.blobExt}")
 
 proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
              only: seq[string] = @[]) =
@@ -301,6 +334,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
 proc seal*(repo: string, cfg: GpgConfig, force = false) =
   ## Encrypt every tracked file whose plaintext changed since the last seal.
   ##
+  ## A public-key writer has already sealed new entries in `add`. `seal` must
+  ## not decrypt the manifest to discover that, and must not treat ciphertext
+  ## it cannot open as an empty vault.
+  ##
   ## Encryption output is not deterministic: GPG and age both draw a fresh
   ## session key per run, so re-encrypting a file nobody edited still produces
   ## a different blob. Sealing unconditionally therefore rewrote every blob in
@@ -311,10 +348,17 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # Mutating command: hold the vault lock so a concurrent nimvault
   # cannot read this manifest, write its own, and drop these entries.
   let lk {.used.} = acquire(repo)
+  if publicKeyOnly(cfg):
+    let n = splitRecordIds(repo).len + appendRecordIds(repo).len
+    if n == 0:
+      nvEcho("vault is empty")
+    else:
+      nvEcho(&"public-key writer; {n} sealed record(s) left untouched")
+    return
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
-    if splitRecordIds(repo).len > 0:
+    if splitRecordIds(repo).len > 0 or appendRecordIds(repo).len > 0:
       nvRaise("FATAL: no records this identity can open.\n" &
               "  Refusing to treat the vault as empty (unread wrap groups stay).")
     # Still drop the data keys this identity can open. Returning here
@@ -430,6 +474,10 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # a seal that changed nothing would still leave one modified file behind and
   # a fresh signature over identical content. Leave it alone when it already
   # says exactly this.
+  for e in hashedEntries:
+    if e.hash.len > 0:
+      noteBlob(repo, e.id, e.hash)
+
   if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
     nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
     return
@@ -462,6 +510,10 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
     if dirExists(absPath):
       nvRaise(&"FATAL: {absPath} is a directory. Use 'nimvault add-dir'.")
     nvRaise(&"FATAL: file not found: {absPath}")
+
+  if publicKeyOnly(cfg):
+    addPublicFile(repo, absPath, cfg, noGitignore, announce = true)
+    return
 
   banner(&"Adding {storePath(cfg, absPath, repo)} to vault ...")
   ensureVaultDir(repo)
@@ -510,6 +562,14 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   if filesToAdd.len == 0:
     nvRaise(&"FATAL: directory is empty: {absDirPath}")
 
+  if publicKeyOnly(cfg):
+    banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
+    ensureVaultDir(repo)
+    for filePath in filesToAdd:
+      addPublicFile(repo, filePath, cfg, noGitignore, announce = false)
+    nvEcho(&"\nAdded {filesToAdd.len} file(s) from directory.")
+    return
+
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   ensureVaultDir(repo)
 
@@ -549,6 +609,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
         removeFile(blobPath)
         nvEcho(&"  Removed .vault/{e.id}{cfg.blobExt}")
       deks.del(e.id)
+      forgetBlob(repo, e.id)
       nvEcho(&"  Removed manifest entry: {e.path}")
     else:
       newEntries.add(e)
@@ -559,6 +620,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   persistDeks(repo, cfg, deks, newEntries)
   saveManifestKeep(repo, newEntries, cfg)
   dropEntryRecord(repo, cfg, droppedId)
+  dropAppendRecord(repo, cfg, droppedId)
   nvEcho("  (local plaintext file NOT deleted)")
 
 proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
@@ -923,7 +985,7 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0:
-    if splitRecordIds(repo).len > 0:
+    if splitRecordIds(repo).len > 0 or appendRecordIds(repo).len > 0:
       nvRaise("FATAL: no records this identity can open.\n" &
               "  Refusing to treat the vault as empty (unread wrap groups stay).")
     nvEcho("vault is empty")
@@ -967,6 +1029,8 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
     live.incl(e.id)
   for id in splitRecordIds(repo):
     live.incl(id)
+  for id in appendRecordIds(repo):
+    live.incl(id)
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
@@ -1002,32 +1066,109 @@ proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =
     syncParentDir(repo / ".vault" / "x")
     nvEcho(&"\nRemoved {found.len} orphan blob(s).")
 
-type CheckResult* = tuple[problems: seq[string], checked: int]
+type CheckResult* = tuple
+  problems: seq[string]
+  checked: int
+  added: seq[string]
+  changed: seq[string]
+  missing: seq[string]
+  digestAdded: seq[string]
+  digestChanged: seq[string]
+  digestMissing: seq[string]
+  keyless: bool
+  anchor: string
 
-proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
-  ## Verify the vault is internally consistent, without decrypting anything.
+proc finishLists(r: var CheckResult) =
+  r.added.sort()
+  r.changed.sort()
+  r.missing.sort()
+  r.digestAdded.sort()
+  r.digestChanged.sort()
+  r.digestMissing.sort()
+
+proc diffDigests(repo, digests: string, r: var CheckResult) =
+  if digests.len == 0:
+    return
+  if not fileExists(digests):
+    r.problems.add(&"digest list not found: {digests}")
+    return
+  let prev = readDigestFile(digests)
+  var now = initTable[string, string]()
+  for (rel, hash) in vaultCipherDigests(repo):
+    now[rel] = hash
+  for rel, hash in now:
+    if rel notin prev:
+      r.digestAdded.add(rel)
+    elif prev[rel] != hash:
+      r.digestChanged.add(rel)
+  for rel in prev.keys:
+    if rel notin now:
+      r.digestMissing.add(rel)
+  for rel in r.digestAdded:
+    r.problems.add(&"digest added {rel}")
+  for rel in r.digestChanged:
+    r.problems.add(&"digest changed {rel}")
+  for rel in r.digestMissing:
+    r.problems.add(&"digest missing {rel}")
+
+proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
+  ## Verify payloads against the manifest, or against the blob-index when
+  ## this process has no secret key. Optionally also against a previous
+  ## digest list. Neither comparison decrypts a blob.
   ##
   ## `status` answers a different question: it compares the *plaintext* on this
   ## machine against the manifest's `contentHash`, so it says nothing about
-  ## whether each blob still matches the hash the manifest records for it. A
-  ## blob committed without the manifest that vouches for it therefore looks
-  ## perfectly healthy right up until an `unseal` on some other machine, where
-  ## the plaintext is gone and the failure is unrecoverable rather than
-  ## inconvenient.
+  ## whether each blob still matches the hash the manifest records for it.
   ##
   ## The manifest is a signed list of per-blob digests, which is a one-level
-  ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32):
-  ## checking each leaf against it is enough to detect a blob that has drifted,
-  ## and needs no key material.
+  ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32).
+  ## The blob-index is that list without the paths, so a runner that holds
+  ## only public keys can still see an added, changed, or missing blob.
+  result.keyless = publicKeyOnly(cfg)
+  result.anchor = if result.keyless: "blob-index" else: "manifest"
+  if result.keyless:
+    let blobs = payloadBlobHashes(repo)
+    if blobIndexExists(repo):
+      let index = readBlobIndex(repo)
+      var seen = initHashSet[string]()
+      for id, hash in blobs:
+        result.checked.inc
+        seen.incl(id)
+        if id notin index:
+          result.added.add(id)
+          result.problems.add(&"added blob {id} is not in the blob-index")
+        elif index[id] != hash:
+          result.changed.add(id)
+          result.problems.add(&"changed blob {id} does not match the blob-index")
+      for id in index.keys:
+        if id notin seen:
+          result.missing.add(id)
+          result.problems.add(&"missing blob {id}")
+          result.checked.inc
+    elif digests.len == 0 and (blobs.len > 0 or splitRecordIds(repo).len > 0 or
+                                appendRecordIds(repo).len > 0):
+      result.anchor = "none"
+      result.checked.inc
+      result.problems.add("no blob-index and no digest list; cannot check without a key")
+    elif digests.len > 0:
+      result.anchor = "digests"
+    diffDigests(repo, digests, result)
+    finishLists(result)
+    return
+
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
-  if entries.len == 0 and splitRecordIds(repo).len > 0:
+  if entries.len == 0 and (splitRecordIds(repo).len > 0 or
+                           appendRecordIds(repo).len > 0):
     result.problems.add("no records this identity can open; unread wrap groups remain")
     result.checked.inc
+  var known = initHashSet[string]()
   for e in entries:
+    known.incl(e.id)
     result.checked.inc
     let blob = findBlob(repo, cfg, e.id)
     if blob.len == 0 or not fileExists(blob):
+      result.missing.add(e.id)
       result.problems.add(&"no blob for {e.path}")
       continue
     if e.hash.len == 0:
@@ -1035,38 +1176,76 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
       continue
     let actual = sha256sum(blob)
     if actual != e.hash:
+      result.changed.add(e.id)
       result.problems.add(&"blob does not match the manifest for {e.path}")
+  for id in payloadBlobHashes(repo).keys:
+    if id notin known:
+      result.added.add(id)
+      result.problems.add(&"added blob {id} is not in the manifest")
   if entries.len > 0 and meta.envelope and keyFiles(repo, cfg).len == 0 and
-     not hasSplitEntries(repo):
+     not hasSplitEntries(repo) and not hasAppendEntries(repo):
     result.problems.add("no data-key file; this vault cannot be unsealed")
     result.checked.inc
+  diffDigests(repo, digests, result)
+  finishLists(result)
+
+proc checkJson*(r: CheckResult): string =
+  let node = %*{
+    "ok": r.problems.len == 0,
+    "keyless": r.keyless,
+    "anchor": r.anchor,
+    "checked": r.checked,
+    "problems": r.problems,
+    "manifest": {"added": r.added, "changed": r.changed, "missing": r.missing},
+    "digests": {"added": r.digestAdded, "changed": r.digestChanged,
+                "missing": r.digestMissing},
+  }
+  $(node) & "\n"
 
 proc checkReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly check (no colors, no exit).
   let r = checkVault(repo, cfg)
-  if r.checked == 0:
+  if r.checked == 0 and r.problems.len == 0:
     return "vault is empty\n"
   for p in r.problems:
     result.add &"  {p}\n"
   if r.problems.len == 0:
-    result.add &"{r.checked} entries consistent with the manifest.\n"
+    if r.keyless:
+      result.add &"{r.checked} blobs consistent with the blob-index.\n"
+    else:
+      result.add &"{r.checked} entries consistent with the manifest.\n"
   else:
     result.add &"{r.problems.len} of {r.checked} entries are inconsistent.\n"
 
-proc check*(repo: string, cfg: GpgConfig) =
-  ## Terminal check. Raises when anything is inconsistent so a hook or a
+proc check*(repo: string, cfg: GpgConfig, digests = "", writeDigests = "",
+            asJson = false): int =
+  ## Terminal check. Exit 2 when anything is inconsistent so a hook or a
   ## continuous-integration job fails rather than reporting and passing.
-  let r = checkVault(repo, cfg)
-  if r.checked == 0:
+  ## `--write-digests` snapshots ciphertext hashes even when the diff is not
+  ## empty: the file is what is on disk.
+  let r = checkVault(repo, cfg, digests)
+  if writeDigests.len > 0:
+    writeDigestFile(writeDigests, vaultCipherDigests(repo))
+  if asJson:
+    stdout.write checkJson(r)
+    if r.problems.len > 0:
+      stderr.writeLine(&"check: {r.problems.len} problem(s)")
+      return 2
+    return 0
+  if r.checked == 0 and r.problems.len == 0:
     nvEcho("vault is empty")
-    return
+    return 0
   banner("Checking vault ...")
   for p in r.problems:
-    stderr.writeLine &"  {p}"
+    stderr.writeLine(&"  {p}")
   if r.problems.len > 0:
     nvRaise(&"{r.problems.len} of {r.checked} entries are inconsistent " &
-            "(seal, or restore the missing blob)")
-  nvEcho(&"\n{r.checked} entries consistent with the manifest.")
+            "(seal, or restore the missing blob)", 2)
+  if r.keyless:
+    nvEcho(&"\n{r.checked} blobs consistent with the blob-index.")
+  else:
+    nvEcho(&"\n{r.checked} entries consistent with the manifest.")
+  return 0
 
 proc status*(repo: string, cfg: GpgConfig) =
   ## Terminal status (colors). Delegates logic to statusReport for library reuse.
@@ -1140,17 +1319,74 @@ proc status*(repo: string, cfg: GpgConfig) =
       removeDir(work)
 
 
-proc whoReport*(repo: string, cfg: GpgConfig): string =
-  ## Recipients that the current wrap rules assign to each entry.
-  let entries = loadManifest(repo, cfg = cfg)
-  if entries.len == 0:
-    return "vault is empty\n"
-  for e in entries:
-    let recips = recipientsFor(cfg, e.path)
-    result.add &"{e.path}\t{recips.join(\",\")}\n"
+type WhoRow = tuple[path, rule: string, recipients: seq[string]]
 
-proc who*(repo: string, cfg: GpgConfig) =
-  stdout.write whoReport(repo, cfg)
+proc whoRows(repo: string, cfg: GpgConfig, only: seq[string]): seq[WhoRow] =
+  ## Paths in `only` are answered from the wrap rules alone, so a public-key
+  ## writer can ask before it seals. With no paths, the rows are the entries
+  ## this identity can read.
+  if only.len > 0:
+    for raw in only:
+      let stored = storePath(cfg, toAbs(cfg, raw), repo)
+      let m = wrapMatch(cfg, stored)
+      let rule = if m.rule.len > 0: m.rule else: "recipient"
+      result.add((stored, rule, m.recipients))
+    return
+  let entries = loadManifest(repo, cfg = cfg)
+  for e in entries:
+    let m = wrapMatch(cfg, e.path)
+    let rule = if m.rule.len > 0: m.rule else: "recipient"
+    result.add((e.path, rule, m.recipients))
+
+proc whoReport*(repo: string, cfg: GpgConfig, only: seq[string] = @[]): string =
+  ## Recipients and the wrap rule that selects them.
+  let rows = whoRows(repo, cfg, only)
+  if only.len == 0 and rows.len == 0:
+    return "vault is empty\n"
+  for row in rows:
+    result.add(&"{row.path}\t{row.recipients.join(\",\")}\t{row.rule}\n")
+
+proc whoJson*(repo: string, cfg: GpgConfig, only: seq[string] = @[]): string =
+  let rows = whoRows(repo, cfg, only)
+  var entries = newJArray()
+  for row in rows:
+    var recips = newJArray()
+    for recip in row.recipients:
+      recips.add(newJString(recip))
+    var obj = newJObject()
+    obj["path"] = newJString(row.path)
+    obj["recipients"] = recips
+    obj["rule"] = newJString(row.rule)
+    entries.add(obj)
+  var root = newJObject()
+  root["ok"] = newJBool(true)
+  root["entries"] = entries
+  $(root) & "\n"
+
+proc who*(repo: string, cfg: GpgConfig, only: seq[string] = @[]) =
+  stdout.write whoReport(repo, cfg, only)
+
+proc statusJson*(repo: string, cfg: GpgConfig): string =
+  ## Same facts as `statusReport`, as one JSON object.
+  let text = statusReport(repo, cfg)
+  if text.strip == "vault is empty":
+    return $(%*{"ok": true, "entries": []}) & "\n"
+  var entries = newJArray()
+  for line in text.splitLines:
+    let s = line.strip()
+    if s.len == 0 or s[0] != '[':
+      continue
+    let rb = s.find(']')
+    if rb < 0:
+      continue
+    var obj = newJObject()
+    obj["state"] = newJString(s[1 ..< rb])
+    obj["path"] = newJString(s[rb + 1 .. ^1].strip())
+    entries.add(obj)
+  var root = newJObject()
+  root["ok"] = newJBool(true)
+  root["entries"] = entries
+  $(root) & "\n"
 
 proc lockPlaintext*(repo: string, cfg: GpgConfig) =
   ## Remove in-sync plaintext. The vault entry stays; unseal brings it back.
@@ -1209,41 +1445,83 @@ proc installHooks*(repo: string) =
   nvEcho(&"installed {prePush}")
   nvEcho(&"installed {preCommit}")
 
-proc doctorReport*(repo: string, cfg: GpgConfig): string =
+type DoctorInfo* = object
+  text*: string
+  problems*: seq[string]
+  vault*, backend*, recipient*, manifest*: string
+  gpgOk*, ageOk*: bool
+  appends*: int
+
+proc doctorInfo*(repo: string, cfg: GpgConfig): DoctorInfo =
   ## What a human or CI needs to know before seal/unseal: binaries, recipient,
-  ## backend, pointer, lock directory, and `check`.
-  var problems: seq[string] = @[]
-  let rec = if cfg.recipient.len > 0: cfg.recipient else: "(none)"
-  result.add &"vault:     {repo}\n"
-  result.add &"backend:   {cfg.backend}\n"
-  result.add &"recipient: {rec}\n"
+  ## backend, and `check`.
+  result.vault = repo
+  result.backend = cfg.backend
+  result.recipient = if cfg.recipient.len > 0: cfg.recipient else: "(none)"
+  result.appends = appendRecordIds(repo).len
+  result.text.add &"vault:     {repo}\n"
+  result.text.add &"backend:   {cfg.backend}\n"
+  result.text.add &"recipient: {result.recipient}\n"
   if findExe("gpg").len == 0:
-    problems.add("gpg is not on PATH")
+    result.problems.add("gpg is not on PATH")
   else:
-    result.add "gpg:       ok\n"
+    result.gpgOk = true
+    result.text.add "gpg:       ok\n"
   if cfg.usesAge:
     if findExe("age").len == 0 and findExe("rage").len == 0:
-      problems.add("age is not on PATH")
+      result.problems.add("age is not on PATH")
     else:
-      result.add "age:       ok\n"
+      result.ageOk = true
+      result.text.add "age:       ok\n"
     if cfg.identity.len == 0:
-      problems.add("age identity is not configured")
+      result.problems.add("age identity is not configured")
+  if result.appends > 0:
+    result.text.add &"append:    {result.appends} public-key record(s)\n"
   let enc = findManifest(repo, cfg)
   if enc.len > 0:
-    result.add &"manifest:  {enc.extractFilename}\n"
+    result.manifest = enc.extractFilename
+    result.text.add &"manifest:  {result.manifest}\n"
+  elif hasSplitEntries(repo) or hasAppendEntries(repo):
+    result.manifest = "(split)"
+    result.text.add "manifest:  (split records)\n"
+  else:
+    result.manifest = "(none)"
+    result.text.add "manifest:  (none)\n"
+  if enc.len > 0 or hasSplitEntries(repo) or hasAppendEntries(repo) or
+     blobIndexExists(repo):
     let chk = checkVault(repo, cfg)
     if chk.problems.len == 0:
-      result.add &"check:     {chk.checked} entries consistent\n"
+      result.text.add &"check:     {chk.checked} entries consistent\n"
     else:
       for p in chk.problems:
-        problems.add(p)
-  else:
-    result.add "manifest:  (none)\n"
-  if problems.len > 0:
-    result.add "problems:\n"
-    for p in problems:
-      result.add &"  {p}\n"
-    nvRaise(result.strip())
+        result.problems.add(p)
+  if result.problems.len > 0:
+    result.text.add "problems:\n"
+    for p in result.problems:
+      result.text.add &"  {p}\n"
+
+proc doctorReport*(repo: string, cfg: GpgConfig): string =
+  let d = doctorInfo(repo, cfg)
+  if d.problems.len > 0:
+    nvRaise(d.text.strip(), 2)
+  d.text
+
+proc doctorJsonOf*(d: DoctorInfo): string =
+  let node = %*{
+    "ok": d.problems.len == 0,
+    "vault": d.vault,
+    "backend": d.backend,
+    "recipient": d.recipient,
+    "gpg": d.gpgOk,
+    "age": d.ageOk,
+    "manifest": d.manifest,
+    "append": d.appends,
+    "problems": d.problems,
+  }
+  $(node) & "\n"
+
+proc doctorJson*(repo: string, cfg: GpgConfig): string =
+  doctorJsonOf(doctorInfo(repo, cfg))
 
 proc doctor*(repo: string, cfg: GpgConfig) =
   stdout.write doctorReport(repo, cfg)

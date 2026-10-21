@@ -21,7 +21,7 @@ This is the threat model for the CLI, not a third-party audit.
 * What the commands buy
 
 | Command | Gives | Does not give |
-| ~check~ | blob digests still match the signed manifest; no key needed | that you can decrypt; that git history is gone |
+| ~check~ | with a key, blob digests match the records it can open; without a key, payload ids match ~.vault/blob-index~; ~--digests~ diffs a previous ciphertext snapshot | that a new fragment was written by a recipient; that git history is gone |
 | ~rotate~ | a removed recipient can no longer unwrap the data keys | post-compromise secrecy for a leaked data key |
 | ~rotate --rekey~ | new data keys and new payloads | erasure of old objects on the remote |
 | ~status~ | local plaintext vs the recorded content hash | blob integrity |
@@ -36,6 +36,14 @@ check before decrypting.
 
 Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.
+
+~.vault/a/<id>.gpg~ is an unsigned fragment encrypted to the entry's
+recipients. A writer with only those public keys can append one without
+opening ~.vault/e/~. Anyone else with those public keys can plant one too.
+A bad or missing signature on ~.vault/e/~ is still fatal. ~check --digests~
+against a snapshot from outside the change is the keyless detector. ~rotate~
+by a key holder rewrites an openable fragment as a signed record. ~seal~
+does that when the fragment no longer matches the entry.
 
 * Limits that stay
 
