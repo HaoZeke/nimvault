@@ -7,7 +7,7 @@ import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
                   signingKey, AgeGpgSigner
-from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
+from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 from ./fsat import ONoFollow
 
@@ -329,6 +329,23 @@ proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
     nvRaise("FATAL: signature required but this vault is configured with " &
             "`signer = none`.\n  Pass --allow-unsigned to read it anyway.")
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
+
+proc verifyAndDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                               checkPresent = false): string =
+  ## Verify and decrypt one ciphertext while reading it only once where
+  ## detached signatures are used.
+  let signer =
+    if cfg.signer.len > 0: cfg.signer
+    elif cfg.usesAge: "ssh"
+    else: "gpg"
+  if cfg.usesAge and signer == "ssh":
+    let cipher = readFile(inPath)
+    if verifySig or (checkPresent and fileExists(inPath & ".sig")):
+      sshVerify(cfg, inPath, cipher)
+    return ageDecryptBytesToString(cfg, cipher)
+  if verifySig or checkPresent:
+    verifyManifest(cfg, inPath, verifySig, checkPresent)
+  decryptToString(cfg, inPath, verifySig, checkPresent)
 
 proc signaturesInBand*(cfg: GpgConfig): bool =
   ## Whether decrypting a blob also proves who wrote it.

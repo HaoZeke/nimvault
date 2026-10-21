@@ -226,11 +226,7 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       let sig = path & ".sig"
       if fileExists(sig):
         writeFile(snap & ".sig", readFile(sig))
-      # Verify and decrypt the same bytes; the source path may change between
-      # the two calls.
-      if verifySig or checkPresent:
-        verifyManifest(cfg, snap, verifySig, checkPresent)
-      plain = decryptToString(cfg, snap, verifySig, checkPresent)
+      plain = verifyAndDecryptToString(cfg, snap, verifySig, checkPresent)
     except CatchableError as problem:
       err = problem.msg
     finally:
@@ -337,8 +333,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     let encStub = findManifest(repo, cfg)
     if encStub.len > 0:
       try:
-        verifyManifest(cfg, encStub, verifySig, checkPresent)
-        let stub = decryptToString(cfg, encStub, verifySig, checkPresent)
+        let stub = verifyAndDecryptToString(cfg, encStub, verifySig, checkPresent)
         for line in stub.splitLines:
           let stripped = line.strip()
           if stripped.startsWith(SealKeyHeader):
@@ -356,8 +351,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
     return (@[], "", false, 0, 0, initTable[string, string]())
-  verifyManifest(cfg, enc, verifySig, checkPresent)
-  let plain = decryptToString(cfg, enc, verifySig, checkPresent)
+  let plain = verifyAndDecryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:
     let stripped = line.strip()
     if stripped.startsWith(SealKeyHeader):
