@@ -364,6 +364,49 @@ block mvDoesNotCopyThroughSymlinkAcrossFilesystems:
       removeDir(shm)
     echo "PASS: cross-device mv does not copy through a destination symlink"
 
+block mvAcrossFilesystemsKeepsTheSourceMode:
+  ## The copy fallback created the new file with the process umask, so a
+  ## 0600 secret arrived 0644.
+  let shm = "/dev/shm/nimvault-audit-mvmode-" & $getCurrentProcessId()
+  createDir(shm)
+  setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
+  if devOf(shm) == devOf(getTempDir()):
+    removeDir(shm)
+    echo "SKIP: cross-device mv mode (no second filesystem)"
+  else:
+    let oldHome = getEnv("HOME")
+    let base = createTempDir("nimvault_audit_", "_home")
+    let home = base / "home"
+    createDir(home)
+    let r = setupRepo()
+    putEnv("HOME", home)
+    let oldMask = umask(0o022.Mode)
+    try:
+      let c = GpgConfig(recipient: keyId)
+      for (name, perms) in [("secret.txt", {fpUserRead, fpUserWrite}),
+                            ("hook.sh", {fpUserRead, fpUserWrite, fpUserExec})]:
+        let src = home / name
+        writeFile(src, "cross-device-" & name)
+        setFilePermissions(src, perms)
+        add(r, "~/" & name, c)
+        seal(r, c)
+        let dst = shm / name
+        move(r, src, dst, c)
+        doAssert not fileExists(src), "mv must remove the source"
+        doAssert readFile(dst) == "cross-device-" & name
+        doAssert getFilePermissions(dst) == perms,
+          &"mv must keep the source mode for {name}: {getFilePermissions(dst)}"
+        doAssert get(r, dst, c) == "cross-device-" & name
+      for kind, path in walkDir(shm):
+        doAssert ".nimvault-mv-" notin path, "mv must not leave its copy: " & path
+    finally:
+      discard umask(oldMask)
+      putEnv("HOME", oldHome)
+      removeDir(r)
+      removeDir(base)
+      removeDir(shm)
+    echo "PASS: cross-device mv keeps the source mode"
+
 block mvRefusesSourceUnderSymlinkedAncestor:
   ## `rename` follows a directory symlink above the source. With the entry's
   ## directory swapped for a link out of the root, mv would pull the outside
