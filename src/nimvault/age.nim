@@ -175,13 +175,17 @@ proc sshVerifyBytes*(cfg: GpgConfig, path, payload: string) =
   let p = startProcess(sshKeygenBin,
     args = @["-Y", "verify", "-f", allowed, "-I", cfg.signerIdentity,
              "-n", "nimvault", "-s", sig],
-    options = {poUsePath, poStdErrToStdOut})
-  p.inputStream.write(payload)
-  p.inputStream.close()
-  let output = p.outputStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
+    options = {poUsePath})
+  let io = runWithInput(p, payload)
+  let output = (io.outp & io.err).strip()
+  if io.writeErr != 0:
+    var msg = &"FATAL: signature verification failed for {path}:\n" &
+              "  ssh-keygen closed stdin before verification finished: " &
+              osErrorMsg(OSErrorCode(io.writeErr))
+    if output.len > 0:
+      msg.add("\n" & output)
+    nvRaise(msg)
+  if io.code != 0:
     nvRaise(&"FATAL: signature verification failed for {path}:\n{output}")
 
 proc sshVerify*(cfg: GpgConfig, path: string) =

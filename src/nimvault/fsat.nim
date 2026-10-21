@@ -168,6 +168,10 @@ proc runWithInput*(p: Process, input: string): FeedResult =
         continue
       if result.writeErr == 0:
         result.writeErr = EIO
+      if inOpen:
+        discard posix.close(inFd)
+        inOpen = false
+      p.kill()
       break
     for k in 0 .. fds.high:
       if fds[k].revents == 0:
@@ -175,8 +179,9 @@ proc runWithInput*(p: Process, input: string): FeedResult =
       case owner[k]
       of 0:
         if off >= input.len:
-          if posix.close(inFd) != 0 and result.writeErr == 0:
-            result.writeErr = errno
+          let closeErr = if posix.close(inFd) != 0: errno else: 0
+          if closeErr != 0 and result.writeErr == 0:
+            result.writeErr = closeErr
           inOpen = false
           continue
         let take = min(input.len - off, 16384)
@@ -184,7 +189,7 @@ proc runWithInput*(p: Process, input: string): FeedResult =
         if n < 0:
           if errno == EINTR or errno == EAGAIN:
             continue
-          if errno != EPIPE and result.writeErr == 0:
+          if result.writeErr == 0:
             result.writeErr = errno
           discard posix.close(inFd)
           inOpen = false
@@ -196,8 +201,9 @@ proc runWithInput*(p: Process, input: string): FeedResult =
         else:
           off += n
           if off >= input.len:
-            if posix.close(inFd) != 0 and result.writeErr == 0:
-              result.writeErr = errno
+            let closeErr = if posix.close(inFd) != 0: errno else: 0
+            if closeErr != 0 and result.writeErr == 0:
+              result.writeErr = closeErr
             inOpen = false
       of 1:
         let n = posix.read(fds[k].fd, addr buf[0], buf.len)
@@ -220,4 +226,8 @@ proc runWithInput*(p: Process, input: string): FeedResult =
           result.err.setLen(at + n)
           copyMem(addr result.err[at], addr buf[0], n)
   result.code = p.waitForExit()
+  if off < input.len and result.writeErr == 0:
+    # Child exited before consuming all input: treat the short write the same
+    # as EPIPE so callers fail closed.
+    result.writeErr = EPIPE
   p.close()
