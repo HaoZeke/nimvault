@@ -4,7 +4,7 @@
 ## suite still runs on a machine that only has gpg. A skip is announced, since a
 ## test that quietly does nothing is worse than one that is not there.
 
-import std/[os, osproc, strutils, strformat, tempfiles, tables]
+import std/[os, osproc, strutils, strformat, tempfiles, tables, streams]
 import nimvault/[gpg, manifest, commands, crypto, dek]
 
 proc have(bin: string): bool = findExe(bin).len > 0
@@ -57,6 +57,56 @@ doAssert cfg.backend == "age", "config should select the age backend"
 doAssert cfg.usesAge, "usesAge should follow the backend"
 doAssert not cfg.signaturesInBand, "age carries no in-band signature"
 echo "PASS: age config resolves"
+
+const nimExe = getCurrentCompilerExe()
+const srcRoot = currentSourcePath().parentDir.parentDir
+
+proc buildCli(): string =
+  result = createTempDir("nimvault_age_", "_bin")
+  let (output, code) = execCmdEx(nimExe.quoteShell & " c --hints:off " &
+    "--verbosity:0 -p:" & (srcRoot / "src").quoteShell & " -o:" &
+    (result / "nimvault").quoteShell & " " &
+    (srcRoot / "src" / "nimvault.nim").quoteShell)
+  doAssert code == 0, output
+
+var sharedCliDir = ""
+
+proc cliExe(): string =
+  if sharedCliDir.len == 0:
+    sharedCliDir = buildCli()
+  sharedCliDir / "nimvault"
+
+proc runCliTimeout(dir: string, timeoutSec: int,
+                   args: seq[string]): tuple[outp: string, code: int] =
+  let p = startProcess("timeout", workingDir = dir,
+                       args = @["--preserve-status", &"{timeoutSec}s", cliExe()] & args,
+                       options = {poUsePath, poStdErrToStdOut})
+  result.outp = p.outputStream.readAll()
+  result.code = p.waitForExit()
+  p.close()
+
+proc ageDecryptSwapHook(realAge: string): string =
+  ## Wrapper that runs one swap command when age decrypts a blob by path.
+  """#!/bin/sh
+set -eu
+last=""
+for arg in "$@"; do last="$arg"; done
+case " $* " in
+  *" -d "*) decrypt=1 ;;
+  *) decrypt="" ;;
+esac
+if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
+   [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
+  base="${last##*/}"
+  case "$base" in
+    [0-9a-f]*.age)
+      NIMVAULT_DECRYPT_TARGET="$last" sh -c "$NIMVAULT_SWAP_CMD"
+      : >"$NIMVAULT_SWAP_MARKER"
+      ;;
+  esac
+fi
+exec """ & realAge.quoteShell & """ "$@"
+"""
 
 createDir(work / "secrets")
 let secret = work / "secrets" / "tok.txt"
@@ -302,6 +352,165 @@ block legacyManifestSwapDuringSshVerifyIsRefused:
   removeDir(wrapBin)
   echo "PASS: age legacy-manifest swaps after verify are refused"
 
+block ageGetDecryptsVerifiedSnapshotBytes:
+  ## A swap hook can only replace a decrypt path argument. `get` must decrypt
+  ## the ciphertext bytes it already hashed.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  let plain = "age-snapshot-original"
+  writeFile(f, plain)
+  add(dir, f, c)
+  seal(dir, c)
+  removeFile(f)
+  let entry = loadManifest(dir, cfg = c)[0]
+  let dek = loadDeks(dir, c)[entry.id]
+  let forged = createTempDir("nimvault_age_", "_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.age"
+  encryptWithDek(c, dek, payload, badBlob)
+
+  let wrapBin = createTempDir("nimvault_age_", "_agewrap")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "age"
+  let realAge = findExe(ageBin)
+  doAssert realAge.len > 0
+  writeFile(wrapper, ageDecryptSwapHook(realAge))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badBlob.quoteShell & " > \"$NIMVAULT_DECRYPT_TARGET\""
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  let got = get(dir, f, c)
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert got == plain, got
+  doAssert not fileExists(marker),
+    "age decrypt should not reopen a blob path during get"
+  removeDir(dir)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: age get decrypts verified snapshot bytes"
+
+block legacyAgeGetDecryptsVerifiedSnapshotBytes:
+  ## A legacy combined manifest plus unsigned keys file must still decrypt the
+  ## bytes that were hashed, not a swapped decrypt path.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  let plain = "age-legacy-snapshot-original"
+  writeFile(f, plain)
+  add(dir, f, c)
+  seal(dir, c)
+  let entry = loadManifest(dir, cfg = c)[0]
+  let dek = loadDeks(dir, c)[entry.id]
+  if dirExists(entryDir(dir)):
+    removeDir(entryDir(dir))
+  saveManifest(dir, @[entry], c)
+  doAssert not hasSplitEntries(dir), "test setup must use the legacy read path"
+  removeFile(f)
+
+  let forged = createTempDir("nimvault_age_", "_legacy_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.age"
+  encryptWithDek(c, dek, payload, badBlob)
+
+  let wrapBin = createTempDir("nimvault_age_", "_agewrap")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "age"
+  let realAge = findExe(ageBin)
+  doAssert realAge.len > 0
+  writeFile(wrapper, ageDecryptSwapHook(realAge))
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badBlob.quoteShell & " > \"$NIMVAULT_DECRYPT_TARGET\""
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  let got = get(dir, f, c)
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert got == plain, got
+  doAssert not fileExists(marker),
+    "legacy age decrypt should not reopen a blob path during get"
+  removeDir(dir)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: legacy age get decrypts verified snapshot bytes"
+
+block ageLargeCipherDecryptsWithoutDeadlock:
+  ## Deadlock regression: stdin is now fed while stdout is drained.
+  let (dir, c) = freshAgeVault()
+  let medium = dir / "medium.txt"
+  let mediumPlain = repeat('M', 300_000)
+  writeFile(medium, mediumPlain)
+  add(dir, medium, c)
+  seal(dir, c)
+  let midEntry = loadManifest(dir, cfg = c)[0]
+  let midBlob = crypto.blobPath(dir, c, midEntry.id)
+  doAssert int(getFileSize(midBlob)) == 300_264,
+    "test seam expects the 300264-byte ciphertext case"
+  removeFile(medium)
+  var got = runCliTimeout(dir, 15, @["get", "medium.txt"])
+  doAssert got.code == 0, got.outp
+  doAssert got.outp.len == mediumPlain.len
+  remove(dir, medium, c)
+
+  let big = dir / "big.txt"
+  let bigPlain = repeat('B', 2_000_000)
+  writeFile(big, bigPlain)
+  add(dir, big, c)
+  seal(dir, c)
+  removeFile(big)
+  got = runCliTimeout(dir, 20, @["get", "big.txt"])
+  doAssert got.code == 0, got.outp
+  doAssert got.outp.len == bigPlain.len
+
+  let (listDir, lc) = freshAgeVault()
+  var many: seq[VaultEntry] = @[]
+  for i in 0 ..< 1500:
+    let id = toHex(i, 16).toLowerAscii()
+    let path = "bulk/" & repeat('x', 120) & "/" & $i & ".txt"
+    many.add((id, path, repeat('a', 64), ekFile, repeat('b', 64)))
+  saveManifest(listDir, many, lc, sealKey(lc))
+  got = runCliTimeout(listDir, 20, @["list"])
+  doAssert got.code == 0, got.outp
+  doAssert "bulk/" in got.outp
+
+  let (addDir, ac) = freshAgeVault()
+  let keep = addDir / "keep.txt"
+  writeFile(keep, "keep")
+  add(addDir, keep, ac)
+  seal(addDir, ac)
+  let keepEntry = loadManifest(addDir, cfg = ac)[0]
+  let keepDek = loadDeks(addDir, ac)[keepEntry.id]
+  if dirExists(entryDir(addDir)):
+    removeDir(entryDir(addDir))
+  saveManifest(addDir, @[keepEntry], ac)
+  let keys = keyFiles(addDir, ac)
+  doAssert keys.len > 0
+  let keyWork = createTempDir("nimvault_age_", "_keys")
+  let keyPlain = keyWork / "keys.plain"
+  var keyContent = "# vault-keys-v6\n" & keepEntry.id & "\t" & keepDek & "\n"
+  for i in 0 ..< 3800:
+    keyContent.add(&"{toHex(i + 1_000_000, 16).toLowerAscii()}\t{repeat('f', 64)}\n")
+  writeFile(keyPlain, keyContent)
+  encryptFileTo(ac, @[ac.recipient], keyPlain, keys[0], sign = false)
+  removeDir(keyWork)
+  let later = addDir / "later.txt"
+  writeFile(later, "later")
+  got = runCliTimeout(addDir, 20, @["add", "later.txt"])
+  doAssert got.code == 0, got.outp
+  doAssert "later.txt" in got.outp
+
+  removeDir(dir)
+  removeDir(listDir)
+  removeDir(addDir)
+  echo "PASS: age large-cipher paths return under timeout"
+
 block allowUnsignedStillVerifiesAPresentSshSignature:
   ## --allow-unsigned accepts a record with no detached signature. A record
   ## signed by a key outside allowed_signers is not unsigned.
@@ -445,5 +654,7 @@ block missingSshSignerSettingsFail:
   removeDir(dir)
   echo "PASS: missing ssh signer settings fail unseal and check"
 
+if sharedCliDir.len > 0:
+  removeDir(sharedCliDir)
 removeDir(work)
 echo "All age backend tests passed."

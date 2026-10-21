@@ -2,6 +2,7 @@
 
 import std/[os, osproc, strutils, strformat, streams, sequtils]
 import checksums/sha2
+from ./fsat import runWithInput
 
 type
   NimvaultError* = object of CatchableError
@@ -473,6 +474,22 @@ proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
   let problem = gpgVerdict(status, inPath, code, verifySig, allowed, checkPresent)
   if problem.len > 0:
     nvRaise(problem)
+
+proc gpgDecryptBytesToString*(cfg: GpgConfig, cipher: string, label: string,
+                              verifySig = false, checkPresent = false): string =
+  ## Decrypt ciphertext bytes while checking gpg status output.
+  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
+  let p = startProcess("gpg",
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", "-"],
+    options = {poUsePath})
+  let io = runWithInput(p, cipher)
+  if io.writeErr != 0 and io.code == 0:
+    nvRaise("FATAL: gpg decrypt failed while writing ciphertext: " &
+            osErrorMsg(OSErrorCode(io.writeErr)))
+  let problem = gpgVerdict(io.err, label, io.code, verifySig, allowed, checkPresent)
+  if problem.len > 0:
+    nvRaise(problem)
+  result = io.outp
 
 proc gpgParallelism*(): int =
   let raw = getEnv("NIMVAULT_GPG_PARALLEL")

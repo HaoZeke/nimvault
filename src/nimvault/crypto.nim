@@ -5,6 +5,7 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
+                  gpgDecryptBytesToString,
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
@@ -230,6 +231,11 @@ proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
                       checkPresent = false): string =
   if cfg.usesAge: ageDecryptToString(cfg, inPath)
   else: gpgDecryptToString(cfg, inPath, verifySig, checkPresent)
+
+proc decryptBytesToString*(cfg: GpgConfig, cipher, label: string,
+                           verifySig = false, checkPresent = false): string =
+  if cfg.usesAge: ageDecryptBytesToString(cfg, cipher)
+  else: gpgDecryptBytesToString(cfg, cipher, label, verifySig, checkPresent)
 
 type Decrypted* = tuple[plain, err: string]
   ## One file's plaintext, or the message `decryptToString` would have raised.

@@ -32,7 +32,8 @@ This is the threat model for the CLI, not a third-party audit.
 The manifest is signed. Age payloads have no in-band signature; GPG v5
 blobs do. v6 payloads are symmetric and unsigned in-band. Authenticity
 for those is the signed manifest plus the blob digest ~unseal~ and ~get~
-check before decrypting.
+check before decrypting. The bytes that are hashed are the bytes decrypted:
+the commands do not hash one path read and then reopen that path later.
 
 Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.
