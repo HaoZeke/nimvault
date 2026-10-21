@@ -37,6 +37,16 @@ check before decrypting.
 Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.
 
+* Signer authority
+
+With ~signer = gpg~, the allowed signer set is the configured ~recipient~ plus
+every recipient named in any ~wrap~ rule. Any one of those keys can sign a
+record for any path in the vault. ~wrap~ scopes who can decrypt records, not
+who can sign which path.
+
+Email specs are matched as exact addresses (the ~<addr>~ form), but they still
+authorize every key in the keyring that carries that exact email.
+
 * Limits that stay
 
 - Filenames are hidden; counts, sizes and mtimes of blobs are not.
@@ -108,7 +118,8 @@ Still accepted:
 - Old git objects survive ~rotate --rekey~. Nothing here rewrites history.
 - ~scan~ matches a fixed pattern list. It skips binaries, files over 2MB,
   lines over 2000 characters, and dependency directories on a worktree walk.
-- ~--allow-unsigned~ remains a migration hatch.
+- ~--allow-unsigned~ remains a migration hatch: it accepts missing signatures
+  from legacy records, and does not skip blob-hash verification.
 - Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
 - Key files stay unsigned.
 - Overwriting a file does not erase every copy a filesystem keeps.
@@ -127,4 +138,8 @@ Still accepted:
 - An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
   record are renamed in two steps. A crash between them leaves the new
   signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
-  write. A signing failure leaves the old pair in place.
+  write (~mv .vault/e/<id>.age.tmp .vault/e/<id>.age~), then ~nimvault seal~
+  refreshes signatures and hashes. A signing failure leaves the old pair in
+  place.
+- Per-glob signer scoping is not implemented. Any configured or wrap-rule
+  recipient key can sign records for any path.

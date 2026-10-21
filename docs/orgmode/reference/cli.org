@@ -88,10 +88,11 @@ Exits non-zero if:
 
 *** ~--allow-unsigned~
 
-Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
-(~BADSIG~) are still fatal even with this flag. Use this only for migrating
+Accept unsigned legacy records. Missing signatures are accepted, but blob-hash
+verification and path-safety checks still run. A bad signature (~BADSIG~) or a
+signature by an unconfigured key is still fatal. Use this only for migrating
 legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
-the vault to signed v2 format.
+the vault to signed records.
 
 ** add-dir
 
@@ -178,8 +179,10 @@ nimvault check [--recipient KEY]
 
 Verify every blob against the hash the manifest records for it. Those hashes
 are stored in the encrypted manifest and the per-entry records, so ~check~
-decrypts the records and does not decrypt the payload blobs. Exits non-zero
-when a blob differs or when the records will not open.
+decrypts the records and does not decrypt the payload blobs. It verifies every
+record this machine can open, and reports how many records it could not open
+with the available secret keys. Exits non-zero when a blob differs, when a
+decryptable record is corrupt, or when no record opens at all.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about
@@ -202,9 +205,10 @@ secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
 A ~.pending~ file whose hash a record names is kept, and so is one whose record
-this machine cannot open. Any other ~.pending~ file is removed, as are
-=<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed ~add~ or ~seal~ was
-still writing.
+this machine cannot open. A ~.pending~ file is also kept while an in-flight
+record write exists at =~.vault/e/<id>.<ext>.tmp=. Any other ~.pending~ file is
+removed, as are =<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed
+~add~ or ~seal~ was still writing.
 
 ~gc~ also shreds =.nimvault-<id>.tmp= files beside the entries this machine
 can open. Those are plaintext an interrupted ~unseal~ staged; see ~unseal~.

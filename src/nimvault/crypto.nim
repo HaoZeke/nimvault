@@ -5,7 +5,8 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners
+                  gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
+                  signingKey
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 
@@ -377,7 +378,8 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
     args.add(@["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always"])
     if sign:
-      args.add("--sign")
+      let signer = signingKey(cfg)
+      args.add(@["--local-user", signer, "--sign"])
     args.add("-e")
     for r in recipients:
       if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
@@ -398,9 +400,11 @@ proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
   else:
+    let signer = signingKey(cfg)
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always",
+               "--local-user", signer,
                "--sign", "-e", "--recipient=" & cfg.recipient,
                "--set-filename", "", "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})

@@ -4,7 +4,7 @@
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
 import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
-            tables]
+            tables, posix]
 import ./gpg, ./manifest, ./crypto, ./lock, ./dek
 # NimvaultError, nvRaise, nvQuiet from gpg
 
@@ -32,18 +32,49 @@ proc assertStoreable(path: string) =
   if '\n' in path or '\r' in path or '\t' in path or '\0' in path:
     nvRaise("FATAL: path contains a character the manifest cannot store")
 
+proc normalizedBase(path: string): string =
+  let n = normalizedPath(path)
+  if n == "/":
+    "/"
+  else:
+    n.strip(leading = false, trailing = true, chars = {'/'})
+
+proc insideBase(base, path: string): bool =
+  let n = normalizedPath(path)
+  if base == "/":
+    n.startsWith("/")
+  else:
+    n == base or n.startsWith(base & "/")
+
+proc boundaryBase(cfg: GpgConfig, dest: string): string =
+  if cfg.root.len > 0:
+    return normalizedBase(cfg.root)
+  let home = normalizedBase(getHomeDir())
+  if insideBase(home, dest):
+    home
+  else:
+    ""
+
+proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
+  ## A lexical ~/ path can still resolve outside HOME through a symlink.
+  let base = boundaryBase(cfg, absPath)
+  if base.len == 0:
+    return
+  let real = expandFilename(absPath)
+  if not insideBase(base, real):
+    nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
+
 proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
   ## Refuse a directory symlink that resolves outside the vault root (or
   ## $HOME). The final path may itself be a symlink: `rename` replaces it.
   ## `createDir` would follow an ancestor and write the plaintext outside.
-  if not isPathSafe(cfg, dest) and not isPathSafe(cfg, storePath(cfg, dest, repo)):
+  if not isPathSafe(cfg, storePath(cfg, dest, repo)):
     nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
-  let base = if cfg.root.len > 0: normalizedPath(cfg.root)
-             elif dest.startsWith("~/") or dest.startsWith(getHomeDir()):
-               normalizedPath(getHomeDir()).strip(leading = false,
-                 trailing = true, chars = {'/'})
-             else:
-               return
+  let base = boundaryBase(cfg, dest)
+  if base.len == 0:
+    return
+  if not insideBase(base, dest):
+    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
   let parent = dest.parentDir
   if parent.len == 0:
     return
@@ -59,7 +90,7 @@ proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
     acc = acc / part
     if symlinkExists(acc):
       let real = expandFilename(acc)
-      if not isPathSafe(cfg, storePath(cfg, real, repo)):
+      if not insideBase(base, real):
         nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
     elif not dirExists(acc):
       break
@@ -174,9 +205,7 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
     nvRaise(&"FATAL: refusing symlink: {absPath}")
   if not fileExists(absPath):
     nvRaise(&"FATAL: file not found: {absPath}")
-  let canon = expandFilename(absPath)
-  if not isPathSafe(cfg, storePath(cfg, canon, repo)):
-    nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
+  assertResolvedWithinBoundary(cfg, absPath)
   let storedPath = storePath(cfg, absPath, repo)
   assertStoreable(storedPath)
   assertStoreable(absPath)
@@ -743,6 +772,24 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
 
   nvRaise(&"Not in vault: {path}")
 
+proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
+
+proc safeMovePath(oldAbs, newAbs: string) =
+  ## Move without `moveFile`'s cross-device copy-through-symlink fallback.
+  if symlinkExists(oldAbs):
+    nvRaise(&"FATAL: refusing source symlink: {oldAbs}")
+  if symlinkExists(newAbs):
+    nvRaise(&"FATAL: refusing destination symlink: {newAbs}")
+  createDir(newAbs.parentDir)
+  if renameAt(oldAbs.cstring, newAbs.cstring) == 0:
+    return
+  if posix.errno != posix.EXDEV:
+    nvRaise(&"FATAL: could not move {oldAbs} -> {newAbs}")
+  let tmp = newAbs.parentDir / (".nimvault-mv-" & genId() & ".tmp")
+  copyFile(oldAbs, tmp)
+  renameOver(tmp, newAbs)
+  removeFile(oldAbs)
+
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   # Mutating command: hold the vault lock so a concurrent nimvault
   # cannot read this manifest, write its own, and drop these entries.
@@ -771,15 +818,16 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   assertStoreable(newStored)
   assertStoreable(newAbs)
   assertWritePath(cfg, repo, newAbs)
+  if symlinkExists(newAbs):
+    nvRaise(&"FATAL: refusing destination symlink: {newAbs}")
 
   var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var found = false
   for e in entries.mitems:
     if resolvePath(cfg, e.path) == oldAbs:
       found = true
-      if fileExists(oldAbs):
-        createDir(newAbs.parentDir)
-        moveFile(oldAbs, newAbs)
+      if fileExists(oldAbs) or symlinkExists(oldAbs):
+        safeMovePath(oldAbs, newAbs)
         nvEcho(&"  Moved {e.path} -> {newStored}")
       elif fileExists(newAbs):
         nvEcho(&"  File already at {newStored}")
@@ -1287,13 +1335,18 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
   ## One whose record this identity cannot open is left alone: its hash is
   ## unknown here. `<id>.gpg.tmp` and `<id>.gpg.pending.tmp` are payloads a
   ## killed `add` or `seal` was still writing; no record names them.
-  let entries = loadManifest(repo, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   var opened = initHashSet[string]()
   var hashes = initHashSet[string]()
   for e in entries:
     opened.incl(e.id)
     if e.hash.len > 0:
       hashes.incl(e.hash)
+  proc hasTmpRecord(id: string): bool =
+    let dir = entryDir(repo)
+    for ext in [cfg.blobExt, (if cfg.usesAge: ".gpg" else: ".age")]:
+      if fileExists(dir / (id & ext & ".tmp")):
+        return true
   var live = opened
   let recorded = splitRecordIds(repo)
   for id in recorded:
@@ -1317,6 +1370,8 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
       let id = pendingId(path)
       if id in recorded and id notin opened:
         continue
+      if hasTmpRecord(id):
+        continue
       if sha256sum(path) notin hashes:
         result.add(path)
       continue
@@ -1338,8 +1393,12 @@ proc stagedPlaintext*(repo: string, cfg: GpgConfig): seq[string] =
   let stagedName = re"^\.nimvault-[0-9a-f]{16}\.tmp$"
   var dirs = initHashSet[string]()
   for e in loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg):
-    if isPathSafe(cfg, e.path):
-      dirs.incl(resolvePath(cfg, e.path).parentDir)
+    if not isPathSafe(cfg, e.path):
+      stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
+      nvRaise("  Possible directory traversal attack.")
+    let dest = resolvePath(cfg, e.path)
+    assertWritePath(cfg, repo, dest)
+    dirs.incl(dest.parentDir)
   for dir in dirs:
     if not dirExists(dir):
       continue
@@ -1376,7 +1435,7 @@ proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =
     syncParentDir(repo / ".vault" / "x")
     nvEcho(&"\nRemoved {found.len} orphan blob(s) and {staged.len} staged file(s).")
 
-type CheckResult* = tuple[problems: seq[string], checked: int]
+type CheckResult* = tuple[problems: seq[string], checked, unopened: int]
 
 const UnreadableRecords = "no records this identity can open; unread wrap groups remain"
 
@@ -1400,6 +1459,7 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   let lk {.used.} = acquire(repo)
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
+  result.unopened = meta.unopened
   if entries.len == 0 and splitRecordIds(repo).len > 0:
     result.problems.add(UnreadableRecords)
     result.checked.inc
@@ -1427,6 +1487,8 @@ proc checkReport*(repo: string, cfg: GpgConfig): string =
     return "vault is empty\n"
   for p in r.problems:
     result.add &"  {p}\n"
+  if r.unopened > 0:
+    result.add &"  could not open {r.unopened} record(s) with this machine's secret keys.\n"
   if r.problems.len == 0:
     result.add &"{r.checked} entries consistent with the manifest.\n"
   else:
@@ -1442,6 +1504,8 @@ proc check*(repo: string, cfg: GpgConfig) =
   banner("Checking vault ...")
   for p in r.problems:
     stderr.writeLine &"  {p}"
+  if r.unopened > 0:
+    stderr.writeLine(&"  could not open {r.unopened} record(s) with this machine's secret keys")
   if UnreadableRecords in r.problems:
     nvRaise("FATAL: no record opens with the keys on this machine.\n" &
             "  check reads the blob digests from the encrypted records; import " &
@@ -1565,6 +1629,7 @@ proc lockPlaintext*(repo: string, cfg: GpgConfig) =
     if not isPathSafe(cfg, e.path):
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       nvRaise("  Possible directory traversal attack.")
+    assertWritePath(cfg, repo, resolvePath(cfg, e.path))
   var doomed: seq[string] = @[]
   for e in entries:
     let local = resolvePath(cfg, e.path)
