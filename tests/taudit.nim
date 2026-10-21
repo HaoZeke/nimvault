@@ -41,6 +41,7 @@ proc setupRepo(): string =
                      workingDir = result).exitCode == 0
 
 proc genKey(home, name, email: string): string
+proc cliExe(): string
 
 proc gitCode(repo: string, args: seq[string]): int =
   let p = startProcess("git", args = @["-C", repo] & args,
@@ -517,32 +518,48 @@ block sealRefusesPlaintextUnderSymlinkedAncestor:
 
 block rotateReadsUnderTheLock:
   ## rotate without --rekey must not read records before taking the lock.
-  ## Otherwise a concurrent removal can be replayed when rotate force-writes.
+  ## Otherwise a removal made while it waits is replayed when it force-writes.
+  ## The lock is held by another process, as a concurrent command would.
   let r = setupRepo()
+  createDir(r / ".vault")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
   let c = GpgConfig(recipient: keyId, root: r)
-  let f = r / "secret.txt"
-  writeFile(f, "rotate-lock")
-  add(r, f, c)
+  for name in ["kept.txt", "removed.txt"]:
+    writeFile(r / name, "rotate-lock-" & name)
+    add(r, r / name, c)
   seal(r, c)
-  let entries = loadManifest(r, cfg = c)
-  doAssert entries.len == 1
-  let rec = entryFile(r, c, entries[0].id)
-  var lk = acquire(r, timeoutMs = 1000)
-  let pid = fork()
-  if pid == 0:
-    try:
-      rotate(r, c)
-      quit(0)
-    except CatchableError:
-      quit(1)
-  doAssert pid > 0, "fork failed"
-  sleep(300)
-  removeFile(rec)
-  release(lk)
-  var status: cint
-  discard waitpid(pid, status, 0)
-  doAssert loadManifest(r, cfg = c).len == 0,
+  var removed = ""
+  for e in loadManifest(r, cfg = c):
+    if e.path == "removed.txt":
+      removed = entryFile(r, c, e.id)
+  doAssert removed.len > 0
+  var made = acquire(r)
+  release(made)
+  let holder = startProcess(findExe("python3"), args = @["-c", """
+import fcntl, os, sys
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o600)
+fcntl.lockf(fd, fcntl.LOCK_EX)
+print("held", flush=True)
+sys.stdin.readline()
+""", lockPath(r)], options = {poStdErrToStdOut})
+  doAssert holder.outputStream.readLine() == "held"
+  let rotating = startProcess(cliExe(), workingDir = r, args = @["rotate"],
+                              options = {poStdErrToStdOut})
+  sleep(1500)
+  doAssert rotating.running, "rotate must wait for the lock"
+  removeFile(removed)
+  holder.inputStream.writeLine("")
+  holder.inputStream.close()
+  doAssert holder.waitForExit() == 0
+  holder.close()
+  let outp = rotating.outputStream.readAll()
+  let code = rotating.waitForExit()
+  rotating.close()
+  doAssert code == 0, "rotate must finish once the lock is free:\n" & outp
+  let left = loadManifest(r, verifySig = true, cfg = c)
+  doAssert left.len == 1 and left[0].path == "kept.txt",
     "rotate must read records under the lock and not resurrect a removed record"
+  doAssert not fileExists(removed)
   removeDir(r)
   echo "PASS: rotate reads records under the lock"
 
