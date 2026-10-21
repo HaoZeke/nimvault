@@ -14,9 +14,9 @@ missing or bad signature there is still fatal. A home with no secret key, or
 ~add~ and ~add-dir~ then write three things and leave the rest of the vault
 alone:
 
-- ~.vault/<id>.gpg~ -- the payload, under a fresh data key
-- ~.vault/a/<id>.gpg~ -- the path, the hashes and the data key, encrypted to
-  the wrap-rule recipients, not signed
+- ~.vault/<id>.gpg~ or ~.age~ -- the payload, under a fresh data key
+- ~.vault/a/<id>.gpg~ or ~.age~ -- the path, the hashes and the data key,
+  encrypted to the wrap-rule recipients, not signed
 - one line in ~.vault/blob-index~ -- the id and the ciphertext sha256, no path
 
 ~seal~ in this mode does not decrypt anything. It reports that the sealed
@@ -30,16 +30,31 @@ A public-key writer cannot see paths already in the vault, so a second
 fragment can name the same path. Resealing an edited existing entry needs a
 secret key. An older binary ignores ~.vault/a/~.
 
-Age keeps the signed path unless ~--public-only~ is set. Age signing is an
-ssh key, not the gpg secret key, so "no gpg secret key" is not enough to
-choose the append lane.
+gpg does this when the home has no secret key. age does it when the
+identity file is absent, because that file is the decrypt key and the ssh
+key is only the signer. ~--public-only~ forces the lane even when a decrypt
+key is on disk.
 
-Anyone who has the recipient public keys can plant a fragment. ~check~
-against the blob-index and a previous digest list is what makes that visible
-without a key. A holder of a secret key adopts a fragment with ~rotate~,
-which rewrites every openable fragment as a signed ~.vault/e/~ record.
-~seal~ does that when the fragment no longer matches the entry; an unchanged
-fragment stays where it is, so a no-op seal does not churn ciphertext.
+* What a signature proves
+
+A signature on ~.vault/e/~ proves the long-term signing key produced that
+ciphertext. gpg checks it while decrypting, so a runner with no secret key
+cannot. An age ssh signature verifies with the public allowed-signers file,
+and the payload digest is still inside the ciphertext.
+
+The fragment under ~.vault/a/~ is not signed. A key minted for that one run
+would prove only that the process which encrypted the fragment could also
+sign it. Anyone holding the recipient public key can do that, so it is not
+used. Keyless integrity is the plaintext digest list: ~check --digests~
+compares ciphertext bytes with a list written earlier. It does not say who
+wrote them.
+
+Anyone who has the recipient public keys can plant a fragment. The digest
+list, taken from outside that change, is what makes the plant visible. A
+holder of a decrypt key adopts a fragment with ~rotate~, which rewrites every
+openable fragment as a signed ~.vault/e/~ record. ~seal~ does that when the
+fragment no longer matches the entry; an unchanged fragment stays where it
+is, so a no-op seal does not churn ciphertext.
 
 #+begin_src yaml
 - name: Append with public keys only
@@ -120,7 +135,8 @@ With a secret key, ~check~ compares each blob to the hash in the records it
 can open. A missing blob, a hash mismatch, and a payload id that is not in
 those records are all problems.
 
-Without a secret key it does not decrypt records. It compares top-level
+Without a decrypt key (no gpg secret key, or no age identity file) it does
+not decrypt records. It compares top-level
 ~.vault/<16 hex>.gpg~ (and ~.age~) files to ~.vault/blob-index~.
 ~keys.<group>.gpg~ is not a payload.
 

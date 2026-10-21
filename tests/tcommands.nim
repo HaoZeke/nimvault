@@ -1449,6 +1449,27 @@ block publicKeyWriterSealsWithoutASecretKey:
     writeDigestFile(dig, vaultCipherDigests(r))
     doAssert checkVault(r, c, dig).problems.len == 0
 
+    # The digest list is the keyless anchor. Drop the blob-index and replace
+    # a signed record with bytes that will not decrypt: check reports the
+    # ciphertext change and does not open the record.
+    let indexPath = r / ".vault" / "blob-index"
+    let indexSaved = readFile(indexPath)
+    removeFile(indexPath)
+    # The snapshot has to describe the tree under test. blob-index was in
+    # the previous one, and removing it is itself a digest change.
+    writeDigestFile(dig, vaultCipherDigests(r))
+    doAssert checkVault(r, c, dig).problems.len == 0
+    let recPath = findEntryFile(r, c, oldId)
+    let recSaved = readFile(recPath)
+    writeFile(recPath, "not-a-gpg-message")
+    let listed = checkVault(r, c, dig)
+    doAssert listed.keyless
+    doAssert "decrypt" notin listed.problems.join("\n")
+    doAssert listed.digestChanged.len > 0
+    writeFile(recPath, recSaved)
+    writeFile(indexPath, indexSaved)
+    writeDigestFile(dig, vaultCipherDigests(r))
+
     let blob = findBlob(r, c, noteId)
     let good = readFile(blob)
     writeFile(blob, good & "x")

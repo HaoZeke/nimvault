@@ -142,12 +142,19 @@ paths outside the repository.
 
 * Public-key fragments
 
-~.vault/e/<id>.gpg~ is signed. Appending one needs a secret key, so a writer
-that has none does not decrypt the records already there. It writes
-~.vault/a/<id>.gpg~ instead: the same line, plus a ~# vault-append~ comment,
-encrypted to that entry's recipients and not signed. The path stays inside
-the ciphertext. Existing ~e/~ records, payloads, ~keys.*~ and ~manifest.gpg~
-are not opened and not rewritten.
+~.vault/e/<id>.gpg~ (or ~.age~) is signed. Appending one needs a signing key.
+gpg signs while it encrypts, so that key is the secret key. age does not
+sign; an ssh key does, and the age identity is only what decrypts. A writer
+with no gpg secret key, or with no age identity file, does not open the
+records already there. It writes ~.vault/a/<id>.gpg~ (or ~.age~) instead: the
+same line, plus a ~# vault-append~ comment, encrypted to that entry's
+recipients and not signed. The path stays inside the ciphertext. Existing
+~e/~ records, payloads, ~keys.*~ and the manifest are not opened and not
+rewritten.
+
+A signature on ~e/~ proves the long-term signing key produced that ciphertext.
+An encrypt-only fragment has no signature. A per-run key would prove only that
+the writer could sign what it had just written.
 
 A signed record wins when both exist for one id. ~rotate~ rewrites every
 openable fragment as a signed ~e/~ record and deletes the fragment. ~seal~

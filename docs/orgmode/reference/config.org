@@ -152,6 +152,9 @@ Long key IDs are recommended for unambiguous matching.
 - ~NIMVAULT_PUBLIC_ONLY=1~ :: same as ~--public-only~ on the commands that
   take it. Do not use a secret key, even if this home has one.
 
+A gpg home with no secret key, or an age config whose identity file is not
+on this machine, takes that lane without the switch.
+
 ** Finding your key ID
 
 #+begin_src bash
