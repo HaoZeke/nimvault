@@ -1133,6 +1133,31 @@ proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
     return
   result = scanText(path, content, nbytes, rules)
 
+proc canonicalPath(path: string): string =
+  ## `path` with the symlinks in its directories resolved, so a vaulted file
+  ## and the same file named through another spelling of a directory match.
+  let abs = normalizedPath(absolutePath(path))
+  try:
+    resolvedParentForWrite(abs) / abs.extractFilename
+  except CatchableError:
+    abs
+
+proc loadVaulted(repo: string, cfg: GpgConfig): HashSet[string] =
+  ## Absolute paths of vaulted files, as written and resolved. The worktree
+  ## walk skips these, so the records are verified: an unsigned record would
+  ## otherwise choose which files go unscanned. The stored path itself is not
+  ## added. Relative to another root it names a different file in this tree.
+  result = initHashSet[string]()
+  if repo.len == 0:
+    return
+  for e in loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg):
+    let abs = normalizedPath(resolvePath(cfg, e.path))
+    result.incl(abs)
+    result.incl(canonicalPath(abs))
+
+proc isVaulted(vaulted: HashSet[string], path: string): bool =
+  normalizedPath(path) in vaulted or canonicalPath(path) in vaulted
+
 proc scan*(repo: string, target: string, cfg: GpgConfig) =
   ## Walk `target` (file or dir) and flag any file containing a secret
   ## pattern that is NOT already in the vault.
@@ -1144,12 +1169,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   if not fileExists(abs) and not dirExists(abs):
     nvRaise(&"FATAL: not a file or directory: {abs}")
 
-  # Build set of vault-protected absolute paths (empty when not in a repo).
-  var vaulted: HashSet[string]
-  if repo.len > 0:
-    for e in loadManifest(repo, cfg = cfg):
-      vaulted.incl(resolvePath(cfg, e.path))
-
+  let vaulted = loadVaulted(repo, cfg)
   let rules = compileRules()
 
   var files: seq[string]
@@ -1165,7 +1185,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
   var scanned = 0
   for f in files:
     if componentSkipped(f): continue
-    if f in vaulted: continue
+    if isVaulted(vaulted, f): continue
     if isBinaryExt(f): continue
     if isSkippedFile(f): continue
     inc scanned
@@ -1294,14 +1314,6 @@ proc commitsIn(gitRepo, rev: string, remote = ""): seq[string] =
       nvRaise("FATAL: refusing revision")
     result.add(s)
 
-proc loadVaulted(repo: string, cfg: GpgConfig): HashSet[string] =
-  result = initHashSet[string]()
-  if repo.len == 0:
-    return
-  for e in loadManifest(repo, cfg = cfg):
-    result.incl(normalizedPath(resolvePath(cfg, e.path)))
-    result.incl(e.path)
-
 proc noteHit(hits: var seq[SecretHit], seen: var HashSet[string], hit: SecretHit) =
   let key = hit.file & "\t" & hit.rule & "\t" & $hit.line
   if key in seen: return
@@ -1314,32 +1326,37 @@ proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
                      scanned: var int) =
   ## `spec` is `:<rel>` or `<sha>:<rel>` and goes to git after `--`, so a
   ## name that starts with `-` or holds a newline is still just a name.
+  ##
+  ## A vaulted path is reported whatever its bytes are. The worktree walk
+  ## skips it because unsealed plaintext belongs on disk; in the index or in
+  ## a commit it is that plaintext on its way into git history. Its bytes are
+  ## still matched against the patterns, so the report names what leaked.
   if rel.len == 0:
     return
   if rel == ".vault" or rel.startsWith(".vault/") or
      rel == ".git" or rel.startsWith(".git/"):
     return
   let abs = normalizedPath(gitRepo / rel)
-  if abs in vaulted or rel in vaulted:
-    # Worktree scan skips vaulted paths; the index/revision scans should keep
-    # the same contract for staged hooks.
+  let inVault = isVaulted(vaulted, abs)
+  if not inVault and isBinaryExt(rel):
     return
-  if isBinaryExt(rel):
-    return
+  var nbytes = -1
   let sz = gitCapture(gitRepo, @["cat-file", "-s", "--", spec])
-  if sz.code != 0:
-    return
-  var nbytes = 0
-  try:
-    nbytes = parseInt(sz.outp.strip)
-  except ValueError:
-    return
-  if nbytes > 2_000_000 or nbytes < 0:
+  if sz.code == 0:
+    try:
+      nbytes = parseInt(sz.outp.strip)
+    except ValueError:
+      discard
+  if inVault:
+    noteHit(hits, seen, (abs, "vault-plaintext", 1, max(nbytes, 0)))
+    inc scanned
+  if nbytes < 0 or nbytes > 2_000_000 or isBinaryExt(rel):
     return
   let blob = gitCapture(gitRepo, @["cat-file", "blob", "--", spec])
   if blob.code != 0 or '\0' in blob.outp:
     return
-  inc scanned
+  if not inVault:
+    inc scanned
   for hit in scanText(abs, blob.outp, nbytes, rules):
     noteHit(hits, seen, hit)
 
