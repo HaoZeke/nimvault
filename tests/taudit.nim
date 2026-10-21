@@ -1456,8 +1456,8 @@ block addDirRefusesARecordDekSwappedAfterVerify:
     check(r, c)
   except CatchableError:
     checkFailed = true
-  doAssert raised or checkFailed,
-    "a post-verify record swap must fail add-dir or fail check"
+  doAssert raised and checkFailed,
+    "a post-verify record swap must fail add-dir and fail check"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)

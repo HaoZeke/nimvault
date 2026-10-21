@@ -1,0 +1,2 @@
+The add-dir unsigned record-swap audit now requires both outcomes together:
+add-dir fails and check fails.
