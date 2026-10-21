@@ -1,0 +1,1 @@
+An age writer with no identity file appends an unsigned fragment and does not need an ssh signing key. `check --digests` compares ciphertext to a plaintext list and does not decrypt the records.
