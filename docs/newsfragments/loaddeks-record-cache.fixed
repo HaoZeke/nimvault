@@ -1,0 +1,2 @@
+`loadDeks` now reuses the split-record plaintext cache keyed by ciphertext
+digest, avoiding a second verify/decrypt pass when records were already read.
