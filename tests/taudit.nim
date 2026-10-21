@@ -337,6 +337,39 @@ block gcDropsUnreferencedPending:
   removeDir(r)
   echo "PASS: gc removes an unreferenced pending blob"
 
+block gcCleansLeftoversAndKeepsUnreadPending:
+  ## A killed unseal leaves plaintext staged beside the destination, and a
+  ## killed seal leaves a half-written pending blob. A pending blob whose
+  ## record belongs to another machine's wrap group is not this machine's
+  ## to judge.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "sub")
+  let f = r / "sub" / "secret.txt"
+  writeFile(f, "gc-leftovers")
+  add(r, f, c)
+  seal(r, c)
+  let e = loadManifest(r, cfg = c)[0]
+  let staged = r / "sub" / ".nimvault-0123456789abcdef.tmp"
+  writeFile(staged, "plaintext-left-by-a-killed-unseal")
+  let pendTmp = crypto.blobPath(r, c, e.id) & ".pending.tmp"
+  writeFile(pendTmp, "half-written-ciphertext")
+  let foreign = "dddddddddddddddd"
+  writeFile(entryFile(r, c, foreign), "a record for another machine")
+  let foreignPend = crypto.blobPath(r, c, foreign) & ".pending"
+  writeFile(foreignPend, "their-ciphertext")
+  gc(r, c, dryRun = true)
+  doAssert fileExists(staged) and fileExists(pendTmp) and fileExists(foreignPend),
+    "a dry run removes nothing"
+  gc(r, c)
+  doAssert not fileExists(staged), "gc must shred plaintext an unseal staged"
+  doAssert not fileExists(pendTmp), "gc must remove a half-written pending blob"
+  doAssert fileExists(foreignPend),
+    "gc must keep a pending blob whose record this machine cannot open"
+  doAssert get(r, f, c, allowUnsigned = true) == "gc-leftovers"
+  removeDir(r)
+  echo "PASS: gc cleans staging leftovers and keeps unread pending blobs"
+
 block recordDekWinsOverKeyFile:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)

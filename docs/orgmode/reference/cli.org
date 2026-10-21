@@ -193,8 +193,13 @@ remove the case. An orphan is not only clutter: it is a readable copy of a
 secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
-A ~.pending~ file whose hash a record names is kept. Any other ~.pending~ file
-is removed.
+A ~.pending~ file whose hash a record names is kept, and so is one whose record
+this machine cannot open. Any other ~.pending~ file is removed, as are
+=<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed ~add~ or ~seal~ was
+still writing.
+
+~gc~ also shreds =.nimvault-<id>.tmp= files beside the entries this machine
+can open. Those are plaintext an interrupted ~unseal~ staged; see ~unseal~.
 
 *** ~--dry-run~
 
