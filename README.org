@@ -50,7 +50,8 @@ nimvault status
 nimvault who           # which wrap-rule recipients can open each entry
 nimvault lock          # shred in-sync plaintext; unseal restores it
 
-# Verify every blob still matches the manifest (no decryption, no key needed)
+# Verify every blob still matches the manifest. Decrypts the records, not the
+# payloads, so it needs the secret key that opens the records.
 nimvault check
 nimvault doctor
 

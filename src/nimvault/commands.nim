@@ -1299,8 +1299,10 @@ proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =
 
 type CheckResult* = tuple[problems: seq[string], checked: int]
 
+const UnreadableRecords = "no records this identity can open; unread wrap groups remain"
+
 proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
-  ## Verify the vault is internally consistent, without decrypting anything.
+  ## Verify the vault is internally consistent without decrypting a payload.
   ##
   ## `status` answers a different question: it compares the *plaintext* on this
   ## machine against the manifest's `contentHash`, so it says nothing about
@@ -1312,12 +1314,13 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   ##
   ## The manifest is a signed list of per-blob digests, which is a one-level
   ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32):
-  ## checking each leaf against it is enough to detect a blob that has drifted,
-  ## and needs no key material.
+  ## checking each leaf against it is enough to detect a blob that has drifted.
+  ## The digests sit inside the encrypted records, so reading them takes the
+  ## secret key that opens the records; a public key alone verifies nothing.
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0 and splitRecordIds(repo).len > 0:
-    result.problems.add("no records this identity can open; unread wrap groups remain")
+    result.problems.add(UnreadableRecords)
     result.checked.inc
   for e in entries:
     result.checked.inc
@@ -1358,6 +1361,10 @@ proc check*(repo: string, cfg: GpgConfig) =
   banner("Checking vault ...")
   for p in r.problems:
     stderr.writeLine &"  {p}"
+  if UnreadableRecords in r.problems:
+    nvRaise("FATAL: no record opens with the keys on this machine.\n" &
+            "  check reads the blob digests from the encrypted records; import " &
+            "the secret key of the recipient or of a wrap group.")
   if r.problems.len > 0:
     nvRaise(&"{r.problems.len} of {r.checked} entries are inconsistent " &
             "(seal, or restore the missing blob)")
