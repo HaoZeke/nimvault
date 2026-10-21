@@ -101,6 +101,72 @@ block lockRemovesEditorBackups:
   removeDir(r)
   echo "PASS: lock removes editor backups of an in-sync file"
 
+proc forgeUnsignedRecord(r: string, c: GpgConfig, id, path: string) =
+  ## What anyone with push access can commit: a junk blob and a record that
+  ## names it, encrypted to the vault key and signed by nobody.
+  createDir(r / ".vault")
+  let blob = crypto.blobPath(r, c, id)
+  writeFile(blob, "junk-" & id)
+  let work = createTempDir("nimvault_audit_", "_forge")
+  let plain = work / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{id}\t{path}\t{sha256sum(blob)}\tfile\t{sha256sumBytes(id)}\t" &
+    repeat('0', 64) & "\n")
+  createDir(entryDir(r))
+  encryptFileTo(c, @[c.recipient], plain, entryFile(r, c, id), sign = false)
+  removeDir(work)
+
+block lockIgnoresForgedRecords:
+  ## A forged record must not steer lock into shredding files it names.
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  createDir(home)
+  createDir(base / "outside")
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    let thesisBackup = home / "thesis.tex~"
+    let outsideBackup = base / "outside" / "notes~"
+    writeFile(thesisBackup, "thesis-draft")
+    writeFile(outsideBackup, "outside-notes")
+    forgeUnsignedRecord(r, c, "aaaaaaaaaaaaaaaa", "~/thesis.tex")
+    forgeUnsignedRecord(r, c, "bbbbbbbbbbbbbbbb", "~/../outside/notes")
+    var raised = false
+    try:
+      lockPlaintext(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "lock must refuse unsigned records"
+    doAssert readFile(thesisBackup) == "thesis-draft",
+      "lock must not shred a backup named by an unsigned record"
+    doAssert readFile(outsideBackup) == "outside-notes",
+      "lock must not shred a backup outside HOME"
+
+    # With `signer = none` the records load. Neither entry is present, so
+    # neither backup belongs to an in-sync file, and the traversal is refused.
+    var unsigned = c
+    unsigned.signer = "none"
+    dropEntryRecord(r, c, "bbbbbbbbbbbbbbbb")
+    lockPlaintext(r, unsigned)
+    doAssert readFile(thesisBackup) == "thesis-draft",
+      "lock must not shred backups of an entry that is not present"
+    forgeUnsignedRecord(r, c, "bbbbbbbbbbbbbbbb", "~/../outside/notes")
+    raised = false
+    try:
+      lockPlaintext(r, unsigned)
+    except CatchableError:
+      raised = true
+    doAssert raised, "lock must refuse a record path that climbs out of HOME"
+    doAssert readFile(outsideBackup) == "outside-notes"
+    doAssert readFile(thesisBackup) == "thesis-draft"
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: lock ignores forged records and absent entries"
+
 block unsealDoesNotFollowAncestorSymlink:
   ## A symlink above a not-yet-created directory must not receive the plaintext.
   let r = setupRepo()
