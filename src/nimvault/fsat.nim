@@ -7,7 +7,7 @@
 ## and is copied into a file this process created, so neither tool is handed
 ## a path to write.
 
-import std/[osproc, posix, sysrand]
+import std/[osproc, posix, streams, sysrand]
 
 var
   ONoFollow* {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
@@ -142,12 +142,21 @@ proc runWithInput*(p: Process, input: string): FeedResult =
   var errOpen = true
   var off = 0
   let inFd = p.inputHandle.cint
+  template closeInput() =
+    if not inOpen:
+      discard
+    else:
+      try:
+        p.inputStream.close()
+      except CatchableError:
+        if result.writeErr == 0:
+          result.writeErr = EIO
+      inOpen = false
   let inFlags = fcntl(inFd, F_GETFL, 0)
   if inFlags >= 0:
     discard fcntl(inFd, F_SETFL, inFlags or O_NONBLOCK)
   if input.len == 0:
-    inOpen = false
-    discard posix.close(inFd)
+    closeInput()
   var buf: array[65536, char]
   while inOpen or outOpen or errOpen:
     var fds: seq[TPollfd] = @[]
@@ -169,8 +178,7 @@ proc runWithInput*(p: Process, input: string): FeedResult =
       if result.writeErr == 0:
         result.writeErr = EIO
       if inOpen:
-        discard posix.close(inFd)
-        inOpen = false
+        closeInput()
       p.kill()
       break
     for k in 0 .. fds.high:
@@ -179,10 +187,7 @@ proc runWithInput*(p: Process, input: string): FeedResult =
       case owner[k]
       of 0:
         if off >= input.len:
-          let closeErr = if posix.close(inFd) != 0: errno else: 0
-          if closeErr != 0 and result.writeErr == 0:
-            result.writeErr = closeErr
-          inOpen = false
+          closeInput()
           continue
         let take = min(input.len - off, 16384)
         let n = posix.write(fds[k].fd, unsafeAddr input[off], take)
@@ -191,20 +196,15 @@ proc runWithInput*(p: Process, input: string): FeedResult =
             continue
           if result.writeErr == 0:
             result.writeErr = errno
-          discard posix.close(inFd)
-          inOpen = false
+          closeInput()
         elif n == 0:
           if result.writeErr == 0:
             result.writeErr = EIO
-          discard posix.close(inFd)
-          inOpen = false
+          closeInput()
         else:
           off += n
           if off >= input.len:
-            let closeErr = if posix.close(inFd) != 0: errno else: 0
-            if closeErr != 0 and result.writeErr == 0:
-              result.writeErr = closeErr
-            inOpen = false
+            closeInput()
       of 1:
         let n = posix.read(fds[k].fd, addr buf[0], buf.len)
         if n < 0 and (errno == EINTR or errno == EAGAIN):
