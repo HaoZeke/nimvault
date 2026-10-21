@@ -2,7 +2,7 @@
 ##
 ## Throwaway GPG home. No long-lived key material.
 
-import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles]
+import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles, times]
 import nimvault/[gpg, manifest, commands, crypto, dek, lock]
 
 proc setupGpg(): tuple[home, key: string] =
@@ -799,6 +799,30 @@ block secondThreadCannotTakeTheLock:
   release(after)
   removeDir(r)
   echo "PASS: the vault lock excludes another thread"
+
+block pendingPromotionWaitsForTheLock:
+  ## check, status and get may rename a pending blob over the live one. A
+  ## seal holding the vault may be publishing that same blob, so they wait.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "promotion-under-lock")
+  add(r, f, c)
+  seal(r, c)
+  for name in ["check", "status", "get"]:
+    var thr: Thread[string]
+    createThread(thr, holder, r)
+    sleep(150)
+    let started = epochTime()
+    case name
+    of "check": discard checkVault(r, c)
+    of "status": discard statusReport(r, c)
+    else: doAssert get(r, f, c, allowUnsigned = true) == "promotion-under-lock"
+    let waited = epochTime() - started
+    joinThread(thr)
+    doAssert waited >= 0.4, &"{name} must wait for the vault lock (waited {waited:.2f}s)"
+  removeDir(r)
+  echo "PASS: check, status and get wait for the vault lock"
 
 block movedLockDoesNotCloseStdin:
   proc dropLock(x: sink VaultLock) =

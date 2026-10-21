@@ -1,0 +1,1 @@
+`check`, `status` and `get` take the vault lock. Each may rename a pending blob over the live one, and without the lock that rename could race a `seal` publishing the same blob.
