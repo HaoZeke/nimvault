@@ -634,8 +634,7 @@ exec """ & realGpg.quoteShell & """ "$@"
 """
 
 block unsealUsesDescriptorAnchoredStaging:
-  ## A parent symlink swapped after path checks must not redirect where
-  ## plaintext is staged or where the final rename lands.
+  ## A parent swapped after path checks must now fail before placement.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let inside = r / "inside"
@@ -661,15 +660,20 @@ block unsealUsesDescriptorAnchoredStaging:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", marker)
+  var raised = false
   try:
-    unseal(r, c)
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
   finally:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
   doAssert fileExists(marker), "test wrapper did not swap the parent symlink"
-  doAssert fileExists(inside / "secret.txt"),
-    "unseal must keep writing under the checked directory"
+  doAssert raised, "unseal must refuse a parent changed after path checks"
+  doAssert not fileExists(inside / "secret.txt"),
+    "a refused unseal must not leave plaintext under the original parent"
   doAssert not fileExists(outside / "secret.txt"),
     "unseal must not be redirected outside the vault root"
   if symlinkExists(r / "safe"):
@@ -735,9 +739,8 @@ block unsealRefusedSwapLeavesNoStagingFile:
   echo "PASS: a refused swap leaves no staging file"
 
 block unsealWithoutRootStaysInHomeAfterASwap:
-  ## With no root the boundary is $HOME. It was taken from the parent as
-  ## resolved at staging time, so a parent swapped for a link out of $HOME
-  ## after the checks gave no boundary at all, and the plaintext went there.
+  ## With no root the boundary is $HOME. Renaming an already-open parent
+  ## directory outside $HOME during decrypt must not send plaintext there.
   let oldHome = getEnv("HOME")
   let base = createTempDir("nimvault_audit_", "_home")
   let home = base / "home"
@@ -749,23 +752,18 @@ block unsealWithoutRootStaysInHomeAfterASwap:
   let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
   let oldPath = getEnv("PATH")
   var raised = false
+  let moved = outside / "a.moved"
   try:
     let c = GpgConfig(recipient: keyId)
-    for d in ["a", "b"]:
-      createDir(home / d)
-      writeFile(home / d / "secret.txt", "home-secret-" & d)
-      add(r, &"~/{d}/secret.txt", c)
+    createDir(home / "a")
+    writeFile(home / "a" / "secret.txt", "home-secret-a")
+    add(r, "~/a/secret.txt", c)
     seal(r, c)
-    for d in ["a", "b"]:
-      removeFile(home / d / "secret.txt")
+    removeFile(home / "a" / "secret.txt")
     writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
     setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
-    var swapCmd = ""
-    for d in ["a", "b"]:
-      let p = (home / d).quoteShell
-      swapCmd.add(&"mv {p} {(home / (d & \".moved\")).quoteShell} && " &
-                  &"ln -s {outside.quoteShell} {p} && ")
-    swapCmd.add("true")
+    let swapCmd = "mv " & (home / "a").quoteShell & " " & moved.quoteShell &
+                  " && mkdir " & (home / "a").quoteShell
     putEnv("PATH", wrapBin & ":" & oldPath)
     putEnv("NIMVAULT_SWAP_CMD", swapCmd)
     putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
@@ -779,14 +777,17 @@ block unsealWithoutRootStaysInHomeAfterASwap:
     delEnv("NIMVAULT_SWAP_MARKER")
     putEnv("HOME", oldHome)
   doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
-  doAssert raised, "unseal must refuse a parent swapped out of HOME"
-  for kind, path in walkDir(outside):
-    doAssert false, "unseal wrote outside HOME: " & path
+  doAssert raised, "unseal must fail after a parent rename out of HOME"
+  doAssert not fileExists(moved / "secret.txt"),
+    "unseal must not write plaintext outside HOME through a renamed parent"
+  doAssert not fileExists(home / "a" / "secret.txt"),
+    "a refused unseal must not place plaintext under the replacement parent"
   doAssert stagingFiles(home).len == 0, $stagingFiles(home)
+  doAssert stagingFiles(outside).len == 0, $stagingFiles(outside)
   removeDir(r)
   removeDir(base)
   removeDir(wrapBin)
-  echo "PASS: unseal without root stays in HOME after a parent swap"
+  echo "PASS: unseal without root refuses a parent renamed out of HOME"
 
 block directEntryIsStagedOnce:
   ## A direct v5 entry was staged twice, once with the v6 entries and once
