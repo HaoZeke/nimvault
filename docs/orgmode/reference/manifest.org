@@ -116,8 +116,9 @@ The signed manifest is the integrity anchor. On ~unseal~:
    blobs carry one, age blobs and v6 enveloped blobs do not
 5. Only after all checks pass are files moved to their final paths
 
-~nimvault check~ runs step 2 on its own, over every entry, without decrypting
-and without key material.
+~nimvault check~ decrypts the manifest or the per-entry records, reads the
+digests, and compares each payload blob to its digest. It does not decrypt
+the payloads. A public key alone cannot open the records.
 
 This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
