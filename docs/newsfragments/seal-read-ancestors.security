@@ -1,0 +1,1 @@
+`seal` and `rotate --rekey` refuse to read plaintext whose path, or a directory symlink above it, resolves outside `$HOME` or the configured `root`. With an entry's directory swapped for such a symlink, `seal` encrypted the outside file into the blob and replaced the sealed copy.

@@ -428,6 +428,79 @@ block mvRefusesSourceUnderSymlinkedAncestorWithoutRoot:
     removeDir(base)
   echo "PASS: mv refuses a source under a symlinked ancestor without root"
 
+block sealRefusesPlaintextUnderSymlinkedAncestor:
+  ## seal reads the plaintext a record names. With the entry's directory
+  ## swapped for a link out of the root, it encrypted the outside file into
+  ## the blob and replaced the sealed copy. `rotate --rekey` seals too.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "nested")
+  let f = r / "nested" / "secret.txt"
+  writeFile(f, "sealed-copy")
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  removeDir(r / "nested")
+  let outside = createTempDir("nimvault_audit_", "_sealsrc")
+  writeFile(outside / "secret.txt", "outside-bytes")
+  createSymlink(outside, r / "nested")
+  for rekey in [false, true]:
+    var raised = false
+    try:
+      if rekey: rotate(r, c, rekey = true)
+      else: seal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "seal (rekey: " & $rekey &
+      ") must refuse plaintext under a symlink out of the root"
+    doAssert get(r, f, c) == "sealed-copy",
+      "a refused seal must leave the sealed copy in place"
+  removeFile(r / "nested")
+  createDir(r / "nested")
+  createSymlink(outside / "secret.txt", f)
+  var raised = false
+  try:
+    seal(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "seal must refuse a plaintext symlink that leaves the root"
+  doAssert get(r, f, c) == "sealed-copy"
+  removeDir(outside)
+  removeDir(r)
+  echo "PASS: seal and rotate --rekey refuse plaintext under a symlinked ancestor"
+
+block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  let outside = base / "outside"
+  createDir(home)
+  createDir(outside)
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    createDir(home / "nested")
+    writeFile(home / "nested" / "secret.txt", "sealed-copy")
+    add(r, "~/nested/secret.txt", c)
+    seal(r, c)
+    removeFile(home / "nested" / "secret.txt")
+    removeDir(home / "nested")
+    writeFile(outside / "secret.txt", "outside-bytes")
+    createSymlink(outside, home / "nested")
+    var raised = false
+    try:
+      seal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "seal must refuse plaintext under a symlink out of HOME"
+    doAssert get(r, "~/nested/secret.txt", c) == "sealed-copy"
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: seal refuses plaintext under a symlinked ancestor without root"
+
 block addRefusesSymlink:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)

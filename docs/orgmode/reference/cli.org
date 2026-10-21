@@ -44,7 +44,9 @@ A crash before the record is durable leaves the previous blob in place. A
 crash after the record is written leaves ~.pending~, which the next read
 promotes when its hash matches.
 
-Exits non-zero if any plaintext file is missing.
+Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+directory symlink above it, resolves outside ~$HOME~ or ~root~. ~rotate
+--rekey~ seals, so it refuses the same paths.
 
 *** ~--force~
 
@@ -159,6 +161,9 @@ nimvault mv <old-path> <new-path> [--recipient KEY]
 Move/rename a vault entry's target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.
+
+A symlink at either path is refused, and so is a directory symlink above
+either path that resolves outside ~$HOME~ or ~root~.
 
 ** get
 
