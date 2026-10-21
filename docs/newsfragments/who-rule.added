@@ -1,0 +1,1 @@
+`nimvault who` prints the wrap rule for each entry. Naming paths answers the rule without a secret key.

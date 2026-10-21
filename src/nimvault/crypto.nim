@@ -6,7 +6,7 @@
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
-                  signingKey, AgeGpgSigner
+                  signingKey, AgeGpgSigner, pinentryInsert, gpgFailureCode
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 from ./fsat import ONoFollow
@@ -256,9 +256,9 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
     let stop = min(start + batch - 1, paths.high)
     var procs: seq[(int, Process)] = @[]
     for i in start .. stop:
-      procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]],
-        options = {poUsePath})))
+      var args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]]
+      pinentryInsert(args)
+      procs.add((i, startProcess("gpg", args = args, options = {poUsePath})))
     for (i, p) in procs:
       let plain = p.outputStream.readAll()
       let status = p.errorStream.readAll()
@@ -368,10 +368,10 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, "--", inPath],
       options = {poUsePath})
   else:
-    startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", outPath, "--", inPath],
-      options = {poUsePath})
+    var args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "-o", outPath, "--", inPath]
+    pinentryInsert(args)
+    startProcess("gpg", args = args, options = {poUsePath})
 
 proc decryptStream*(cfg: GpgConfig, inPath: string): Process =
   ## Spawn a decryption of `inPath` that writes the plaintext to stdout and,
@@ -382,10 +382,10 @@ proc decryptStream*(cfg: GpgConfig, inPath: string): Process =
       args = @["-d", "-i", ageIdentityPath(cfg), "--", inPath],
       options = {poUsePath})
   else:
-    startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "--", inPath],
-      options = {poUsePath})
+    var args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+                 "-d", "--", inPath]
+    pinentryInsert(args)
+    startProcess("gpg", args = args, options = {poUsePath})
 
 proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
                     inPath, outPath: string, sign = true) =
@@ -430,13 +430,15 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
         nvRaise("FATAL: invalid recipient")
       args.add("--recipient=" & r)
     args.add(@["--set-filename", "", "-o", outPath, "--", inPath])
+    pinentryInsert(args)
     let p = startProcess("gpg", args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
     let code = p.waitForExit()
     p.close()
     if code != 0:
-      nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
+      nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}",
+              gpgFailureCode(output))
 
 proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   if cfg.usesAge:
@@ -445,10 +447,10 @@ proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
       options = {poUsePath, poStdErrToStdOut})
   else:
     let signer = signingKey(cfg)
-    startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
-               "--trust-model", "always",
-               "--local-user", signer,
-               "--sign", "-e", "--recipient=" & cfg.recipient,
-               "--set-filename", "", "-o", outPath, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
+    var args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
+                 "--trust-model", "always",
+                 "--local-user", signer,
+                 "--sign", "-e", "--recipient=" & cfg.recipient,
+                 "--set-filename", "", "-o", outPath, "--", inPath]
+    pinentryInsert(args)
+    startProcess("gpg", args = args, options = {poUsePath, poStdErrToStdOut})
