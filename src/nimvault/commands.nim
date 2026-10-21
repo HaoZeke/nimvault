@@ -133,8 +133,11 @@ type StagedPath = ref object
   dirFd: cint
   fd: cint
   dirPath: string
+  destPath: string
   destName: string
   tmpName: string
+  boundaryBase: string
+  boundaryReal: string
   placed: bool
 
 proc resolvedParentForWrite(path: string): string =
@@ -203,12 +206,74 @@ proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
   if fd < 0:
     discard posix.close(dirFd)
     nvRaise(&"FATAL: cannot create temporary plaintext in {parent}")
+  let base = boundaryBase(cfg, dest)
   result = StagedPath(
     dirFd: dirFd,
     fd: fd,
     dirPath: parent,
+    destPath: normalizedPath(dest),
     destName: dest.extractFilename,
-    tmpName: tmpName)
+    tmpName: tmpName,
+    boundaryBase: base,
+    boundaryReal: if base.len > 0: resolvedBase(base) else: "")
+
+proc openParentFromBoundary(sp: StagedPath): cint =
+  ## Re-open the destination parent by the path as written, from the boundary
+  ## root, with O_NOFOLLOW on every component.
+  if sp.boundaryBase.len == 0 or sp.boundaryReal.len == 0:
+    return -1
+  let parent = normalizedPath(sp.destPath.parentDir)
+  if not insideBase(sp.boundaryBase, parent):
+    return -1
+  let rel = relativePath(parent, sp.boundaryBase)
+  let flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
+  result = openDirFd(sp.boundaryReal, createMissing = false)
+  if rel.len == 0 or rel == ".":
+    return
+  for part in rel.split(DirSep):
+    if part.len == 0 or part == ".":
+      continue
+    if part == "..":
+      discard posix.close(result)
+      return -1
+    let next = openAt(result, part.cstring, flags)
+    if next < 0:
+      discard posix.close(result)
+      return -1
+    discard posix.close(result)
+    result = next
+
+proc parentStillBound(sp: StagedPath): bool =
+  if sp.boundaryBase.len == 0:
+    return true
+  template sameAsHeld(fdNow: cint): bool =
+    (var held, current: Stat;
+     fstat(sp.dirFd, held) == 0 and
+     fstat(fdNow, current) == 0 and
+     sameFile(held, current))
+  var nowFd = -1.cint
+  try:
+    nowFd = openParentFromBoundary(sp)
+  except CatchableError:
+    nowFd = -1
+  if nowFd >= 0:
+    result = sameAsHeld(nowFd)
+    discard posix.close(nowFd)
+    if result:
+      return
+  # Paths under symlinked HOME/root are allowed when their resolved parent is
+  # still inside the same boundary and inode as the one already opened.
+  try:
+    let parent = resolvedParentForWrite(sp.destPath)
+    if not insideBase(sp.boundaryReal, parent):
+      return false
+    nowFd = openDirFd(parent, createMissing = false)
+  except CatchableError:
+    return false
+  if nowFd < 0:
+    return false
+  result = sameAsHeld(nowFd)
+  discard posix.close(nowFd)
 
 proc stillNamed(sp: StagedPath): bool =
   ## Whether the staging name still refers to the file this process created.
@@ -237,12 +302,17 @@ proc placeStaged(sp: StagedPath, job: Drain) =
   ## Mode 0600, or 0700 for a shebang script, then rename the staging file
   ## over the destination through the descriptor it was created under. One
   ## directory, so a symlink at the destination is replaced, not followed.
-  let dest = sp.dirPath / sp.destName
+  let dest = sp.destPath
   let mode = if job.head == "#!": 0o700.Mode else: 0o600.Mode
   if posix.fchmod(sp.fd, mode) != 0:
     nvRaise(&"FATAL: cannot set the mode of the plaintext for {dest}")
   if not stillNamed(sp):
     nvRaise(&"FATAL: the staging file for {dest} was replaced")
+  if not parentStillBound(sp):
+    overwriteFd(sp.fd)
+    if stillNamed(sp):
+      discard unlinkAt(sp.dirFd, sp.tmpName.cstring, 0)
+    nvRaise(&"FATAL: destination parent changed while unsealing: {dest}")
   if renameAt(sp.dirFd, sp.tmpName.cstring, sp.dirFd, sp.destName.cstring) != 0:
     nvRaise(&"FATAL: could not place plaintext at {dest}")
   sp.placed = true

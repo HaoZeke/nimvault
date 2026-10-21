@@ -1,1 +1,5 @@
-With no `root`, `unseal` took the `$HOME` boundary from the destination's parent as it resolved at staging time. A parent swapped for a link out of `$HOME` after the up-front checks then had no boundary at all, and the plaintext was written where the link pointed. The boundary now comes from the destination as written, so that entry is refused.
+With no `root`, `unseal` now re-walks each destination parent from the `$HOME`
+boundary path and requires the same directory inode it opened for staging. If
+that parent changed or now resolves outside the boundary, the staging file is
+shredded through its descriptor and that entry is refused before rename. A
+failure still leaves any earlier entries that were already placed.
