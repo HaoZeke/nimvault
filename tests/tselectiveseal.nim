@@ -133,13 +133,26 @@ Expire-Date: 0
       doAssert readFile(f.paths[1]) == "unselected edit"
       doAssert not fileExists(f.paths[2])
 
-    test "a current selected entry leaves every vault byte unchanged":
+    test "a current selected entry leaves sealed bytes unchanged":
       let f = fixture(keyId, fingerprint)
       defer: removeDir(f.repo)
       writeFile(f.paths[1], "dirty but unselected")
       let before = vaultBytes(f.repo)
       seal(f.repo, f.cfg, only = @[f.paths[0]])
-      doAssert vaultBytes(f.repo) == before
+      let after = vaultBytes(f.repo)
+      for path, bytes in before:
+        doAssert after[path] == bytes, path
+      # A no-op seal still backfills the plaintext blob-index. It must not
+      # rewrite records, blobs, keys, or the manifest, and a second run
+      # must not churn the index either.
+      doAssert "blob-index" notin before
+      doAssert after.len == before.len + 1
+      let index = after["blob-index"]
+      for i in 0 .. 2:
+        let entry = entryFor(f, i)
+        doAssert (entry.id & " " & entry.hash) in index
+      seal(f.repo, f.cfg, only = @[f.paths[0]])
+      doAssert vaultBytes(f.repo) == after
 
     test "selected key-group updates retain keys outside the entry view":
       let f = fixture(keyId, fingerprint)
@@ -326,5 +339,24 @@ Expire-Date: 0
         f.paths[0].quoteShell & " --vault " & f.repo.quoteShell)
       doAssert noopCode == 0, noop
       doAssert "1 selected file(s) already current." in noop
+
+    test "public-only seal of one path leaves that entry untouched":
+      let f = fixture(keyId, fingerprint)
+      defer: removeDir(f.repo)
+      writeFile(f.paths[0], "public-only must not reseal")
+      writeFile(f.paths[1], "unselected edit")
+      let before = vaultBytes(f.repo)
+      putEnv("NIMVAULT_PUBLIC_ONLY", "1")
+      seal(f.repo, f.cfg, only = @[f.paths[0]])
+      delEnv("NIMVAULT_PUBLIC_ONLY")
+      doAssert vaultBytes(f.repo) == before
+      doAssert get(f.repo, f.paths[0], f.cfg) == "original:first file.txt"
+      let binary = SourceRoot / "bin" / "nimvault"
+      doAssert fileExists(binary), "build nimvault before the integration suite"
+      let (output, code) = execCmdEx(binary.quoteShell & " seal " &
+        f.paths[0].quoteShell & " --public-only --vault " & f.repo.quoteShell)
+      doAssert code == 0, output
+      doAssert "1 selected path(s) left untouched" in output
+      doAssert vaultBytes(f.repo) == before
 
 main()
