@@ -62,9 +62,10 @@ With no path this restores the whole vault. Naming paths restores only
 those entries, and a directory restores everything beneath it. A selector
 that matches nothing is an error.
 
-Before decryption, verifies:
-- Manifest GPG signature
-- Blob SHA-256 hashes against manifest
+Before decrypting a payload, verifies:
+- Record signatures: gpg checks the one inside each record while decrypting
+  it, ~ssh-keygen -Y verify~ checks the detached =.sig= with ~signer = ssh~
+- Blob SHA-256 hashes against the records
 - Path safety (no directory traversal)
 
 Every signature and hash is checked before any plaintext is written. A
@@ -184,7 +185,9 @@ updated.
 A symlink at either path is refused, and so is a directory symlink above
 either path that resolves outside ~$HOME~ or ~root~. Across filesystems the
 file is copied beside the new path, owner-only, given the source's mode, and
-renamed into place.
+renamed into place. The source is then overwritten and removed, as ~lock~
+does. The checks run before the move, which then uses both paths by name; see
+the [[file:../explanation/threat-model.org][threat model]].
 
 ** get
 
@@ -403,8 +406,11 @@ Payload signatures depend on the format. Direct gpg blobs (v5) carry an in-band
 GPG signature. Age blobs and v6 enveloped blobs do not; for those, authenticity
 comes from the signed records plus the blob digest. On ~unseal~:
 
-1. Manifest signature is checked during decryption, and must come from a key
-   the config names (see [[file:config.org][configuration]])
+1. Record signatures must come from a key the config names (see
+   [[file:config.org][configuration]]). With ~signer = ssh~, the age default,
+   ~ssh-keygen -Y verify~ checks each record's detached =.sig= before the
+   record is decrypted. On the gpg backend, gpg checks the signature inside
+   each record while decrypting it. ~signer = none~ needs ~--allow-unsigned~
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
 4. Signatures are verified on each blob that carries one in band, by
