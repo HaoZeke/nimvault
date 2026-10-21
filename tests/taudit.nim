@@ -694,6 +694,35 @@ proc secondRecordDecryptSwapHook(realGpg, targetRecord, replacement,
     "fi\n" &
     "exec " & realGpg.quoteShell & " \"$@\"\n"
 
+proc keyFileEncryptSwapHook(realBin, badDek, marker: string): string =
+  ## Replace each DEK line in keys.*.tmp before the backend encrypts it.
+  ## add/add-dir must still sign the in-memory DEK that encrypted the blob.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "out=\"\"\n" &
+    "last=\"\"\n" &
+    "prev=\"\"\n" &
+    "for arg in \"$@\"; do\n" &
+    "  if [ \"$prev\" = \"-o\" ]; then out=\"$arg\"; fi\n" &
+    "  prev=\"$arg\"\n" &
+    "  last=\"$arg\"\n" &
+    "done\n" &
+    "base=\"${out##*/}\"\n" &
+    "case \"$base\" in\n" &
+    "  keys.*.gpg.tmp|keys.*.age.tmp|keys.gpg.tmp|keys.age.tmp)\n" &
+    "    if [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "      tmp=\"$last.nimvault-swap\"\n" &
+    "      awk -F '\\t' -v bad=" & badDek.quoteShell &
+      " 'BEGIN{OFS=\"\\t\"} /^#/ {print; next} NF>=2 {$2=bad} {print}' " &
+      "\"$last\" > \"$tmp\"\n" &
+    "      cat \"$tmp\" > \"$last\"\n" &
+    "      rm -f \"$tmp\"\n" &
+    "      : >" & marker.quoteShell & "\n" &
+    "    fi\n" &
+    "    ;;\n" &
+    "esac\n" &
+    "exec " & realBin.quoteShell & " \"$@\"\n"
+
 block unsealUsesDescriptorAnchoredStaging:
   ## A parent swapped after path checks must now fail before placement.
   let r = setupRepo()
@@ -1363,6 +1392,84 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   removeDir(wrapBin)
   removeDir(r)
   echo "PASS: add-dir refuses record-DEK swaps after verify"
+
+block addDoesNotSignDekSwappedInKeysTmp:
+  ## A keys.*.tmp plaintext swap must not change the DEK signed into records.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "add-real-secret")
+  let badDek = repeat('d', 64)
+  let wrapBin = createTempDir("nimvault_audit_", "_keys_swap_add")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, keyFileEncryptSwapHook(realGpg, badDek, marker))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    add(r, f, c)
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert fileExists(marker), "test wrapper did not tamper keys.*.tmp"
+  let entry = loadManifest(r, cfg = c)[0]
+  let fromKeys = loadDeksFromKeys(r, c)
+  doAssert fromKeys.getOrDefault(entry.id) == badDek,
+    "test wrapper did not replace the key-file DEK"
+  let signedDek = signedRecordDek(r, c, entry.id)
+  doAssert signedDek.len > 0
+  doAssert signedDek != badDek,
+    "add must not sign a DEK from tampered keys.*.tmp"
+  let blob = crypto.blobPath(r, c, entry.id)
+  doAssert decryptWithDekToString(c, signedDek, blob) == "add-real-secret",
+    "add must keep the signed DEK bound to the blob it encrypted"
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add keeps the signed DEK after a keys.*.tmp swap"
+
+block addDirDoesNotSignDekSwappedInKeysTmp:
+  ## add-dir must also sign the DEK generated for the payload, not keys.*.tmp.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let incoming = r / "incoming"
+  createDir(incoming)
+  let f = incoming / "later.txt"
+  writeFile(f, "add-dir-real-secret")
+  let badDek = repeat('c', 64)
+  let wrapBin = createTempDir("nimvault_audit_", "_keys_swap_adddir")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, keyFileEncryptSwapHook(realGpg, badDek, marker))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    addDir(r, incoming, c)
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert fileExists(marker), "test wrapper did not tamper keys.*.tmp"
+  let entry = loadManifest(r, cfg = c)[0]
+  let fromKeys = loadDeksFromKeys(r, c)
+  doAssert fromKeys.getOrDefault(entry.id) == badDek,
+    "test wrapper did not replace the key-file DEK"
+  let signedDek = signedRecordDek(r, c, entry.id)
+  doAssert signedDek.len > 0
+  doAssert signedDek != badDek,
+    "add-dir must not sign a DEK from tampered keys.*.tmp"
+  let blob = crypto.blobPath(r, c, entry.id)
+  doAssert decryptWithDekToString(c, signedDek, blob) == "add-dir-real-secret",
+    "add-dir must keep the signed DEK bound to the blob it encrypted"
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add-dir keeps the signed DEK after a keys.*.tmp swap"
 
 block rmDoesNotResignUnsignedLegacyDek:
   ## rm may rewrite the manifest but must not sign a DEK from keys.evil.
