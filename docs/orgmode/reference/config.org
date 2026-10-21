@@ -142,13 +142,14 @@ exactly:
 - Email: ~user@example.com~ or ~<user@example.com>~
 - Subkey ID or fingerprint, optionally with gpg's trailing ~!~. The key it
   belongs to is the one allowed to sign.
+- 8-hex short key IDs are refused.
 
 Any other string, such as a name, is refused when the config loads, whether
 it comes from ~.vault/config~, ~--recipient~ or ~NIMVAULT_GPG_RECIPIENT~. gpg
 matches such a string anywhere in a user ID, so ~Alice~ also names
 ~Malice <malice@example.com>~, and that key could then sign records.
 
-Long key IDs are recommended for unambiguous matching.
+Use a 16-hex key ID or a full fingerprint when naming keys by hex.
 
 ** Who may sign
 

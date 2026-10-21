@@ -326,16 +326,20 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     let encStub = findManifest(repo, cfg)
     if encStub.len > 0:
       try:
-        if verifySig:
-          verifyManifest(cfg, encStub, true)
-        let stub = decryptToString(cfg, encStub, verifySig)
+        verifyManifest(cfg, encStub, verifySig, checkPresent)
+        let stub = decryptToString(cfg, encStub, verifySig, checkPresent)
         for line in stub.splitLines:
           let stripped = line.strip()
           if stripped.startsWith(SealKeyHeader):
             result.sealKey = stripped[SealKeyHeader.len .. ^1].strip()
           if stripped.startsWith(EnvelopeHeader):
             result.envelope = true
-      except CatchableError:
+      except CatchableError as err:
+        let msg = err.msg.toLowerAscii()
+        if "signature verification failed" in msg or
+           "missing signature" in msg or
+           "signature required" in msg:
+          raise
         discard
     return
   let enc = findManifest(repo, cfg)

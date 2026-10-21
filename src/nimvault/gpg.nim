@@ -173,7 +173,16 @@ proc normalizeHexSpec(s: string): string =
 
 proc isHexSpec(s: string): bool =
   let t = normalizeHexSpec(s)
-  if t.len < 8:
+  if t.len < 16:
+    return false
+  for ch in t:
+    if ch notin {'0'..'9', 'A'..'F'}:
+      return false
+  true
+
+proc isShortHexSpec(s: string): bool =
+  let t = normalizeHexSpec(s)
+  if t.len != 8:
     return false
   for ch in t:
     if ch notin {'0'..'9', 'A'..'F'}:
@@ -242,8 +251,7 @@ proc parseListedKeys(listing: string): seq[ListedKey] =
 proc hexNames(hex: string, key: KeyName): bool =
   let keyId = normalizeHexSpec(key.keyId)
   let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
-  fpr == hex or keyId == hex or
-    (hex.len <= keyId.len and hex.len in [8, 16] and keyId.endsWith(hex))
+  fpr == hex or keyId == hex
 
 proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
   ## Primary-key fingerprints, upper case, of every key in the keyring that one
@@ -299,6 +307,9 @@ proc checkGpgConfig(cfg: GpgConfig) =
     nvRaise("FATAL: " & AgeGpgSigner)
   if cfg.backend == "gpg":
     for spec in vaultSignerSpecs(cfg):
+      if isShortHexSpec(spec):
+        nvRaise(&"FATAL: recipient `{spec}` uses an 8-hex short key id.\n" &
+                "  Use a 16-hex long key id or a full fingerprint.")
       if not exactKeySpec(spec):
         nvRaise(&"FATAL: recipient `{spec}` does not name one key.\n" &
                 "  Use an email address, a key ID or a fingerprint. gpg " &

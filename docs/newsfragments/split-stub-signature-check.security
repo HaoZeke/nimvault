@@ -1,0 +1,1 @@
+With `--allow-unsigned`, split-vault commands now still verify a present combined-manifest stub signature and reject one from a non-configured signer.

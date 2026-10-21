@@ -136,9 +136,10 @@ The signed records are the integrity anchor. On ~unseal~:
    blobs carry one, age blobs and v6 enveloped blobs do not
 5. Only after all checks pass are files moved to their final paths
 
-~nimvault check~ decrypts the manifest metadata and the per-entry records, reads the
-digests, and compares each payload blob to its digest. It does not decrypt
-the payloads. A public key alone cannot open the records.
+~nimvault check~ decrypts the manifest metadata and the per-entry records this
+identity can open, reads their digests, and compares each payload blob to its
+digest. Records this identity cannot open are counted and reported. It does
+not decrypt the payloads. A public key alone cannot open the records.
 
 This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
