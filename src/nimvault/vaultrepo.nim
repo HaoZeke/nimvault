@@ -73,6 +73,14 @@ proc resolveVaultRepo*(cliVault = ""): string =
   if not dirExists(result):
     nvRaise(&"FATAL: vault repository does not exist: {result}")
 
+proc sameDir(a, b: string): bool =
+  ## git prints the top level with symlinks resolved, and a path given on the
+  ## command line need not be. macOS puts the temp dir under /var, a symlink.
+  try:
+    sameFile(a, b)
+  except OSError:
+    a == b
+
 proc warnIfRootIsAmbiguous*(vaultRepo, configuredRoot: string) =
   ## `root = repo` means "paths are relative to the repository". With the vault
   ## in its own repository that is ambiguous, and resolving it against the
@@ -80,7 +88,7 @@ proc warnIfRootIsAmbiguous*(vaultRepo, configuredRoot: string) =
   if configuredRoot.len == 0:
     return
   let here = gitRoot()
-  if here.len > 0 and here != vaultRepo:
+  if here.len > 0 and not sameDir(here, vaultRepo):
     nvRaise("FATAL: `root` is set while the vault lives in another repository.\n" &
             &"  vault:   {vaultRepo}\n" &
             &"  content: {here}\n" &
