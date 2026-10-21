@@ -477,6 +477,68 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   entries.add((id, storedPath, sha256sum(outPath), ekFile, sha256sum(absPath)))
   nvEcho(&"  {storedPath}")
 
+type BlobSnapshot = object
+  path: string
+  work: string
+
+proc discardSnapshot(snap: var BlobSnapshot) =
+  if snap.work.len == 0:
+    return
+  discardPrivate(snap.work)
+  snap.work = ""
+  snap.path = ""
+
+proc assertBlobMatches(repo: string, cfg: GpgConfig, e: VaultEntry,
+                       requireSig: bool) =
+  let inPath = resolveBlob(repo, cfg, e.id, e.hash)
+  if inPath.len == 0:
+    if e.hash.len > 0:
+      stderr.writeLine &"FATAL: integrity check failed for {e.path}"
+      nvRaise("  The vault blob may have been tampered with.")
+    nvRaise(&"FATAL: vault blob missing: {crypto.blobPath(repo, cfg, e.id)}")
+  if not fileExists(inPath):
+    nvRaise(&"FATAL: vault blob missing: {inPath}")
+  if e.hash.len > 0:
+    let actualHash = sha256sum(inPath)
+    if actualHash != e.hash:
+      stderr.writeLine &"FATAL: integrity check failed for {e.path}"
+      stderr.writeLine &"  Expected: {e.hash}"
+      stderr.writeLine &"  Actual:   {actualHash}"
+      nvRaise("  The vault blob may have been tampered with.")
+  elif requireSig:
+    stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
+    nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
+
+proc snapshotBlob(repo: string, cfg: GpgConfig, e: VaultEntry,
+                  requireSig: bool): BlobSnapshot =
+  ## Hash and decrypt the same bytes by decrypting a private snapshot.
+  assertBlobMatches(repo, cfg, e, requireSig)
+  let inPath = resolveBlob(repo, cfg, e.id, e.hash)
+  let cipher = readFile(inPath)
+  if e.hash.len > 0 and sha256sumBytes(cipher) != e.hash:
+    stderr.writeLine &"FATAL: integrity check failed for {e.path}"
+    nvRaise("  The vault blob may have been tampered with.")
+  result.work = privateWorkDir()
+  result.path = result.work / (e.id & cfg.blobExt)
+  writeFile(result.path, cipher)
+  setFilePermissions(result.path, {fpUserRead, fpUserWrite})
+
+proc deksForEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
+                    verified: DekTable): DekTable =
+  ## Data keys from verified records, with keys.* only as a fallback.
+  result = verified
+  var missing = false
+  for e in entries:
+    if e.id notin result:
+      missing = true
+      break
+  if not missing:
+    return
+  let fromKeys = loadDeksFromKeys(repo, cfg)
+  for e in entries:
+    if e.id notin result and e.id in fromKeys:
+      result[e.id] = fromKeys[e.id]
+
 proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
              only: seq[string] = @[]) =
   ## Decrypt tracked entries back to their target paths. With no selector this
@@ -516,9 +578,6 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
 
   # Verify blob integrity and path safety before any decryption
   for e in entries:
-    let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-    if not fileExists(inPath):
-      nvRaise(&"FATAL: vault blob missing: {inPath}")
     # Path traversal check
     if not isPathSafe(cfg, e.path):
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
@@ -526,17 +585,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       nvRaise("  Possible directory traversal attack.")
     let dest = resolvePath(cfg, e.path)
     assertWritePath(cfg, repo, dest)
-    # Blob hash verification
-    if e.hash.len > 0:
-      let actualHash = sha256sum(inPath)
-      if actualHash != e.hash:
-        stderr.writeLine &"FATAL: integrity check failed for {e.path}"
-        stderr.writeLine &"  Expected: {e.hash}"
-        stderr.writeLine &"  Actual:   {actualHash}"
-        nvRaise("  The vault blob may have been tampered with.")
-    elif requireSig:
-      stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
-      nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
+    assertBlobMatches(repo, cfg, e, requireSig)
 
   # Decrypt beside the destination, not under the runtime directory.
   # rename() stays on one filesystem and replaces a symlink at the final
@@ -551,7 +600,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # data key is v6, one without is encrypted straight to the recipient. The
   # key file is the discriminator, and it cannot disagree with the blob because
   # a key is only ever written by the encryption that used it.
-  let deks = loadDeks(repo, cfg)
+  let deks = deksForEntries(repo, cfg, allEntries, meta.deks)
   var enveloped, direct: seq[VaultEntry]
   for e in entries:
     if deks.hasKey(e.id): enveloped.add(e) else: direct.add(e)
@@ -566,16 +615,22 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   if inBand:
     for first in countup(0, direct.high, batchSize):
       let batch = direct[first .. min(first + batchSize - 1, direct.high)]
-      var jobs = startAll(batch.len, proc (i: int): Drain =
-        Drain(p: decryptStream(cfg, resolveBlob(repo, cfg, batch[i].id,
-                                                batch[i].hash)), outFd: -1))
-      drain(jobs)
-      for k, e in batch:
-        var problem = decryptFailure(e, jobs[k])
-        if problem.len == 0:
-          problem = inBandProblem(e, jobs[k].err, requireSig, signers)
-        if problem.len > 0:
-          nvRaise(problem)
+      var snaps: seq[BlobSnapshot] = @[]
+      try:
+        var jobs = startAll(batch.len, proc (i: int): Drain =
+          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
+          snaps.add(snap)
+          Drain(p: decryptStream(cfg, snap.path), outFd: -1))
+        drain(jobs)
+        for k, e in batch:
+          var problem = decryptFailure(e, jobs[k])
+          if problem.len == 0:
+            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
+          if problem.len > 0:
+            nvRaise(problem)
+      finally:
+        for snap in snaps.mitems:
+          discardSnapshot(snap)
 
   # Then each entry is staged, decrypted, checked and placed before the next
   # is staged (direct blobs a batch at a time), so the descriptors held do not
@@ -591,17 +646,20 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     for e in enveloped:
       let sp = stageBeside(resolvePath(cfg, e.path), cfg)
       var work = ""
+      var snap: BlobSnapshot
       try:
-        var jobs = @[Drain(p: decryptWithDekStream(cfg, deks[e.id],
-                             resolveBlob(repo, cfg, e.id, e.hash), work),
+        snap = snapshotBlob(repo, cfg, e, requireSig)
+        var jobs = @[Drain(p: decryptWithDekStream(cfg, deks[e.id], snap.path, work),
                            outFd: sp.fd)]
         drain(jobs)
         let problem = decryptFailure(e, jobs[0])
         if problem.len > 0:
           refuse(problem)
+        assertBlobMatches(repo, cfg, e, requireSig)
         placeStaged(sp, jobs[0])
       finally:
         discardStaged(sp)
+        discardSnapshot(snap)
         discardPrivate(work)
       inc placed
       nvEcho(&"  {e.path}")
@@ -609,12 +667,14 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     for first in countup(0, direct.high, batchSize):
       let batch = direct[first .. min(first + batchSize - 1, direct.high)]
       var sps: seq[StagedPath] = @[]
+      var snaps: seq[BlobSnapshot] = @[]
       try:
         for e in batch:
           sps.add(stageBeside(resolvePath(cfg, e.path), cfg))
         var jobs = startAll(batch.len, proc (i: int): Drain =
-          Drain(p: decryptStream(cfg, resolveBlob(repo, cfg, batch[i].id,
-                                                  batch[i].hash)),
+          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
+          snaps.add(snap)
+          Drain(p: decryptStream(cfg, snap.path),
                 outFd: sps[i].fd))
         drain(jobs)
         for k, e in batch:
@@ -623,6 +683,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
             problem = inBandProblem(e, jobs[k].err, requireSig, signers)
           if problem.len > 0:
             refuse(problem)
+        for e in batch:
+          assertBlobMatches(repo, cfg, e, requireSig)
         for k, e in batch:
           placeStaged(sps[k], jobs[k])
           inc placed
@@ -630,6 +692,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
       finally:
         for sp in sps:
           discardStaged(sp)
+        for snap in snaps.mitems:
+          discardSnapshot(snap)
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
@@ -966,8 +1030,10 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   ## live one, which a seal in progress may be publishing too.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg,
-                             checkPresent = true)
+  let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
+                              checkPresent = true)
+  let entries = meta.entries
+  let deks = deksForEntries(repo, cfg, entries, meta.deks)
 
   let absPath = if path.isAbsolute:
     path
@@ -986,30 +1052,25 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
       stderr.writeLine &"FATAL: unsafe path in manifest: {e.path}"
       nvRaise("  Possible directory traversal attack.")
 
-    let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-    if not fileExists(inPath):
-      nvRaise(&"FATAL: vault blob missing: {inPath}")
-
-    if e.hash.len > 0:
-      let actualHash = sha256sum(inPath)
-      if actualHash != e.hash:
-        stderr.writeLine &"FATAL: integrity check failed for {e.path}"
-        nvRaise("  The vault blob may have been tampered with.")
-    elif requireSig:
-      stderr.writeLine &"FATAL: missing blob hash for {e.path} (v1 manifest)"
-      nvRaise("  Pass --allow-unsigned to accept unsigned vaults.")
-
-    for ch in e.id:
-      if ch notin {'0'..'9', 'a'..'f', 'A'..'F'}:
-        nvRaise(&"FATAL: malformed entry id: {e.id}")
-    let deks = loadDeks(repo, cfg)
-    if deks.hasKey(e.id):
-      # v6: no in-band signature to verify, exactly as for age. Authenticity
-      # came from the signed manifest and the blob digest checked just above.
-      # Decrypt to memory. A file under the runtime directory is plaintext
-      # another uid can read for as long as the process is decrypting.
-      return decryptWithDekToString(cfg, deks[e.id], inPath)
-    return decryptToString(cfg, inPath, verifySig = requireSig, checkPresent = true)
+    var snap = snapshotBlob(repo, cfg, e, requireSig)
+    try:
+      for ch in e.id:
+        if ch notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+          nvRaise(&"FATAL: malformed entry id: {e.id}")
+      if deks.hasKey(e.id):
+        # v6: no in-band signature to verify, exactly as for age. Authenticity
+        # came from the signed manifest and the digest checked in snapshotBlob.
+        # Decrypt to memory. A file under the runtime directory is plaintext
+        # another uid can read for as long as the process is decrypting.
+        let plain = decryptWithDekToString(cfg, deks[e.id], snap.path)
+        assertBlobMatches(repo, cfg, e, requireSig)
+        return plain
+      let plain = decryptToString(cfg, snap.path, verifySig = requireSig,
+                                  checkPresent = true)
+      assertBlobMatches(repo, cfg, e, requireSig)
+      return plain
+    finally:
+      discardSnapshot(snap)
 
   nvRaise(&"Not in vault: {path}")
 
@@ -1569,7 +1630,7 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
               "  Refusing to treat the vault as empty (unread wrap groups stay).")
     nvEcho("vault is empty")
     return
-  let deks = loadDeks(repo, cfg)
+  let deks = deksForEntries(repo, cfg, entries, meta.deks)
   if deks.len == 0:
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
@@ -1734,7 +1795,15 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   for e in entries:
     result.checked.inc
     let blob = resolveBlob(repo, cfg, e.id, e.hash)
-    if blob.len == 0 or not fileExists(blob):
+    if blob.len == 0:
+      let live = findBlob(repo, cfg, e.id)
+      let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
+      if fileExists(live) or fileExists(pend):
+        result.problems.add(&"blob does not match the manifest for {e.path}")
+      else:
+        result.problems.add(&"no blob for {e.path}")
+      continue
+    if not fileExists(blob):
       result.problems.add(&"no blob for {e.path}")
       continue
     if e.hash.len == 0:
