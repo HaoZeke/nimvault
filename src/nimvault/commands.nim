@@ -1048,7 +1048,9 @@ proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
                      rules: seq[(string, Regex)],
                      hits: var seq[SecretHit], seen: var HashSet[string],
                      scanned: var int) =
-  if rel.len == 0 or '\n' in rel or '\r' in rel or rel.startsWith("-"):
+  ## `spec` is `:<rel>` or `<sha>:<rel>` and goes to git after `--`, so a
+  ## name that starts with `-` or holds a newline is still just a name.
+  if rel.len == 0:
     return
   if rel == ".vault" or rel.startsWith(".vault/") or
      rel == ".git" or rel.startsWith(".git/"):
