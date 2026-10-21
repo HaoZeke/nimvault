@@ -1195,6 +1195,105 @@ block checkReportsUnreadRecords:
   putEnv("GNUPGHOME", savedHome)
   echo "PASS: check reports unread NO_SECKEY records"
 
+block corruptSessionKeyForAHeldKeyFails:
+  ## gpg reports NO_SECKEY for a session-key packet that names a key it holds
+  ## but cannot open. One flipped byte made such a record read as not for this
+  ## machine: check passed and unseal restored the rest without it.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "kept.txt", "kept-secret")
+  writeFile(r / "hit.txt", "hit-secret")
+  add(r, r / "kept.txt", c)
+  add(r, r / "hit.txt", c)
+  seal(r, c)
+  var hitId = ""
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    if e.path == "hit.txt":
+      hitId = e.id
+  doAssert hitId.len > 0
+  let rec = findEntryFile(r, c, hitId)
+  var bytes = readFile(rec)
+  let ctb = ord(bytes[0])
+  doAssert (ctb and 0xC0) == 0x80 and ((ctb shr 2) and 0xF) == 1,
+    "the record does not open with a session-key packet"
+  bytes[100] = char(ord(bytes[100]) xor 1)
+  writeFile(rec, bytes)
+  let (gpgStatus, _) = execCmdEx("gpg --batch --quiet --status-fd 1 -o /dev/null -d " &
+                                 rec.quoteShell & " 2>/dev/null")
+  doAssert "[GNUPG:] NO_SECKEY" in gpgStatus, gpgStatus
+  doAssert "pkdecrypt_failed" in gpgStatus, gpgStatus
+  var msg = ""
+  try:
+    check(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "decrypt failed" in msg, "check passed over a corrupted record: " & msg
+  removeFile(r / "kept.txt")
+  removeFile(r / "hit.txt")
+  msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "decrypt failed" in msg, "unseal skipped a corrupted record: " & msg
+  doAssert not fileExists(r / "kept.txt") and not fileExists(r / "hit.txt")
+  removeDir(r)
+  echo "PASS: a corrupted session key for a held key fails check and unseal"
+
+block unsealReportsRecordsItCouldNotOpen:
+  ## unseal restored what this machine could open and said nothing of the
+  ## rest. With none it could open, it reported an empty vault.
+  let savedHome = getEnv("GNUPGHOME")
+  let foreignHome = createTempDir("nimvault_audit_", "_foreign")
+  setFilePermissions(foreignHome, {fpUserRead, fpUserWrite, fpUserExec})
+  putEnv("GNUPGHOME", foreignHome)
+  let foreignKey = genKey(foreignHome, "Foreign Box", "foreign@nimvault.local")
+  let (exported, ecode) = execCmdEx("gpg --batch --export --armor " &
+                                    foreignKey.quoteShell)
+  doAssert ecode == 0, exported
+  putEnv("GNUPGHOME", savedHome)
+  let pub = createTempDir("nimvault_audit_", "_pub")
+  writeFile(pub / "foreign.asc", exported)
+  let (imported, icode) = execCmdEx("gpg --batch --import " &
+                                    (pub / "foreign.asc").quoteShell)
+  doAssert icode == 0, imported
+  let r = setupRepo()
+  createDir(r / ".vault")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n" &
+                                     &"wrap = **/remote.txt:{foreignKey}\n")
+  let c = initGpgConfig("", r)
+  let local = r / "local.txt"
+  let remote = r / "remote.txt"
+  writeFile(local, "local-secret")
+  writeFile(remote, "remote-secret")
+  add(r, local, c)
+  add(r, remote, c)
+  seal(r, c)
+  removeFile(local)
+  removeFile(remote)
+  let binDir = buildCli()
+  let (outp, code) = execCmdEx((binDir / "nimvault").quoteShell & " unseal --vault " &
+                               r.quoteShell)
+  doAssert code == 0, outp
+  doAssert "could not open 1 record" in outp, outp
+  doAssert readFile(local) == "local-secret"
+  doAssert not fileExists(remote)
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    removeFile(findEntryFile(r, c, e.id))
+  removeFile(local)
+  var msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "none of the 1 record(s) opens" in msg,
+    "unseal called a vault it could not open empty: " & msg
+  removeDir(binDir)
+  removeDir(r)
+  removeDir(pub)
+  removeDir(foreignHome)
+  echo "PASS: unseal reports the records it could not open"
+
 block getDoesNotWritePlaintextToTheRuntimeDir:
   let shm = "/dev/shm/nimvault-get-" & $getCurrentProcessId()
   createDir(shm)

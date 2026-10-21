@@ -240,11 +240,19 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   ## sits above this one, which is both duplicated and invisible from here.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg,
-                                checkPresent = true)
+  let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
+                              checkPresent = true)
+  let allEntries = meta.entries
+  if allEntries.len == 0 and meta.unopened > 0:
+    nvRaise(&"FATAL: none of the {meta.unopened} record(s) opens with the " &
+            "keys on this machine.\n" &
+            "  Import the secret key of the recipient or of a wrap group.")
   if allEntries.len == 0:
     nvEcho("vault is empty")
     return
+  if meta.unopened > 0:
+    stderr.writeLine(&"  could not open {meta.unopened} record(s) with this " &
+                     "machine's secret keys")
 
   let entries = if only.len == 0: allEntries
                 else: selectEntries(cfg, allEntries, only)
