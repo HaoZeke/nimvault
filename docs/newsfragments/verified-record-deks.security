@@ -1,0 +1,3 @@
+Mutating commands now use data keys from signature-verified split records and
+cache verified records by ciphertext hash instead of mtime. A swapped record
+can no longer inject an unsigned DEK that later gets re-signed.

@@ -219,6 +219,17 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
+  let requireSig = cfg.effectiveSigner != "none"
+  template sigFailure(msg: string): bool =
+    requireSig and ("signature verification failed" in msg or
+                    "missing signature" in msg or
+                    "signature required" in msg)
+  proc noSecretKey(msg: string): bool =
+    if cfg.usesAge:
+      let low = msg.toLowerAscii()
+      ("no identity matched" in low) or ("no identities matched" in low)
+    else:
+      gpgNoSecretKey(msg)
   let edir = dir / "e"
   if dirExists(edir):
     for kind, path in walkDir(edir):
@@ -229,9 +240,14 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
         continue
       var plain = ""
       try:
-        plain = decryptToString(cfg, path, false)
-      except CatchableError:
-        continue
+        plain = verifyAndDecryptToString(cfg, path, verifySig = requireSig,
+                                         checkPresent = true)
+      except CatchableError as err:
+        if sigFailure(err.msg):
+          nvRaise(err.msg)
+        if noSecretKey(err.msg):
+          continue
+        nvRaise(err.msg)
       for line in plain.splitLines:
         let s = line.strip()
         if s.len == 0 or s.startsWith("#"):
