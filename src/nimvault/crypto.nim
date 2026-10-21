@@ -9,7 +9,7 @@ from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
-                  sshVerify, ageBinary, ageIdentityPath
+                  sshVerify, sshVerifyBytes, ageBinary, ageIdentityPath
 from ./fsat import ONoFollow
 
 proc ensureOwnerDir*(dir: string) =
@@ -340,14 +340,11 @@ proc verifyAndDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false
                                checkPresent = false): string =
   ## Verify and decrypt one ciphertext while reading it only once where
   ## detached signatures are used.
-  let signer =
-    if cfg.signer.len > 0: cfg.signer
-    elif cfg.usesAge: "ssh"
-    else: "gpg"
+  let signer = cfg.effectiveSigner
   if cfg.usesAge and signer == "ssh":
     let cipher = readFile(inPath)
     if verifySig or (checkPresent and fileExists(inPath & ".sig")):
-      sshVerify(cfg, inPath, cipher)
+      sshVerifyBytes(cfg, inPath, cipher)
     return ageDecryptBytesToString(cfg, cipher)
   if verifySig or checkPresent:
     verifyManifest(cfg, inPath, verifySig, checkPresent)

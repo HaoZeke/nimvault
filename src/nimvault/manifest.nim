@@ -222,16 +222,21 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
     let work = privateWorkDir()
     let snap = work / ("record" &
       (if name.endsWith(".age"): ".age" else: ".gpg"))
+    let snapSig = snap & ".sig"
     var plain = ""
     var err = ""
     try:
       writeFile(snap, readFile(path))
       let sig = path & ".sig"
       if fileExists(sig):
-        writeFile(snap & ".sig", readFile(sig))
+        writeFile(snapSig, readFile(sig))
       plain = verifyAndDecryptToString(cfg, snap, verifySig, checkPresent)
     except CatchableError as problem:
       err = problem.msg
+      if snap in err:
+        err = err.replace(snap, path)
+      if snapSig in err:
+        err = err.replace(snapSig, path & ".sig")
     finally:
       discardPrivate(work)
     if err.len > 0:
