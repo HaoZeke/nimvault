@@ -1,0 +1,1 @@
+A recipient that names an encryption subkey, by ID or fingerprint and with or without gpg's trailing `!`, works again. The signer lookup matched only primary keys, so such a vault could not find a key to sign with, and a record signed by the vault's own key was refused as signed by an unconfigured one.
