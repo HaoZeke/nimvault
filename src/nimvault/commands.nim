@@ -243,6 +243,10 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
                               checkPresent = true)
   let allEntries = meta.entries
+  if meta.unparsed > 0:
+    nvRaise(&"FATAL: {meta.unparsed} record(s) open but hold no entry this " &
+            "version can read.\n  Refusing to unseal part of the vault; run " &
+            "`nimvault check`.")
   if allEntries.len == 0 and meta.unopened > 0:
     nvRaise(&"FATAL: none of the {meta.unopened} record(s) opens with the " &
             "keys on this machine.\n" &
@@ -1496,7 +1500,11 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   result.unopened = meta.unopened
-  if entries.len == 0 and splitRecordIds(repo).len > 0:
+  if meta.unparsed > 0:
+    result.problems.add(&"{meta.unparsed} record(s) open but hold no entry " &
+                        "this version can read")
+    result.checked.inc
+  elif entries.len == 0 and splitRecordIds(repo).len > 0:
     result.problems.add(UnreadableRecords)
     result.checked.inc
   for e in entries:
