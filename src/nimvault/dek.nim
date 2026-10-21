@@ -198,9 +198,11 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   ## Signed records under `.vault/e/` are the trust root. `.vault/a/` holds
   ## the same line, written by a public-key writer that could not sign, and
   ## may only fill an id that has no signed record. Grouped `keys.*` files
-  ## are unsigned too, so they fill ids that still have no record. A file
+  ## are unsigned too. They fill an id the records left without a data key,
+  ## or an id that has no record yet (a v6 vault mid-migration). They do not
+  ## replace a key a signed record or an `a/` fragment already named. A file
   ## that will not decrypt is not an error: it belongs to a group this
-  ## machine is not in.
+  ## machine is not in. Callers verify the records when they load the manifest.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
@@ -252,7 +254,8 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
       let parts = s.split('\t')
       if parts.len >= 2 and parts[0] notin result:
         # Unsigned. A key file may not override a signed record or an
-        # `a/` fragment that already named this id.
+        # `a/` fragment that already named this id. It fills an id those
+        # records left empty.
         result[parts[0]] = parts[1]
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,

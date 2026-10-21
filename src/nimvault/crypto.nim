@@ -5,8 +5,8 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism, sha256sum, pinentryInsert,
-                  gpgFailureCode
+                  gpgParallelism, sha256sum, pinentryInsert, gpgFailureCode,
+                  gpgVerdict, vaultSigners
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
 
@@ -224,11 +224,11 @@ proc decryptFile*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   ## That is not a weakening: the manifest records each blob's SHA-256 and the
   ## callers verify it before decrypting, with the manifest itself signed.
   if cfg.usesAge: ageDecrypt(cfg, inPath, outPath)
-  else: gpgDecrypt(inPath, outPath, verifySig)
+  else: gpgDecrypt(cfg, inPath, outPath, verifySig)
 
 proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false): string =
   if cfg.usesAge: ageDecryptToString(cfg, inPath)
-  else: gpgDecryptToString(inPath, verifySig)
+  else: gpgDecryptToString(cfg, inPath, verifySig)
 
 type Decrypted* = tuple[plain, err: string]
   ## One file's plaintext, or the message `decryptToString` would have raised.
@@ -250,6 +250,7 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
         result[i] = ("", err.msg)
     return
   let batch = gpgParallelism()
+  let allowed = if verifySig: vaultSigners(cfg) else: @[]
   for start in countup(0, paths.high, batch):
     let stop = min(start + batch - 1, paths.high)
     var procs: seq[(int, Process)] = @[]
@@ -263,16 +264,8 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
       let status = p.errorStream.readAll()
       let code = p.waitForExit()
       p.close()
-      let path = paths[i]
-      result[i] =
-        if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
-          ("", &"FATAL: signature verification failed for {path}")
-        elif code != 0:
-          ("", &"FATAL: gpg decrypt failed (exit {code})\n{status}")
-        elif verifySig and not gpgStatusHas(status, "GOODSIG"):
-          ("", &"FATAL: missing signature on {path}. Pass --allow-unsigned to accept unsigned vaults.")
-        else:
-          (plain, "")
+      let problem = gpgVerdict(status, paths[i], code, verifySig, allowed)
+      result[i] = if problem.len > 0: ("", problem) else: (plain, "")
 
 proc effectiveSigner*(cfg: GpgConfig): string =
   ## An empty signer means the config was built without going through
@@ -290,6 +283,29 @@ proc signManifest*(cfg: GpgConfig, path: string) =
   of "ssh": sshSign(cfg, path)
   of "none", "gpg": discard
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
+
+proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
+  ## Move freshly encrypted `tmp` over `dest` along with its detached
+  ## signature. The signature is made over `tmp` first, so a signer that
+  ## fails leaves `dest` and the signature that covers it untouched; signing
+  ## `dest` after the rename put new ciphertext under the old signature, or
+  ## under none once ssh-keygen had removed it. The two renames are not one
+  ## step: a crash between them leaves the new signature at `<dest>.sig` and
+  ## the record it covers at `<dest>.tmp`; moving that file over `dest`
+  ## finishes the write.
+  let tmpSig = tmp & ".sig"
+  try:
+    signManifest(cfg, tmp)
+  except CatchableError:
+    for leftover in [tmp, tmpSig]:
+      try: removeFile(leftover) except CatchableError: discard
+    raise
+  syncPath(tmp)
+  if fileExists(tmpSig):
+    syncPath(tmpSig)
+    moveFile(tmpSig, dest & ".sig")
+  moveFile(tmp, dest)
+  syncParentDir(dest)
 
 proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool) =
   if not requireSig:

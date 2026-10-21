@@ -113,8 +113,10 @@ Accepted:
   open the records.
 - An unsigned ~.vault/a/~ fragment is not written by ~unseal~ or ~get~
   unless ~--allow-unsigned~ is passed. A path that matches a signed record
-  is refused even then. ~adopt~ signs the fragment into ~.vault/e/~. An
-  unsigned fragment does not replace the data key in a signed record.
+  is refused even then, and so is a path that fails the traversal check.
+  ~adopt~ signs a fragment into ~.vault/e/~ and refuses both of those.
+  ~lock~ does not shred a file named only by a fragment. An unsigned
+  fragment does not replace the data key in a signed record.
 
 Still accepted:
 
@@ -135,3 +137,12 @@ Still accepted:
 - ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
   some records on the previous wrapping. The data key bytes are unchanged, and
   a second ~rotate~ finishes the job.
+- ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
+  mode 0600. A rename on one filesystem is what keeps a destination symlink
+  from being followed. The price is plaintext in that directory until the
+  batch is checked (for a blob signed in band, before its signature is), left
+  there if the process is killed. ~gc~ shreds those files.
+- An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
+  record are renamed in two steps. A crash between them leaves the new
+  signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
+  write. A signing failure leaves the old pair in place.

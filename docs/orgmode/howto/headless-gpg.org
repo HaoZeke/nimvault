@@ -1,8 +1,12 @@
 #+TITLE: Headless and CI GPG
 #+OPTIONS: toc:t num:nil
 
-~status~ and ~check~ do not need a key. ~seal~, ~unseal~, ~get~ and
-~rotate~ do. This page is how to unlock GPG when there is no pinentry.
+Reading sealed records needs the secret key that opens them, because paths
+and blob digests live inside them. ~status~ and ~check~ decrypt only the
+records when that key is present. Without a secret key, ~check~ compares
+payload ids to the blob-index and does not open the records. ~seal~,
+~unseal~, ~get~ and ~rotate~ also decrypt or encrypt payloads. This page
+is how to unlock GPG when there is no pinentry.
 
 The service-vault howto is a different problem: a dedicated empty-passphrase
 key for one machine. Do not unlock a personal passphrase-protected key in CI

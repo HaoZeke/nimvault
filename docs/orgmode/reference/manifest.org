@@ -71,7 +71,7 @@ blob hashes; pass ~--allow-unsigned~, then ~seal~ to upgrade.
   ~unseal~, ~get~ and ~check~.
 - ~kind~ :: (v3+) ~file~ or ~dir~.
 - ~contentHash~ :: (v4+) SHA-256 of the *plaintext*. Lets ~status~ and the
-  incremental ~seal~ decide what changed without decrypting anything.
+  incremental ~seal~ decide what changed without decrypting the payloads.
 
 * Blob files
 

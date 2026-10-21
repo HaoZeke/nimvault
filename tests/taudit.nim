@@ -2,7 +2,7 @@
 ##
 ## Throwaway GPG home. No long-lived key material.
 
-import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles, sets]
+import std/[os, osproc, posix, strutils, strformat, streams, tables, tempfiles, sets, times]
 import nimvault/[gpg, manifest, commands, crypto, dek, lock]
 
 proc setupGpg(): tuple[home, key: string] =
@@ -100,6 +100,72 @@ block lockRemovesEditorBackups:
   doAssert readFile(f) == "lock-body"
   removeDir(r)
   echo "PASS: lock removes editor backups of an in-sync file"
+
+proc forgeUnsignedRecord(r: string, c: GpgConfig, id, path: string) =
+  ## What anyone with push access can commit: a junk blob and a record that
+  ## names it, encrypted to the vault key and signed by nobody.
+  createDir(r / ".vault")
+  let blob = crypto.blobPath(r, c, id)
+  writeFile(blob, "junk-" & id)
+  let work = createTempDir("nimvault_audit_", "_forge")
+  let plain = work / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{id}\t{path}\t{sha256sum(blob)}\tfile\t{sha256sumBytes(id)}\t" &
+    repeat('0', 64) & "\n")
+  createDir(entryDir(r))
+  encryptFileTo(c, @[c.recipient], plain, entryFile(r, c, id), sign = false)
+  removeDir(work)
+
+block lockIgnoresForgedRecords:
+  ## A forged record must not steer lock into shredding files it names.
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  createDir(home)
+  createDir(base / "outside")
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    let thesisBackup = home / "thesis.tex~"
+    let outsideBackup = base / "outside" / "notes~"
+    writeFile(thesisBackup, "thesis-draft")
+    writeFile(outsideBackup, "outside-notes")
+    forgeUnsignedRecord(r, c, "aaaaaaaaaaaaaaaa", "~/thesis.tex")
+    forgeUnsignedRecord(r, c, "bbbbbbbbbbbbbbbb", "~/../outside/notes")
+    var raised = false
+    try:
+      lockPlaintext(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "lock must refuse unsigned records"
+    doAssert readFile(thesisBackup) == "thesis-draft",
+      "lock must not shred a backup named by an unsigned record"
+    doAssert readFile(outsideBackup) == "outside-notes",
+      "lock must not shred a backup outside HOME"
+
+    # With `signer = none` the records load. Neither entry is present, so
+    # neither backup belongs to an in-sync file, and the traversal is refused.
+    var unsigned = c
+    unsigned.signer = "none"
+    dropEntryRecord(r, c, "bbbbbbbbbbbbbbbb")
+    lockPlaintext(r, unsigned)
+    doAssert readFile(thesisBackup) == "thesis-draft",
+      "lock must not shred backups of an entry that is not present"
+    forgeUnsignedRecord(r, c, "bbbbbbbbbbbbbbbb", "~/../outside/notes")
+    raised = false
+    try:
+      lockPlaintext(r, unsigned)
+    except CatchableError:
+      raised = true
+    doAssert raised, "lock must refuse a record path that climbs out of HOME"
+    doAssert readFile(outsideBackup) == "outside-notes"
+    doAssert readFile(thesisBackup) == "thesis-draft"
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: lock ignores forged records and absent entries"
 
 block unsealDoesNotFollowAncestorSymlink:
   ## A symlink above a not-yet-created directory must not receive the plaintext.
@@ -271,6 +337,39 @@ block gcDropsUnreferencedPending:
   removeDir(r)
   echo "PASS: gc removes an unreferenced pending blob"
 
+block gcCleansLeftoversAndKeepsUnreadPending:
+  ## A killed unseal leaves plaintext staged beside the destination, and a
+  ## killed seal leaves a half-written pending blob. A pending blob whose
+  ## record belongs to another machine's wrap group is not this machine's
+  ## to judge.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "sub")
+  let f = r / "sub" / "secret.txt"
+  writeFile(f, "gc-leftovers")
+  add(r, f, c)
+  seal(r, c)
+  let e = loadManifest(r, cfg = c)[0]
+  let staged = r / "sub" / ".nimvault-0123456789abcdef.tmp"
+  writeFile(staged, "plaintext-left-by-a-killed-unseal")
+  let pendTmp = crypto.blobPath(r, c, e.id) & ".pending.tmp"
+  writeFile(pendTmp, "half-written-ciphertext")
+  let foreign = "dddddddddddddddd"
+  writeFile(entryFile(r, c, foreign), "a record for another machine")
+  let foreignPend = crypto.blobPath(r, c, foreign) & ".pending"
+  writeFile(foreignPend, "their-ciphertext")
+  gc(r, c, dryRun = true)
+  doAssert fileExists(staged) and fileExists(pendTmp) and fileExists(foreignPend),
+    "a dry run removes nothing"
+  gc(r, c)
+  doAssert not fileExists(staged), "gc must shred plaintext an unseal staged"
+  doAssert not fileExists(pendTmp), "gc must remove a half-written pending blob"
+  doAssert fileExists(foreignPend),
+    "gc must keep a pending blob whose record this machine cannot open"
+  doAssert get(r, f, c, allowUnsigned = true) == "gc-leftovers"
+  removeDir(r)
+  echo "PASS: gc cleans staging leftovers and keeps unread pending blobs"
+
 block recordDekWinsOverKeyFile:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
@@ -323,7 +422,7 @@ block gpgOperandDashDash:
     let outp = tmp / "out.gpg"
     gpgEncrypt(cfg, "--version", outp)
     let back = tmp / "back.txt"
-    gpgDecrypt(outp, back, verifySig = true)
+    gpgDecrypt(cfg, outp, back, verifySig = true)
     doAssert readFile(back) == "operand-secret"
   finally:
     setCurrentDir(cwd)
@@ -461,6 +560,37 @@ block scanRevSeesSecretRemovedLater:
   removeDir(r)
   echo "PASS: scan --rev sees a secret that the tip no longer has"
 
+block scanGitSeesOddNames:
+  ## git hands these names over NUL-separated and they reach git again as
+  ## `<rev>:<name>`, so neither a leading dash nor a newline is an option.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  for name in ["-leak.txt", "new\nline.txt"]:
+    let (baseRaw, bcode) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert bcode == 0, baseRaw
+    writeFile(r / name, "sk-ant-" & repeat('E', 30))
+    doAssert gitCode(r, @["add", "--", name]) == 0
+    var raised = false
+    try:
+      scanCached(r, c, r)
+    except CatchableError as e:
+      raised = true
+      doAssert "sk-ant-" notin e.msg
+    doAssert raised, "scan --cached must see a staged " & name.escape
+    doAssert gitCode(r, @["commit", "-q", "-m", "odd name"]) == 0
+    let (headRaw, hcode) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert hcode == 0, headRaw
+    raised = false
+    try:
+      scanRev(r, c, r, baseRaw.strip() & ".." & headRaw.strip())
+    except CatchableError:
+      raised = true
+    doAssert raised, "scan --rev must see a committed " & name.escape
+    doAssert gitCode(r, @["rm", "-q", "--", name]) == 0
+    doAssert gitCode(r, @["commit", "-q", "-m", "drop odd name"]) == 0
+  removeDir(r)
+  echo "PASS: scan --cached and --rev see names with a dash or a newline"
+
 block hookScansIndexAndPushedCommits:
   let r = setupRepo()
   installHooks(r)
@@ -468,9 +598,89 @@ block hookScansIndexAndPushedCommits:
   let push = readFile(r / ".git" / "hooks" / "pre-push")
   doAssert "nimvault scan --cached" in pre
   doAssert "nimvault scan --rev" in push
+  doAssert "--remote=" in push
   doAssert "nimvault check" in push
   removeDir(r)
   echo "PASS: hooks scan the index and the pushed commits"
+
+const nimExe = getCurrentCompilerExe()
+const srcRoot = currentSourcePath().parentDir.parentDir
+
+proc buildCli(): string =
+  ## The hooks call `nimvault` from PATH, so the test builds the one it runs.
+  result = createTempDir("nimvault_audit_", "_bin")
+  let (output, code) = execCmdEx(nimExe.quoteShell & " c --hints:off " &
+    "--verbosity:0 -p:" & (srcRoot / "src").quoteShell & " -o:" &
+    (result / "nimvault").quoteShell & " " &
+    (srcRoot / "src" / "nimvault.nim").quoteShell)
+  doAssert code == 0, output
+
+proc runPrePush(repo, binDir, lines: string,
+                args: seq[string]): tuple[outp: string, code: int] =
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", binDir & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  try:
+    let p = startProcess(repo / ".git" / "hooks" / "pre-push", workingDir = repo,
+                         args = args, options = {poStdErrToStdOut})
+    p.inputStream.write(lines)
+    p.inputStream.close()
+    result.outp = p.outputStream.readAll()
+    result.code = p.waitForExit()
+    p.close()
+  finally:
+    putEnv("PATH", oldPath)
+    delEnv("NIMVAULT_GPG_RECIPIENT")
+
+block prePushScansOnlyCommitsNewToTheRemote:
+  ## A new branch used to scan its whole history, so a secret that was
+  ## pushed and removed long ago blocked every new branch. A remote sha
+  ## this clone lacks made rev-list fail with no hint.
+  let binDir = buildCli()
+  let remote = createTempDir("nimvault_audit_", "_remote")
+  doAssert gitCode(remote, @["init", "-q", "--bare"]) == 0
+  let r = setupRepo()
+  let zero = repeat('0', 40)
+  proc head(): string =
+    let (raw, code) = execCmdEx("git rev-parse HEAD", workingDir = r)
+    doAssert code == 0, raw
+    raw.strip()
+  doAssert gitCode(r, @["remote", "add", "origin", remote]) == 0
+  writeFile(r / "leak.txt", "sk-ant-" & repeat('F', 30))
+  doAssert gitCode(r, @["add", "--", "leak.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "-m", "old leak"]) == 0
+  doAssert gitCode(r, @["rm", "-q", "--", "leak.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "-m", "drop old leak"]) == 0
+  doAssert gitCode(r, @["push", "-q", "origin", "HEAD:refs/heads/main"]) == 0
+  installHooks(r)
+
+  doAssert gitCode(r, @["checkout", "-q", "-b", "feature"]) == 0
+  writeFile(r / "clean.txt", "nothing secret")
+  doAssert gitCode(r, @["add", "--", "clean.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "clean"]) == 0
+  var got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/feature {zero}\n", @["origin", remote])
+  doAssert got.code == 0,
+    "a new branch must not be blocked by history the remote already has:\n" & got.outp
+
+  writeFile(r / "fresh.txt", "sk-ant-" & repeat('G', 30))
+  doAssert gitCode(r, @["add", "--", "fresh.txt"]) == 0
+  doAssert gitCode(r, @["commit", "-q", "--no-verify", "-m", "fresh leak"]) == 0
+  got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/feature {zero}\n", @["origin", remote])
+  doAssert got.code != 0, "a new commit with a secret must block the push"
+  doAssert "fresh.txt" in got.outp and "leak.txt" notin got.outp, got.outp
+
+  got = runPrePush(r, binDir,
+    &"refs/heads/feature {head()} refs/heads/main {repeat('e', 40)}\n",
+    @["origin", remote])
+  doAssert got.code != 0, "an unknown remote commit must block the push"
+  doAssert "git fetch" in got.outp,
+    "an unknown remote commit must say how to fix it:\n" & got.outp
+  removeDir(r)
+  removeDir(remote)
+  removeDir(binDir)
+  echo "PASS: pre-push scans only commits new to the remote"
 
 block checkWithoutSecretKey:
   ## A public key cannot open the records. check compares payload ids to
@@ -580,6 +790,30 @@ block secondThreadCannotTakeTheLock:
   release(after)
   removeDir(r)
   echo "PASS: the vault lock excludes another thread"
+
+block pendingPromotionWaitsForTheLock:
+  ## check, status and get may rename a pending blob over the live one. A
+  ## seal holding the vault may be publishing that same blob, so they wait.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "promotion-under-lock")
+  add(r, f, c)
+  seal(r, c)
+  for name in ["check", "status", "get"]:
+    var thr: Thread[string]
+    createThread(thr, holder, r)
+    sleep(150)
+    let started = epochTime()
+    case name
+    of "check": discard checkVault(r, c)
+    of "status": discard statusReport(r, c)
+    else: doAssert get(r, f, c, allowUnsigned = true) == "promotion-under-lock"
+    let waited = epochTime() - started
+    joinThread(thr)
+    doAssert waited >= 0.4, &"{name} must wait for the vault lock (waited {waited:.2f}s)"
+  removeDir(r)
+  echo "PASS: check, status and get wait for the vault lock"
 
 block movedLockDoesNotCloseStdin:
   proc dropLock(x: sink VaultLock) =
@@ -736,6 +970,212 @@ block unsignedFragmentIsNotMaterialized:
     if r.len > 0 and dirExists(r): removeDir(r)
     if home.len > 0 and dirExists(home): removeDir(home)
     if pubHome.len > 0 and dirExists(pubHome): removeDir(pubHome)
+proc genKey(home, name, email: string): string =
+  let script = home / (name & ".keygen")
+  writeFile(script, &"""
+%no-protection
+Key-Type: RSA
+Key-Length: 2048
+Subkey-Type: RSA
+Subkey-Length: 2048
+Name-Real: {name}
+Name-Email: {email}
+Expire-Date: 0
+%commit
+""")
+  let (output, code) = execCmdEx(&"gpg --batch --gen-key {script.quoteShell}")
+  doAssert code == 0, output
+  let (listed, lcode) = execCmdEx(
+    &"gpg --list-keys --keyid-format long --with-colons {email}")
+  doAssert lcode == 0, listed
+  for line in listed.splitLines:
+    if line.startsWith("pub:"):
+      return line.split(':')[4]
+  doAssert false, "no key id for " & email
+
+block recordSignedByAnotherKeyIsRefused:
+  ## GOODSIG only says some key in the keyring signed. A record signed by a
+  ## key the vault is not configured for must not be trusted.
+  let home = createTempDir("nimvault_audit_", "_twokeys")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let real = r / "real.txt"
+    writeFile(real, "real-secret")
+    add(r, real, c)
+    seal(r, c)
+    doAssert get(r, real, c) == "real-secret", "the vault's own records verify"
+
+    let id = "cccccccccccccccc"
+    let work = createTempDir("nimvault_audit_", "_forge")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-other-key")
+    let key = newDek(c)
+    let blob = crypto.blobPath(r, c, id)
+    encryptWithDek(c, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    let rec = entryFile(r, c, id)
+    let (signed, scode) = execCmdEx("gpg --batch --yes --quiet --no-options " &
+      "--trust-model always --local-user " & otherKey.quoteShell &
+      " --sign -e --recipient=" & vaultKey.quoteShell &
+      " --set-filename '' -o " & rec.quoteShell & " -- " & plain.quoteShell)
+    doAssert scode == 0, signed
+    let (status, _) = execCmdEx("gpg --batch --status-fd 1 -d -o /dev/null -- " &
+                                rec.quoteShell)
+    doAssert "[GNUPG:] GOODSIG" in status,
+      "the forged record carries a good signature from the other key"
+    removeDir(work)
+
+    let planted = r / "planted.txt"
+    var raised = false
+    try:
+      unseal(r, c)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal must refuse a record signed by an unconfigured key"
+    doAssert not fileExists(planted), "unseal must not write the planted file"
+    raised = false
+    try:
+      discard get(r, planted, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get must refuse a record signed by an unconfigured key"
+    raised = false
+    try:
+      discard get(r, real, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get must refuse while any record has a foreign signer"
+
+    var both = c
+    both.wraps = @[&"**:{vaultKey},{otherKey}"]
+    doAssert get(r, planted, both) == "planted-by-other-key",
+      "a key named in a wrap rule is a configured signer"
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: a record signed by an unconfigured key is refused"
+
+block lockDoesNotShredAnUnsignedFragment:
+  ## A fragment is not a signed record. lock must not shred the file it names,
+  ## even when that file is present and matches the fragment. gc must not
+  ## shred staged plaintext in a directory only a fragment names.
+  let ownerHome = getEnv("GNUPGHOME")
+  var pubHome = ""
+  var r = ""
+  try:
+    let pubFile = ownerHome / "owner.pub"
+    let (expOut, expCode) = execCmdEx(
+      &"gpg --batch --yes --export --armor -o {pubFile.quoteShell} {keyId}")
+    doAssert expCode == 0, expOut
+    pubHome = createTempDir("nimvault_audit_", "_pub")
+    setFilePermissions(pubHome, {fpUserRead, fpUserWrite, fpUserExec})
+    putEnv("GNUPGHOME", pubHome)
+    let (impOut, impCode) = execCmdEx(
+      &"gpg --batch --import {pubFile.quoteShell}")
+    doAssert impCode == 0, impOut
+
+    r = setupRepo()
+    putEnv("GNUPGHOME", ownerHome)
+    let c = GpgConfig(recipient: keyId, root: r)
+    let keep = r / "keep.txt"
+    writeFile(keep, "signed-body")
+    add(r, keep, c)
+    seal(r, c)
+    createDir(r / "planted")
+    let notes = r / "planted" / "notes.txt"
+    writeFile(notes, "fragment-notes")
+    let backup = notes & "~"
+    writeFile(backup, "fragment-backup")
+    putEnv("GNUPGHOME", pubHome)
+    add(r, notes, c)
+    putEnv("GNUPGHOME", ownerHome)
+    doAssert appendOnlyIds(r).len == 1
+    let stagedSigned = r / ".nimvault-0123456789abcdef.tmp"
+    let stagedPlant = r / "planted" / ".nimvault-fedcba9876543210.tmp"
+    writeFile(stagedSigned, "signed-dir-leftover")
+    writeFile(stagedPlant, "fragment-dir-leftover")
+    lockPlaintext(r, c)
+    doAssert not fileExists(keep), "lock still shreds an in-sync signed file"
+    doAssert readFile(notes) == "fragment-notes",
+      "lock must not shred a file named only by an unsigned fragment"
+    doAssert readFile(backup) == "fragment-backup",
+      "lock must not shred a backup named only by an unsigned fragment"
+    gc(r, c)
+    doAssert not fileExists(stagedSigned),
+      "gc still shreds leftovers beside a signed entry"
+    doAssert readFile(stagedPlant) == "fragment-dir-leftover",
+      "gc must not shred staged plaintext in a directory only a fragment names"
+    doAssert readFile(notes) == "fragment-notes"
+    echo "PASS: lock does not shred from an unsigned fragment"
+  finally:
+    putEnv("GNUPGHOME", ownerHome)
+    if r.len > 0 and dirExists(r): removeDir(r)
+    if pubHome.len > 0 and dirExists(pubHome): removeDir(pubHome)
+
+block adoptRefusesUnsafeFragment:
+  ## A fragment whose stored path climbs with `..` is not adopted and is not
+  ## written by unseal or get.
+  let r = setupRepo()
+  let base = createTempDir("nimvault_audit_", "_tree")
+  let home = base / "home"
+  createDir(home)
+  let savedHome = getEnv("HOME")
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    let id = "eeeeeeeeeeeeeeee"
+    let stored = "~/../outside/notes"
+    createDir(r / ".vault")
+    let blob = crypto.blobPath(r, c, id)
+    writeFile(blob, "junk-fragment")
+    let entry = (id, stored, sha256sum(blob), ekFile, sha256sumBytes("x"))
+    saveAppendRecord(r, c, entry, repeat('c', 64))
+    let asked = expandHome(stored)
+    doAssert not fileExists(asked)
+    var raised = false
+    try:
+      unseal(r, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "traversal" in e.msg, e.msg
+    doAssert raised, "unseal must refuse a fragment path that climbs with .."
+    doAssert not fileExists(asked)
+    raised = false
+    try:
+      discard get(r, asked, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "traversal" in e.msg, e.msg
+    doAssert raised, "get must refuse a fragment path that climbs with .."
+    doAssert not fileExists(asked)
+    raised = false
+    try:
+      adopt(r, c, @[stored])
+    except CatchableError as e:
+      raised = true
+      doAssert "traversal" in e.msg, e.msg
+    doAssert raised, "adopt must refuse an unsafe fragment path"
+    doAssert id in appendOnlyIds(r)
+    doAssert findEntryFile(r, c, id).len == 0,
+      "adopt must not sign a fragment with an unsafe path"
+    doAssert not fileExists(asked)
+    lockPlaintext(r, c)
+    doAssert not fileExists(asked), "lock must not write a fragment path"
+    echo "PASS: adopt, unseal and get refuse an unsafe fragment"
+  finally:
+    if savedHome.len > 0: putEnv("HOME", savedHome) else: delEnv("HOME")
+    if dirExists(r): removeDir(r)
+    if dirExists(base): removeDir(base)
 
 removeDir(creds.home)
 delEnv("GNUPGHOME")

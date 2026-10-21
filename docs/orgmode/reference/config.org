@@ -146,6 +146,25 @@ The recipient value is any string GPG accepts as a recipient identifier:
 
 Long key IDs are recommended for unambiguous matching.
 
+** Who may sign
+
+With ~signer = gpg~, a record or blob verifies only when gpg reports a good
+signature whose primary key is one the config names: ~recipient~ or a
+recipient in a ~wrap~ rule. A good signature from any other key in the
+keyring is refused. gpg signs with the first secret key in the keyring, so
+that key has to be one of those recipients on every machine that seals.
+
+An email matches every key in the keyring that carries it. Use a fingerprint
+or long key ID when another key with the same email could be imported.
+
+** Finding your key ID
+
+#+begin_src bash
+gpg --list-keys --keyid-format long
+# pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
+#                ^^^^^^^^^^^^^^^^ this is the key ID
+#+end_src
+
 * CI switches
 
 - ~NIMVAULT_NONINTERACTIVE=1~ :: same as ~--noninteractive~. gpg is not
@@ -155,11 +174,3 @@ Long key IDs are recommended for unambiguous matching.
 
 A gpg home with no secret key, or an age config whose identity file is not
 on this machine, takes that lane without the switch.
-
-** Finding your key ID
-
-#+begin_src bash
-gpg --list-keys --keyid-format long
-# pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]
-#                ^^^^^^^^^^^^^^^^ this is the key ID
-#+end_src

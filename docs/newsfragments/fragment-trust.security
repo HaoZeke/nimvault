@@ -1,0 +1,1 @@
+lock does not shred a file named only by an unsigned .vault/a/ fragment, and gc does not shred staged plaintext in a directory named only by one. adopt refuses a fragment whose path fails the traversal check. unseal and get refuse that path too.

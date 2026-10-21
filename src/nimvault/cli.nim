@@ -161,12 +161,12 @@ proc doCheck(recipient = "", vault = "", json = false, noninteractive = false,
       quit code
 
 proc doScan(path: seq[string], recipient = "", vault = "", cached = false,
-            rev = "") =
+            rev = "", remote = "") =
   ## Walk a tree, or with `--cached` the index, or with `--rev` commits.
   ## `--cached` and `--rev` take no path: they read git, not the worktree.
   if (cached and rev.len > 0) or ((cached or rev.len > 0) and path.len > 0) or
-     path.len > 1:
-    stderr.writeLine "usage: nimvault scan [PATH] [--cached | --rev REV]"
+     path.len > 1 or (remote.len > 0 and rev.len == 0):
+    stderr.writeLine "usage: nimvault scan [PATH] [--cached | --rev REV [--remote NAME]]"
     quit 1
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
@@ -176,7 +176,7 @@ proc doScan(path: seq[string], recipient = "", vault = "", cached = false,
       if cached:
         commands.scanCached(repo, cfg, content)
       else:
-        commands.scanRev(repo, cfg, content, rev)
+        commands.scanRev(repo, cfg, content, rev, remote)
     else:
       let targetArg = if path.len == 0: "." else: path[0]
       let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
@@ -290,7 +290,8 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doScan, cmdName = "scan", positional = "path",
      help = {"recipient": rh, "vault": vh,
              "cached": "scan the git index instead of the worktree",
-             "rev": "scan blobs introduced by a commit or A..B range"}],
+             "rev": "scan blobs introduced by a commit or A..B range",
+             "remote": "with --rev, skip commits this remote's tracking refs reach"}],
     [doWho, cmdName = "who", positional = "path",
      help = {"recipient": rh, "vault": vh,
              "path": "ask which rule seals these paths (no secret key)",

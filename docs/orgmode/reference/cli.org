@@ -80,7 +80,15 @@ Before decryption, verifies:
 
 Decryption writes to temporary files first. Only after all signatures and hashes
 pass does the tool move files to their final paths. This atomic approach prevents
-release of unverified plaintext.
+release of unverified plaintext under the final name.
+
+The temporary file is =.nimvault-<id>.tmp= in the destination's directory,
+mode 0600. It sits beside the destination so the final step is a ~rename~ on
+one filesystem, which replaces a symlink at the destination instead of
+writing through it. The cost: plaintext sits in that directory for the length
+of the batch, before its in-band signature is checked when the blob carries
+one, and a kill before the rename leaves it behind. ~nimvault gc~ shreds such
+files.
 
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).
@@ -183,7 +191,8 @@ nimvault adopt [PATH...] [--recipient KEY] [--noninteractive]
 
 Sign unadopted ~.vault/a/~ fragments into ~.vault/e/~ and delete the fragments.
 Needs a secret key. With no path, every openable fragment is signed. A fragment
-whose path matches a signed record is refused and left unsigned.
+whose path matches a signed record is refused and left unsigned. A fragment
+whose path fails the traversal check is refused the same way.
 
 ** get
 
@@ -242,8 +251,13 @@ remove the case. An orphan is not only clutter: it is a readable copy of a
 secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
-A ~.pending~ file whose hash a record names is kept. Any other ~.pending~ file
-is removed.
+A ~.pending~ file whose hash a record names is kept, and so is one whose record
+this machine cannot open. Any other ~.pending~ file is removed, as are
+=<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed ~add~ or ~seal~ was
+still writing.
+
+~gc~ also shreds =.nimvault-<id>.tmp= files beside the entries this machine
+can open. Those are plaintext an interrupted ~unseal~ staged; see ~unseal~.
 
 *** ~--dry-run~
 
@@ -272,7 +286,7 @@ does. Churn is the intent, so it bypasses the incremental skip.
 ** scan
 
 #+begin_src text
-nimvault scan [PATH] [--cached | --rev REV] [--vault DIR]
+nimvault scan [PATH] [--cached | --rev REV [--remote NAME]] [--vault DIR]
 #+end_src
 
 Look for plaintext secrets that are not in the vault. With no flag, walk
@@ -283,7 +297,9 @@ the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
 commit (that commit and its ancestors) or by an ~A..B~ range, including a
 secret added and then removed before the tip. A vaulted path in the index or
 in those commits is reported even when its bytes do not match a pattern.
-~.vault/~ itself is not scanned.
+~.vault/~ itself is not scanned. ~--remote NAME~ leaves out commits that
+~NAME~'s remote-tracking refs already reach. A commit in ~REV~ that this clone
+does not have is an error that says to fetch first.
 
 The pattern list skips binaries, files over 2MB, lines over 2000 characters,
 and dependency directories on a worktree walk. It does not print the matching
@@ -337,7 +353,9 @@ Remove in-sync plaintext. Vault entries stay; ~unseal~ restores them. A
 modified file is refused. A missing or mismatched blob is refused too: lock
 does not delete the only remaining copy. The file is overwritten before it
 is unlinked. Editor backups beside it (=name~=, =#name#=, =.name.swp=) are
-removed the same way. A symlink is unlinked and not followed.
+removed the same way, and only when the file itself is present and in sync.
+A symlink is unlinked and not followed. Records are verified as ~unseal~
+verifies them, and a record path that fails the traversal check is refused.
 
 ** init
 
@@ -355,8 +373,12 @@ nimvault hook [--vault DIR]
 
 Install a ~pre-commit~ hook that runs ~nimvault scan --cached~ and a
 ~pre-push~ hook that runs ~nimvault scan --rev~ on the commits being pushed,
-then ~nimvault check~. Refuses to overwrite existing hooks. Hooks already
-installed keep their previous script until they are replaced by hand.
+then ~nimvault check~. Pushing to a named remote scans only commits that
+remote's tracking refs do not reach, so a new branch is not refused for
+history the remote already has. A push to a bare URL scans the whole range.
+When the remote holds commits this clone has not fetched, the hook refuses
+and says to run ~git fetch~. Refuses to overwrite existing hooks. Hooks
+already installed keep their previous script until they are replaced by hand.
 
 ** doctor
 
@@ -404,7 +426,8 @@ under ~.vault/a/~ is encrypted to the recipients and not signed; a missing or
 bad signature on ~.vault/e/~ is still fatal. On ~unseal~, signatures and
 blob hashes are verified before any plaintext is written to disk:
 
-1. Manifest signature is checked during decryption
+1. Manifest signature is checked during decryption, and must come from a key
+   the config names (see [[file:config.org][configuration]])
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
 4. Blobs are decrypted to temporary files

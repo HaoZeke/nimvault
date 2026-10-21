@@ -1,0 +1,1 @@
+GPG signature checks bind to the configured keys. A record, stub manifest or blob verifies only when the primary key on its `VALIDSIG` line is the recipient or a wrap-rule recipient. A good signature from any other key in the keyring is refused by `unseal`, `get` and every command that loads records.

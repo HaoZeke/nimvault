@@ -101,6 +101,34 @@ block signatureTracksTheLatestRecord:
   seal(work, cfg)
   echo "PASS: no-op keeps the stub; a rewrite replaces the record signature"
 
+block signingFailureKeepsTheVaultReadable:
+  ## The new record must not land under the old signature, or without one.
+  ## A key path that is missing fails before ssh-keygen runs; a key file that
+  ## is not a key fails inside it, after the old signature would be gone.
+  let garbage = work / "not-a-key"
+  writeFile(garbage, "not an ssh key\n")
+  setFilePermissions(garbage, {fpUserRead, fpUserWrite})
+  for badKey in [work / "no-such-key", garbage]:
+    writeFile(secret, secretText & "-unsigned-edit")
+    var broken = cfg
+    broken.signKey = badKey
+    var raised = false
+    try:
+      seal(work, broken)
+    except CatchableError:
+      raised = true
+    doAssert raised, "seal must fail when the record cannot be signed"
+    discard loadManifest(work, verifySig = true, cfg = cfg)
+    doAssert get(work, secret, cfg).strip() == secretText,
+      "a failed signature must leave the previous record and blob readable"
+    for kind, path in walkDir(entryDir(work)):
+      doAssert not path.endsWith(".tmp") and not path.endsWith(".tmp.sig"),
+        "a failed signature must not leave a temporary record: " & path
+  writeFile(secret, secretText)
+  seal(work, cfg)
+  discard loadManifest(work, verifySig = true, cfg = cfg)
+  echo "PASS: a signing failure leaves the vault readable"
+
 block unsealAndGet:
   removeFile(secret)
   unseal(work, cfg)

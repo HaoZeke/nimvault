@@ -53,7 +53,9 @@ Anyone who has the recipient public keys can plant a fragment. ~unseal~ and
 ~get~ do not write that plaintext unless ~--allow-unsigned~ is passed. A
 fragment whose path matches a signed record is refused even then. ~nimvault
 adopt~ is the step a holder of the secret key uses: it signs the fragment
-into ~.vault/e/~ and deletes it. A colliding path is refused there too.
+into ~.vault/e/~ and deletes it. A colliding path is refused there too, and
+so is a path that fails the traversal check. ~lock~ does not shred a file
+named only by a fragment.
 ~check --digests~, taken from outside the change, is what shows the
 ciphertext without a key. ~rotate~ (the rewrap, not ~--rekey~) signs every
 openable fragment that does not collide with a signed path. ~seal~, including

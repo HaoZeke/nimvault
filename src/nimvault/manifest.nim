@@ -70,6 +70,10 @@ proc isPathSafe*(cfg: GpgConfig, manifestPath: string): bool =
   if cfg.root.len > 0:
     let root = normalizedPath(cfg.root)
     resolved == root or resolved.startsWith(root & "/")
+  elif ".." in manifestPath.split('/'):
+    # No root bounds the result, so nothing short of the raw components can
+    # tell a deliberate absolute path from one that climbs out of it.
+    false
   elif manifestPath.startsWith("~/"):
     let home = normalizedPath(getHomeDir()).strip(leading = false, trailing = true, chars = {'/'})
     resolved.startsWith(home & "/")
@@ -292,10 +296,7 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
     encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
   finally:
     discardPrivate(work)
-  syncPath(tmp)
-  moveFile(tmp, dest)
-  syncParentDir(dest)
-  signManifest(cfg, dest)
+  publishSigned(cfg, tmp, dest)
   rememberRecord(dest, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
@@ -388,7 +389,8 @@ proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
       signedPaths.incl(normalizedPath(resolvePath(cfg, e.path)))
   for e in entries:
     if e.id in unsigned and
-       normalizedPath(resolvePath(cfg, e.path)) in signedPaths:
+       (normalizedPath(resolvePath(cfg, e.path)) in signedPaths or
+        not isPathSafe(cfg, e.path)):
       continue
     let dek = deks.getOrDefault(e.id)
     if not force and entryRecordUnchanged(repo, cfg, e, dek):
@@ -561,12 +563,9 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   # Durability, which rename alone does not give: flush the bytes before the
   # rename that points at them, and the directory entry after, or a crash can
   # leave the trust root present and empty. See `syncPath`.
-  syncPath(tmpEnc)
-  moveFile(tmpEnc, encPath)
-  syncParentDir(encPath)
   # The manifest is the trust root: its hashes are what vouch for every blob,
   # so it is the one thing that has to be signed when the backend cannot.
-  signManifest(cfg, encPath)
+  publishSigned(cfg, tmpEnc, encPath)
 
 proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                        envelope = false) =

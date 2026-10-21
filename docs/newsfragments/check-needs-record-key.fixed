@@ -1,0 +1,1 @@
+With a secret key, check decrypts the records to read blob digests and does not decrypt payloads. When those records do not open, check says to import the secret key. Without a secret key, check compares payload ids to the blob-index.
