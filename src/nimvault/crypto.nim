@@ -6,7 +6,7 @@
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgDecryptBytesToString,
-                  gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
+                  gpgStatusHas, sha256sum, vaultSigners,
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, sshVerifyBytes, ageBinary, ageIdentityPath
@@ -236,43 +236,6 @@ proc decryptBytesToString*(cfg: GpgConfig, cipher, label: string,
                            verifySig = false, checkPresent = false): string =
   if cfg.usesAge: ageDecryptBytesToString(cfg, cipher)
   else: gpgDecryptBytesToString(cfg, cipher, label, verifySig, checkPresent)
-
-type Decrypted* = tuple[plain, err: string]
-  ## One file's plaintext, or the message `decryptToString` would have raised.
-
-proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
-                          verifySig = false, checkPresent = false): seq[Decrypted] =
-  ## `decryptToString` over many small files, in the same order, with no
-  ## raise: each failure comes back as its message. gpg runs
-  ## `gpgParallelism()` processes at a time; a vault of a few hundred split
-  ## records otherwise pays one process start and one agent round trip per
-  ## record, in series, on every command that loads the manifest. age stays
-  ## sequential, since its decrypt is in-process fast.
-  result = newSeq[Decrypted](paths.len)
-  if cfg.usesAge:
-    for i, path in paths:
-      try:
-        result[i] = (ageDecryptToString(cfg, path), "")
-      except CatchableError as err:
-        result[i] = ("", err.msg)
-    return
-  let batch = gpgParallelism()
-  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
-  for start in countup(0, paths.high, batch):
-    let stop = min(start + batch - 1, paths.high)
-    var procs: seq[(int, Process)] = @[]
-    for i in start .. stop:
-      procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]],
-        options = {poUsePath})))
-    for (i, p) in procs:
-      let plain = p.outputStream.readAll()
-      let status = p.errorStream.readAll()
-      let code = p.waitForExit()
-      p.close()
-      let problem = gpgVerdict(status, paths[i], code, verifySig, allowed,
-                               checkPresent)
-      result[i] = if problem.len > 0: ("", problem) else: (plain, "")
 
 proc effectiveSigner*(cfg: GpgConfig): string =
   ## An empty signer means the config was built without going through
