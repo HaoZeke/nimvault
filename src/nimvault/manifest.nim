@@ -211,6 +211,11 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       ("no identity matched" in low) or ("no identities matched" in low)
     else:
       gpgNoSecretKey(msg)
+  type Snapshot = tuple[path, snap, snapSig, digest: string]
+  var snaps: seq[Snapshot] = @[]
+  let work = privateWorkDir()
+  defer:
+    discardPrivate(work)
   for kind, path in walkDir(dir):
     if kind != pcFile:
       continue
@@ -219,29 +224,28 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
-    let work = privateWorkDir()
-    let snap = work / ("record" &
-      (if name.endsWith(".age"): ".age" else: ".gpg"))
+    let ext = if name.endsWith(".age"): ".age" else: ".gpg"
+    let stem = $snaps.len
+    let snap = work / ("record-" & stem & ext)
     let snapSig = snap & ".sig"
+    let cipher = readFile(path)
+    let digest = sha256sumBytes(cipher)
+    writeFile(snap, cipher)
+    let sig = path & ".sig"
+    if fileExists(sig):
+      writeFile(snapSig, readFile(sig))
+    snaps.add((path, snap, snapSig, digest))
+  for s in snaps:
     var plain = ""
     var err = ""
-    var digest = ""
     try:
-      let cipher = readFile(path)
-      digest = sha256sumBytes(cipher)
-      writeFile(snap, cipher)
-      let sig = path & ".sig"
-      if fileExists(sig):
-        writeFile(snapSig, readFile(sig))
-      plain = verifyAndDecryptToString(cfg, snap, verifySig, checkPresent)
+      plain = verifyAndDecryptToString(cfg, s.snap, verifySig, checkPresent)
     except CatchableError as problem:
       err = problem.msg
-      if snap in err:
-        err = err.replace(snap, path)
-      if snapSig in err:
-        err = err.replace(snapSig, path & ".sig")
-    finally:
-      discardPrivate(work)
+      if s.snap in err:
+        err = err.replace(s.snap, s.path)
+      if s.snapSig in err:
+        err = err.replace(s.snapSig, s.path & ".sig")
     if err.len > 0:
       if sigFailure(err):
         nvRaise(err)
@@ -249,7 +253,7 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
         result.unread.inc
         continue
       nvRaise(err)
-    rememberRecord(path, digest, plain)
+    rememberRecord(s.path, s.digest, plain)
     let parsed = parseEntryPlain(plain)
     if parsed.ok:
       result.entries.add(parsed.entry)
