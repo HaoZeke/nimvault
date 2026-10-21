@@ -364,6 +364,186 @@ block mvDoesNotCopyThroughSymlinkAcrossFilesystems:
       removeDir(shm)
     echo "PASS: cross-device mv does not copy through a destination symlink"
 
+block mvAcrossFilesystemsKeepsTheSourceMode:
+  ## The copy fallback created the new file with the process umask, so a
+  ## 0600 secret arrived 0644.
+  let shm = "/dev/shm/nimvault-audit-mvmode-" & $getCurrentProcessId()
+  createDir(shm)
+  setFilePermissions(shm, {fpUserRead, fpUserWrite, fpUserExec})
+  if devOf(shm) == devOf(getTempDir()):
+    removeDir(shm)
+    echo "SKIP: cross-device mv mode (no second filesystem)"
+  else:
+    let oldHome = getEnv("HOME")
+    let base = createTempDir("nimvault_audit_", "_home")
+    let home = base / "home"
+    createDir(home)
+    let r = setupRepo()
+    putEnv("HOME", home)
+    let oldMask = umask(0o022.Mode)
+    try:
+      let c = GpgConfig(recipient: keyId)
+      for (name, perms) in [("secret.txt", {fpUserRead, fpUserWrite}),
+                            ("hook.sh", {fpUserRead, fpUserWrite, fpUserExec})]:
+        let src = home / name
+        writeFile(src, "cross-device-" & name)
+        setFilePermissions(src, perms)
+        add(r, "~/" & name, c)
+        seal(r, c)
+        let dst = shm / name
+        move(r, src, dst, c)
+        doAssert not fileExists(src), "mv must remove the source"
+        doAssert readFile(dst) == "cross-device-" & name
+        doAssert getFilePermissions(dst) == perms,
+          &"mv must keep the source mode for {name}: {getFilePermissions(dst)}"
+        doAssert get(r, dst, c) == "cross-device-" & name
+      for kind, path in walkDir(shm):
+        doAssert ".nimvault-mv-" notin path, "mv must not leave its copy: " & path
+    finally:
+      discard umask(oldMask)
+      putEnv("HOME", oldHome)
+      removeDir(r)
+      removeDir(base)
+      removeDir(shm)
+    echo "PASS: cross-device mv keeps the source mode"
+
+block mvRefusesSourceUnderSymlinkedAncestor:
+  ## `rename` follows a directory symlink above the source. With the entry's
+  ## directory swapped for a link out of the root, mv would pull the outside
+  ## file into the vault's tree and remove it from where it was.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "nested")
+  let src = r / "nested" / "secret.txt"
+  writeFile(src, "in-root")
+  add(r, src, c)
+  seal(r, c)
+  removeFile(src)
+  removeDir(r / "nested")
+  let outside = createTempDir("nimvault_audit_", "_mvsrc")
+  writeFile(outside / "secret.txt", "outside-bytes")
+  createSymlink(outside, r / "nested")
+  let dst = r / "moved.txt"
+  var raised = false
+  try:
+    move(r, src, dst, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "mv must refuse a source reached through a symlink out of the root"
+  doAssert readFile(outside / "secret.txt") == "outside-bytes",
+    "mv must leave the outside file where it is"
+  doAssert not fileExists(dst), "mv must not place the outside file in the root"
+  removeDir(outside)
+  removeDir(r)
+  echo "PASS: mv refuses a source under a symlinked ancestor"
+
+block mvRefusesSourceUnderSymlinkedAncestorWithoutRoot:
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  let outside = base / "outside"
+  createDir(home)
+  createDir(outside)
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    createDir(home / "nested")
+    writeFile(home / "nested" / "secret.txt", "in-home")
+    add(r, "~/nested/secret.txt", c)
+    seal(r, c)
+    removeFile(home / "nested" / "secret.txt")
+    removeDir(home / "nested")
+    writeFile(outside / "secret.txt", "outside-bytes")
+    createSymlink(outside, home / "nested")
+    var raised = false
+    try:
+      move(r, "~/nested/secret.txt", "~/moved.txt", c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "mv must refuse a source reached through a symlink out of HOME"
+    doAssert readFile(outside / "secret.txt") == "outside-bytes",
+      "mv must leave the file outside HOME where it is"
+    doAssert not fileExists(home / "moved.txt")
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: mv refuses a source under a symlinked ancestor without root"
+
+block sealRefusesPlaintextUnderSymlinkedAncestor:
+  ## seal reads the plaintext a record names. With the entry's directory
+  ## swapped for a link out of the root, it encrypted the outside file into
+  ## the blob and replaced the sealed copy. `rotate --rekey` seals too.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  createDir(r / "nested")
+  let f = r / "nested" / "secret.txt"
+  writeFile(f, "sealed-copy")
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  removeDir(r / "nested")
+  let outside = createTempDir("nimvault_audit_", "_sealsrc")
+  writeFile(outside / "secret.txt", "outside-bytes")
+  createSymlink(outside, r / "nested")
+  for rekey in [false, true]:
+    var raised = false
+    try:
+      if rekey: rotate(r, c, rekey = true)
+      else: seal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "seal (rekey: " & $rekey &
+      ") must refuse plaintext under a symlink out of the root"
+    doAssert get(r, f, c) == "sealed-copy",
+      "a refused seal must leave the sealed copy in place"
+  removeFile(r / "nested")
+  createDir(r / "nested")
+  createSymlink(outside / "secret.txt", f)
+  var raised = false
+  try:
+    seal(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "seal must refuse a plaintext symlink that leaves the root"
+  doAssert get(r, f, c) == "sealed-copy"
+  removeDir(outside)
+  removeDir(r)
+  echo "PASS: seal and rotate --rekey refuse plaintext under a symlinked ancestor"
+
+block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
+  let oldHome = getEnv("HOME")
+  let base = createTempDir("nimvault_audit_", "_home")
+  let home = base / "home"
+  let outside = base / "outside"
+  createDir(home)
+  createDir(outside)
+  let r = setupRepo()
+  putEnv("HOME", home)
+  try:
+    let c = GpgConfig(recipient: keyId)
+    createDir(home / "nested")
+    writeFile(home / "nested" / "secret.txt", "sealed-copy")
+    add(r, "~/nested/secret.txt", c)
+    seal(r, c)
+    removeFile(home / "nested" / "secret.txt")
+    removeDir(home / "nested")
+    writeFile(outside / "secret.txt", "outside-bytes")
+    createSymlink(outside, home / "nested")
+    var raised = false
+    try:
+      seal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "seal must refuse plaintext under a symlink out of HOME"
+    doAssert get(r, "~/nested/secret.txt", c) == "sealed-copy"
+  finally:
+    putEnv("HOME", oldHome)
+    removeDir(r)
+    removeDir(base)
+  echo "PASS: seal refuses plaintext under a symlinked ancestor without root"
+
 block addRefusesSymlink:
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
@@ -1008,6 +1188,105 @@ block checkReportsUnreadRecords:
   putEnv("GNUPGHOME", savedHome)
   echo "PASS: check reports unread NO_SECKEY records"
 
+block corruptSessionKeyForAHeldKeyFails:
+  ## gpg reports NO_SECKEY for a session-key packet that names a key it holds
+  ## but cannot open. One flipped byte made such a record read as not for this
+  ## machine: check passed and unseal restored the rest without it.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "kept.txt", "kept-secret")
+  writeFile(r / "hit.txt", "hit-secret")
+  add(r, r / "kept.txt", c)
+  add(r, r / "hit.txt", c)
+  seal(r, c)
+  var hitId = ""
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    if e.path == "hit.txt":
+      hitId = e.id
+  doAssert hitId.len > 0
+  let rec = findEntryFile(r, c, hitId)
+  var bytes = readFile(rec)
+  let ctb = ord(bytes[0])
+  doAssert (ctb and 0xC0) == 0x80 and ((ctb shr 2) and 0xF) == 1,
+    "the record does not open with a session-key packet"
+  bytes[100] = char(ord(bytes[100]) xor 1)
+  writeFile(rec, bytes)
+  let (gpgStatus, _) = execCmdEx("gpg --batch --quiet --status-fd 1 -o /dev/null -d " &
+                                 rec.quoteShell & " 2>/dev/null")
+  doAssert "[GNUPG:] NO_SECKEY" in gpgStatus, gpgStatus
+  doAssert "pkdecrypt_failed" in gpgStatus, gpgStatus
+  var msg = ""
+  try:
+    discard check(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "decrypt failed" in msg, "check passed over a corrupted record: " & msg
+  removeFile(r / "kept.txt")
+  removeFile(r / "hit.txt")
+  msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "decrypt failed" in msg, "unseal skipped a corrupted record: " & msg
+  doAssert not fileExists(r / "kept.txt") and not fileExists(r / "hit.txt")
+  removeDir(r)
+  echo "PASS: a corrupted session key for a held key fails check and unseal"
+
+block unsealReportsRecordsItCouldNotOpen:
+  ## unseal restored what this machine could open and said nothing of the
+  ## rest. With none it could open, it reported an empty vault.
+  let savedHome = getEnv("GNUPGHOME")
+  let foreignHome = createTempDir("nimvault_audit_", "_foreign")
+  setFilePermissions(foreignHome, {fpUserRead, fpUserWrite, fpUserExec})
+  putEnv("GNUPGHOME", foreignHome)
+  let foreignKey = genKey(foreignHome, "Foreign Box", "foreign@nimvault.local")
+  let (exported, ecode) = execCmdEx("gpg --batch --export --armor " &
+                                    foreignKey.quoteShell)
+  doAssert ecode == 0, exported
+  putEnv("GNUPGHOME", savedHome)
+  let pub = createTempDir("nimvault_audit_", "_pub")
+  writeFile(pub / "foreign.asc", exported)
+  let (imported, icode) = execCmdEx("gpg --batch --import " &
+                                    (pub / "foreign.asc").quoteShell)
+  doAssert icode == 0, imported
+  let r = setupRepo()
+  createDir(r / ".vault")
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n" &
+                                     &"wrap = **/remote.txt:{foreignKey}\n")
+  let c = initGpgConfig("", r)
+  let local = r / "local.txt"
+  let remote = r / "remote.txt"
+  writeFile(local, "local-secret")
+  writeFile(remote, "remote-secret")
+  add(r, local, c)
+  add(r, remote, c)
+  seal(r, c)
+  removeFile(local)
+  removeFile(remote)
+  let binDir = buildCli()
+  let (outp, code) = execCmdEx((binDir / "nimvault").quoteShell & " unseal --vault " &
+                               r.quoteShell, workingDir = r)
+  doAssert code == 0, outp
+  doAssert "could not open 1 record" in outp, outp
+  doAssert readFile(local) == "local-secret"
+  doAssert not fileExists(remote)
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    removeFile(findEntryFile(r, c, e.id))
+  removeFile(local)
+  var msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "none of the 1 record(s) opens" in msg,
+    "unseal called a vault it could not open empty: " & msg
+  removeDir(binDir)
+  removeDir(r)
+  removeDir(pub)
+  removeDir(foreignHome)
+  echo "PASS: unseal reports the records it could not open"
+
 block getDoesNotWritePlaintextToTheRuntimeDir:
   let shm = "/dev/shm/nimvault-get-" & $getCurrentProcessId()
   createDir(shm)
@@ -1590,6 +1869,331 @@ block adoptRefusesUnsafeFragment:
     if savedHome.len > 0: putEnv("HOME", savedHome) else: delEnv("HOME")
     if dirExists(r): removeDir(r)
     if dirExists(base): removeDir(base)
+
+proc gpgSignEncrypt(signer, recipient, inPath, outPath: string, sign = true) =
+  let signArgs = if sign: " --local-user " & signer.quoteShell & " --sign" else: ""
+  let (output, code) = execCmdEx("gpg --batch --yes --quiet --no-options " &
+    "--trust-model always" & signArgs & " -e --recipient=" & recipient.quoteShell &
+    " --set-filename '' -o " & outPath.quoteShell & " -- " & inPath.quoteShell)
+  doAssert code == 0, output
+
+block allowUnsignedRefusesAnUnconfiguredRecordSigner:
+  ## --allow-unsigned accepts a record with no signature. A record that
+  ## carries a good signature from a key the vault is not configured for is
+  ## not unsigned, and must not be accepted.
+  let home = createTempDir("nimvault_audit_", "_unsignedflag")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner-flag@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other-flag@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let real = r / "real.txt"
+    writeFile(real, "real-secret")
+    add(r, real, c)
+    seal(r, c)
+    let id = "cdcdcdcdcdcdcdcd"
+    let work = createTempDir("nimvault_audit_", "_forge-flag")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-other-key")
+    let key = newDek(c)
+    let blob = crypto.blobPath(r, c, id)
+    encryptWithDek(c, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    let rec = entryFile(r, c, id)
+    let planted = r / "planted.txt"
+    gpgSignEncrypt(otherKey, vaultKey, plain, rec)
+    var raised = false
+    try:
+      unseal(r, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal --allow-unsigned must refuse an unconfigured signer"
+    doAssert not fileExists(planted), "unseal must not write the planted file"
+    raised = false
+    try:
+      discard get(r, planted, c, allowUnsigned = true)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get --allow-unsigned must refuse an unconfigured signer"
+
+    gpgSignEncrypt("", vaultKey, plain, rec, sign = false)
+    raised = false
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "unseal without the flag must refuse an unsigned record"
+    doAssert get(r, planted, c, allowUnsigned = true) == "planted-by-other-key",
+      "the flag still accepts a record with no signature"
+    removeDir(work)
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: --allow-unsigned refuses a record signed by an unconfigured key"
+
+block allowUnsignedRefusesAnUnconfiguredBlobSigner:
+  ## A v5 blob carries its signature in band. With the flag, a good signature
+  ## from an unconfigured key must still be refused by unseal and get.
+  let home = createTempDir("nimvault_audit_", "_unsignedblob")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let vaultKey = genKey(home, "Vault Owner", "owner-blob@nimvault.local")
+    let otherKey = genKey(home, "Other Signer", "other-blob@nimvault.local")
+    let c = GpgConfig(recipient: vaultKey, root: r)
+    let id = "dcdcdcdcdcdcdcdc"
+    let work = createTempDir("nimvault_audit_", "_forge-blob")
+    let payload = work / "payload"
+    writeFile(payload, "v5-blob-by-other-key")
+    let blob = crypto.blobPath(r, c, id)
+    createDir(r / ".vault")
+    gpgSignEncrypt(otherKey, vaultKey, payload, blob)
+    saveManifest(r, @[(id, "planted.txt", sha256sum(blob), ekFile,
+                       sha256sum(payload))], c)
+    let planted = r / "planted.txt"
+    var raised = false
+    try:
+      unseal(r, c, allowUnsigned = true)
+    except CatchableError as e:
+      raised = true
+      doAssert "signature verification failed" in e.msg, e.msg
+    doAssert raised, "unseal --allow-unsigned must refuse a blob by an unconfigured signer"
+    doAssert not fileExists(planted)
+    raised = false
+    try:
+      discard get(r, planted, c, allowUnsigned = true)
+    except CatchableError:
+      raised = true
+    doAssert raised, "get --allow-unsigned must refuse a blob by an unconfigured signer"
+
+    gpgSignEncrypt("", vaultKey, payload, blob, sign = false)
+    saveManifest(r, @[(id, "planted.txt", sha256sum(blob), ekFile,
+                       sha256sum(payload))], c)
+    raised = false
+    try:
+      unseal(r, c)
+    except CatchableError:
+      raised = true
+    doAssert raised, "unseal without the flag must refuse an unsigned blob"
+    unseal(r, c, allowUnsigned = true)
+    doAssert readFile(planted) == "v5-blob-by-other-key",
+      "the flag still accepts a blob with no signature"
+    removeDir(work)
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: --allow-unsigned refuses a v5 blob signed by an unconfigured key"
+
+block nameSpecifierIsRefused:
+  ## A spec that is neither an email nor hex went to gpg as a substring, so
+  ## `recipient = Alice` let a record signed by Malice through a plain unseal.
+  let home = createTempDir("nimvault_audit_", "_names")
+  setFilePermissions(home, {fpUserRead, fpUserWrite, fpUserExec})
+  let savedHome = getEnv("GNUPGHOME")
+  putEnv("GNUPGHOME", home)
+  let r = setupRepo()
+  try:
+    let alice = genKey(home, "Alice", "alice@example.com")
+    let malice = genKey(home, "Malice", "malice@example.com")
+    doAssert signerFingerprints(@["Alice"]).len == 0,
+      "a name matched keys by substring: " & $signerFingerprints(@["Alice"])
+    let honest = GpgConfig(recipient: alice, root: r)
+    writeFile(r / "real.txt", "real-secret")
+    add(r, r / "real.txt", honest)
+    seal(r, honest)
+    let id = "abababababababab"
+    let work = createTempDir("nimvault_audit_", "_forge-name")
+    let payload = work / "payload"
+    writeFile(payload, "planted-by-malice")
+    let key = newDek(honest)
+    let blob = crypto.blobPath(r, honest, id)
+    encryptWithDek(honest, key, payload, blob)
+    let plain = work / "record.plain"
+    writeFile(plain, EntryHeader & "\n" &
+      &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+    gpgSignEncrypt(malice, alice, plain, entryFile(r, honest, id))
+    removeDir(work)
+    var msg = ""
+    try:
+      unseal(r, GpgConfig(recipient: "Alice", root: r))
+    except CatchableError as e:
+      msg = e.msg
+    doAssert "signature verification failed" in msg,
+      "recipient Alice accepted a record signed by Malice: " & msg
+    doAssert not fileExists(r / "planted.txt")
+
+    createDir(r / ".vault")
+    proc loadError(config, cli: string): string =
+      writeFile(r / ".vault" / "config", config)
+      try:
+        discard initGpgConfig(cli, r)
+      except CatchableError as e:
+        return e.msg
+    for (config, cli) in [("recipient = Alice\n", ""),
+                          ("recipient = alice@example.com\nwrap = **:Alice\n", ""),
+                          (&"recipient = {alice}\nwrap = **:{malice},Alice\n", ""),
+                          ("recipient = alice@example.com\n", "Alice")]:
+      let err = loadError(config, cli)
+      doAssert "`Alice` does not name one key" in err,
+        "config loaded with a name spec: " & config & " / " & cli & ": " & err
+    for config in ["recipient = alice@example.com\n",
+                   "recipient = <alice@example.com>\n",
+                   &"recipient = {alice}\nwrap = **:0x{malice}\n"]:
+      doAssert loadError(config, "") == "", config
+  finally:
+    putEnv("GNUPGHOME", savedHome)
+    removeDir(r)
+    removeDir(home)
+  echo "PASS: a recipient that is not an email or key ID is refused"
+
+block preV6EntrySurvivesTheMoveToRecords:
+  ## A v5 entry has no data key, so its per-entry record ends in an empty
+  ## field. The parser stripped that tab, found five fields and dropped the
+  ## record: the entry left list, unseal and check without a word.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let old = r / "old.txt"
+  writeFile(old, "v5-secret")
+  createDir(r / ".vault")
+  let id = "5a5a5a5a5a5a5a5a"
+  let blob = crypto.blobPath(r, c, id)
+  encryptFile(c, old, blob)
+  saveManifest(r, @[(id, "old.txt", sha256sum(blob), ekFile, sha256sum(old))], c,
+               sealKey(c))
+  doAssert loadManifest(r, verifySig = true, cfg = c).len == 1
+  let fresh = r / "new.txt"
+  writeFile(fresh, "v6-secret")
+  add(r, fresh, c)
+  doAssert hasSplitEntries(r), "add should write per-entry records"
+  var paths: seq[string] = @[]
+  for e in loadManifest(r, verifySig = true, cfg = c):
+    paths.add(e.path)
+  doAssert "old.txt" in paths and "new.txt" in paths, $paths
+  let rep = checkVault(r, c)
+  doAssert rep.problems.len == 0 and rep.checked == 2, $rep
+  removeFile(old)
+  removeFile(fresh)
+  unseal(r, c)
+  doAssert readFile(old) == "v5-secret"
+  doAssert readFile(fresh) == "v6-secret"
+  removeDir(r)
+  echo "PASS: a pre-v6 entry keeps its record after add"
+
+block recordThatHoldsNoEntryIsCounted:
+  ## A record that opened and verified but held no entry line was dropped,
+  ## and check called the rest consistent.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "kept.txt", "kept-secret")
+  add(r, r / "kept.txt", c)
+  seal(r, c)
+  let work = createTempDir("nimvault_audit_", "_unparsed")
+  writeFile(work / "record.plain", EntryHeader & "\nnot-an-entry\n")
+  encryptFileTo(c, @[c.recipient], work / "record.plain",
+                entryFile(r, c, "6b6b6b6b6b6b6b6b"))
+  removeDir(work)
+  let rep = checkVault(r, c)
+  doAssert "1 record(s) open but hold no entry this version can read" in
+    rep.problems, $rep
+  var msg = ""
+  try:
+    discard check(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "inconsistent" in msg, "check passed over a record it dropped: " & msg
+  removeFile(r / "kept.txt")
+  msg = ""
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "hold no entry" in msg, "unseal dropped a record: " & msg
+  doAssert not fileExists(r / "kept.txt")
+  removeDir(r)
+  echo "PASS: check and unseal count a record that holds no entry"
+
+block symlinkedHomeAndVaultRootAreNotRefused:
+  ## The base was compared as spelled and the path under it fully resolved,
+  ## so a HOME or a vault root reached through a symlink refused every file.
+  let r = setupRepo()
+  let realRepo = setupRepo()
+  let top = createTempDir("nimvault_audit_", "_linkedbase")
+  let realHome = top / "real-home"
+  createDir(realHome / "dotfiles")
+  createSymlink(realHome, top / "home")
+  createSymlink(realHome / "dotfiles", realHome / ".dot")
+  let savedHome = getEnv("HOME")
+  putEnv("HOME", top / "home")
+  try:
+    let c = GpgConfig(recipient: keyId)
+    let plainFile = top / "home" / "token.txt"
+    let viaDirLink = top / "home" / ".dot" / "rc.txt"
+    writeFile(plainFile, "home-secret")
+    writeFile(viaDirLink, "dot-secret")
+    add(r, plainFile, c)
+    add(r, viaDirLink, c)
+    seal(r, c)
+    removeFile(plainFile)
+    removeFile(viaDirLink)
+    unseal(r, c)
+    doAssert readFile(plainFile) == "home-secret"
+    doAssert readFile(viaDirLink) == "dot-secret"
+  finally:
+    putEnv("HOME", savedHome)
+
+  createDir(realRepo / "real-sub")
+  createSymlink(realRepo / "real-sub", realRepo / "sub")
+  let linkRepo = top / "vault"
+  createSymlink(realRepo, linkRepo)
+  let rc = GpgConfig(recipient: keyId, root: linkRepo)
+  let g = linkRepo / "sub" / "x.txt"
+  writeFile(g, "root-secret")
+  add(linkRepo, g, rc)
+  seal(linkRepo, rc)
+  removeFile(g)
+  unseal(linkRepo, rc)
+  doAssert readFile(g) == "root-secret"
+  removeDir(r)
+  removeDir(realRepo)
+  removeDir(top)
+  echo "PASS: a HOME or vault root reached through a symlink is not refused"
+
+block subkeyRecipientOpensTheVault:
+  ## A vault may name the encryption subkey it is sealed to. The signer lookup
+  ## matched only primary keys, so such a vault could neither sign nor verify.
+  let (listed, lcode) = execCmdEx("gpg --batch --with-colons --list-keys " &
+                                  keyId.quoteShell)
+  doAssert lcode == 0, listed
+  var subId = ""
+  for line in listed.splitLines:
+    if line.startsWith("sub:"):
+      subId = line.split(':')[4]
+  doAssert subId.len == 16 and subId != keyId, listed
+  for spec in [subId, subId & "!"]:
+    let r = setupRepo()
+    createDir(r / ".vault")
+    writeFile(r / ".vault" / "config", &"recipient = {spec}\nroot = repo\n")
+    let c = initGpgConfig("", r)
+    doAssert c.recipient == spec
+    writeFile(r / "s.txt", "subkey-secret")
+    add(r, r / "s.txt", c)
+    seal(r, c)
+    removeFile(r / "s.txt")
+    unseal(r, c)
+    doAssert readFile(r / "s.txt") == "subkey-secret"
+    doAssert get(r, r / "s.txt", c) == "subkey-secret"
+    removeDir(r)
+  echo "PASS: a recipient that names the encryption subkey opens the vault"
 
 removeDir(creds.home)
 delEnv("GNUPGHOME")

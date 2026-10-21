@@ -55,45 +55,64 @@ proc boundaryBase(cfg: GpgConfig, dest: string): string =
   else:
     ""
 
+proc resolvedBase(base: string): string =
+  ## `base` with its symlinks resolved, to compare with an `expandFilename`
+  ## result, which resolves those too.
+  try:
+    normalizedBase(expandFilename(base))
+  except OSError:
+    base
+
 proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
   ## A lexical ~/ path can still resolve outside HOME through a symlink.
   let base = boundaryBase(cfg, absPath)
   if base.len == 0:
     return
   let real = expandFilename(absPath)
-  if not insideBase(base, real):
+  if not insideBase(resolvedBase(base), real):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
-proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
-  ## Refuse a directory symlink that resolves outside the vault root (or
-  ## $HOME). The final path may itself be a symlink: `rename` replaces it.
-  ## `createDir` would follow an ancestor and write the plaintext outside.
-  if not isPathSafe(cfg, storePath(cfg, dest, repo)):
-    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
-  let base = boundaryBase(cfg, dest)
+proc assertAncestorsContained(cfg: GpgConfig, repo, path, verb: string) =
+  ## Refuse a directory symlink above `path` that resolves outside the vault
+  ## root (or $HOME). The final component is the caller's to judge.
+  if not isPathSafe(cfg, storePath(cfg, path, repo)):
+    nvRaise(&"FATAL: refusing to {verb} outside the vault root: {path}")
+  let base = boundaryBase(cfg, path)
   if base.len == 0:
     return
-  if not insideBase(base, dest):
-    nvRaise(&"FATAL: refusing to write outside the vault root: {dest}")
-  let parent = dest.parentDir
+  if not insideBase(base, path):
+    nvRaise(&"FATAL: refusing to {verb} outside the vault root: {path}")
+  let parent = path.parentDir
   if parent.len == 0:
     return
   let rel = relativePath(parent, base)
   if rel.startsWith(".."):
-    nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+    nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
+  let real = resolvedBase(base)
   var acc = base
   for part in rel.split(DirSep):
     if part.len == 0 or part == ".":
       continue
     if part == "..":
-      nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+      nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     acc = acc / part
     if symlinkExists(acc):
-      let real = expandFilename(acc)
-      if not insideBase(base, real):
-        nvRaise(&"FATAL: refusing to write through a directory symlink: {dest}")
+      if not insideBase(real, expandFilename(acc)):
+        nvRaise(&"FATAL: refusing to {verb} through a directory symlink: {path}")
     elif not dirExists(acc):
       break
+
+proc assertWritePath(cfg: GpgConfig, repo, dest: string) =
+  ## The final path may itself be a symlink: `rename` replaces it.
+  ## `createDir` would follow an ancestor and write the plaintext outside.
+  assertAncestorsContained(cfg, repo, dest, "write")
+
+proc assertReadPath(cfg: GpgConfig, repo, src: string) =
+  ## Plaintext a record names is read only from inside the vault root (or
+  ## $HOME). A swapped directory or file symlink would otherwise put another
+  ## file's bytes into the blob that record vouches for.
+  assertAncestorsContained(cfg, repo, src, "read")
+  assertResolvedWithinBoundary(cfg, src)
 
 proc gitignorePattern(rel: string): string =
   ## A gitignore line for this path alone. A leading `#` is a comment, a
@@ -205,7 +224,7 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
     nvRaise(&"FATAL: refusing symlink: {absPath}")
   if not fileExists(absPath):
     nvRaise(&"FATAL: file not found: {absPath}")
-  assertResolvedWithinBoundary(cfg, absPath)
+  assertReadPath(cfg, repo, absPath)
   let storedPath = storePath(cfg, absPath, repo)
   assertStoreable(storedPath)
   assertStoreable(absPath)
@@ -232,10 +251,10 @@ proc addPublicFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
     nvRaise(&"FATAL: refusing symlink: {absPath}")
   if not fileExists(absPath):
     nvRaise(&"FATAL: file not found: {absPath}")
-  # Same boundary as add: a lexical ~/ path can resolve outside HOME
-  # through an ancestor symlink. isPathSafe on the stored spelling does
-  # not see that.
-  assertResolvedWithinBoundary(cfg, absPath)
+  # Same read boundary as seal: a lexical ~/ path can resolve outside
+  # HOME through an ancestor symlink, and isPathSafe on the stored
+  # spelling does not see that.
+  assertReadPath(cfg, repo, absPath)
   let canon = expandFilename(absPath)
   if not isPathSafe(cfg, storePath(cfg, canon, repo)):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
@@ -298,10 +317,23 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   ## sits above this one, which is both duplicated and invisible from here.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let allEntries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
+                              checkPresent = true)
+  let allEntries = meta.entries
+  if meta.unparsed > 0:
+    nvRaise(&"FATAL: {meta.unparsed} record(s) open but hold no entry this " &
+            "version can read.\n  Refusing to unseal part of the vault; run " &
+            "`nimvault check`.")
+  if allEntries.len == 0 and meta.unopened > 0:
+    nvRaise(&"FATAL: none of the {meta.unopened} record(s) opens with the " &
+            "keys on this machine.\n" &
+            "  Import the secret key of the recipient or of a wrap group.")
   if allEntries.len == 0:
     nvEcho("vault is empty")
     return
+  if meta.unopened > 0:
+    stderr.writeLine(&"  could not open {meta.unopened} record(s) with this " &
+                     "machine's secret keys")
 
   let entries = if only.len == 0: allEntries
                 else: selectEntries(cfg, allEntries, only)
@@ -415,8 +447,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
     nvRaise(acc.strip())
 
   # Verify all decryption results and signatures
-  let signers = if requireSig and cfg.signaturesInBand and direct.len > 0:
-                  vaultSigners(cfg)
+  let signers = if cfg.signaturesInBand and direct.len > 0: vaultSigners(cfg)
                 else: @[]
   for r in results:
     if r.code != 0:
@@ -436,7 +467,11 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
        not gpgStatusHas(r.status, "GOODSIG"):
       abortUnseal(&"FATAL: missing signature on blob for {r.entry.path}",
         "  Pass --allow-unsigned to accept unsigned vaults.")
-    if cfg.signaturesInBand and not r.enveloped and requireSig:
+    # A signature that is there must come from a configured signer, with or
+    # without --allow-unsigned.
+    if cfg.signaturesInBand and not r.enveloped and
+       (requireSig or gpgStatusHas(r.status, "GOODSIG") or
+        validSigners(r.status).len > 0):
       let problem = gpgSignerProblem(r.status, r.entry.path, signers)
       if problem.len > 0:
         abortUnseal(problem)
@@ -565,6 +600,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     if not fileExists(src):
       stderr.writeLine &"FATAL: plaintext missing: {src}"
       nvRaise("  Run 'nimvault unseal' first, or 'nimvault rm' to remove the entry.")
+    assertReadPath(cfg, repo, src)
 
   let currentKey = sealKey(cfg)
   # No recorded key means a v4 or older manifest: seal everything once to
@@ -871,7 +907,8 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   ## live one, which a seal in progress may be publishing too.
   let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
-  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
+  let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg,
+                             checkPresent = true)
 
   let absPath = if path.isAbsolute:
     path
@@ -932,7 +969,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
     # Decrypt to memory. A file under the runtime directory is plaintext
     # another uid can read for as long as the process is decrypting.
     return decryptWithDekToString(cfg, deks[e.id], inPath)
-  return decryptToString(cfg, inPath, verifySig = requireSig)
+  return decryptToString(cfg, inPath, verifySig = requireSig, checkPresent = true)
 
 proc adopt*(repo: string, cfg: GpgConfig, only: seq[string] = @[]) =
   ## Sign unadopted `.vault/a/` entries into `.vault/e/` and delete the fragments.
@@ -996,8 +1033,16 @@ proc safeMovePath(oldAbs, newAbs: string) =
     return
   if posix.errno != posix.EXDEV:
     nvRaise(&"FATAL: could not move {oldAbs} -> {newAbs}")
+  # `copyFile` creates the copy with the process umask, which left a 0600
+  # secret 0644. Create it owner-only, then give it the source's mode.
   let tmp = newAbs.parentDir / (".nimvault-mv-" & genId() & ".tmp")
-  copyFile(oldAbs, tmp)
+  try:
+    withPrivateUmask:
+      copyFile(oldAbs, tmp)
+    setFilePermissions(tmp, getFilePermissions(oldAbs))
+  except CatchableError:
+    shredFile(tmp)
+    raise
   renameOver(tmp, newAbs)
   removeFile(oldAbs)
 
@@ -1023,6 +1068,9 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   else:
     expandHome(newPath)
 
+  # `rename` follows a directory symlink above the source as readily as one
+  # above the destination, and would move a file from outside the root.
+  assertAncestorsContained(cfg, repo, oldAbs, "move")
   let newStored = storePath(cfg, newAbs, repo)
   if not isPathSafe(cfg, newStored):
     nvRaise(&"FATAL: refusing path outside the vault root: {newAbs}")
@@ -1753,8 +1801,12 @@ proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   result.unopened = meta.unopened
-  if entries.len == 0 and (splitRecordIds(repo).len > 0 or
-                           appendRecordIds(repo).len > 0):
+  if meta.unparsed > 0:
+    result.problems.add(&"{meta.unparsed} record(s) open but hold no entry " &
+                        "this version can read")
+    result.checked.inc
+  elif entries.len == 0 and (splitRecordIds(repo).len > 0 or
+                              appendRecordIds(repo).len > 0):
     result.problems.add(UnreadableRecords)
     result.checked.inc
   var known = initHashSet[string]()

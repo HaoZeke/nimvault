@@ -5,7 +5,7 @@
 ## test that quietly does nothing is worse than one that is not there.
 
 import std/[os, osproc, strutils, strformat, tempfiles]
-import nimvault/[gpg, manifest, commands, crypto]
+import nimvault/[gpg, manifest, commands, crypto, dek]
 
 proc have(bin: string): bool = findExe(bin).len > 0
 
@@ -209,6 +209,157 @@ block ageWriterHasNoSigningKey:
   doAssert ageRefused, "an unadopted age fragment must not be returned"
   doAssert get(work, note, ownerCfg, allowUnsigned = true) == "age-public-stance"
   echo "PASS: age public-key writer seals without an ssh key"
+proc freshAgeVault(): (string, GpgConfig) =
+  ## Another vault under the same identity and signing key, so a block can
+  ## tamper with it without disturbing the round trip above.
+  let dir = createTempDir("nimvault_age_", "_vault")
+  discard execCmdEx(&"git init -q {dir.quoteShell}")
+  createDir(dir / ".vault")
+  writeFile(dir / ".vault" / "config", readFile(work / ".vault" / "config"))
+  (dir, initGpgConfig("", dir))
+
+block allowUnsignedStillVerifiesAPresentSshSignature:
+  ## --allow-unsigned accepts a record with no detached signature. A record
+  ## signed by a key outside allowed_signers is not unsigned.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-flag")
+  add(dir, f, c)
+  seal(dir, c)
+  let rec = entryFile(dir, c, loadManifest(dir, cfg = c)[0].id)
+  let otherKey = work / "otherkey"
+  let (kout, kcode) = execCmdEx(
+    &"ssh-keygen -q -t ed25519 -N '' -f {otherKey.quoteShell} -C other")
+  doAssert kcode == 0, kout
+  removeFile(rec & ".sig")
+  let (sout, scode) = execCmdEx(
+    &"ssh-keygen -Y sign -f {otherKey.quoteShell} -n nimvault {rec.quoteShell}")
+  doAssert scode == 0, sout
+  removeFile(f)
+  var raised = false
+  try:
+    unseal(dir, c, allowUnsigned = true)
+  except CatchableError as e:
+    raised = true
+    doAssert "signature verification failed" in e.msg, e.msg
+  doAssert raised, "unseal --allow-unsigned must refuse a signer outside allowed_signers"
+  doAssert not fileExists(f)
+  raised = false
+  try:
+    discard get(dir, f, c, allowUnsigned = true)
+  except CatchableError:
+    raised = true
+  doAssert raised, "get --allow-unsigned must refuse a signer outside allowed_signers"
+  removeFile(rec & ".sig")
+  raised = false
+  try:
+    unseal(dir, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "unseal without the flag must refuse a missing signature"
+  unseal(dir, c, allowUnsigned = true)
+  doAssert readFile(f).strip() == "age-flag", "the flag accepts a missing signature"
+  removeDir(dir)
+  echo "PASS: age --allow-unsigned verifies a detached signature that is present"
+
+block ageWithAGpgSignerIsRefused:
+  ## gpg signs only what it encrypts, so `signer = gpg` on an age vault signed
+  ## and verified nothing. With that one config line, an unsigned record built
+  ## from the public recipient went through a plain unseal.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-honest")
+  add(dir, f, c)
+  seal(dir, c)
+  let id = "fefefefefefefefe"
+  let scratch = createTempDir("nimvault_age_", "_forge")
+  let payload = scratch / "payload"
+  writeFile(payload, "planted")
+  let key = newDek(c)
+  let blob = crypto.blobPath(dir, c, id)
+  encryptWithDek(c, key, payload, blob)
+  let plain = scratch / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
+  encryptFileTo(c, @[c.recipient], plain, entryFile(dir, c, id), sign = false)
+  removeDir(scratch)
+
+  let config = readFile(dir / ".vault" / "config")
+  proc loadError(text: string): string =
+    writeFile(dir / ".vault" / "config", text)
+    try:
+      discard initGpgConfig("", dir)
+    except CatchableError as e:
+      return e.msg
+  doAssert "signer = gpg does not sign an age vault" in
+    loadError(config.replace("signer = ssh", "signer = gpg"))
+  doAssert "unknown signer" in loadError(config.replace("signer = ssh", "signer = sshh"))
+  doAssert "unknown backend" in loadError(config.replace("backend = age", "backend = agee"))
+  doAssert loadError(config.replace("signer = ssh", "signer = none")) == ""
+  writeFile(dir / ".vault" / "config", config)
+
+  var bypass = c
+  bypass.signer = "gpg"
+  removeFile(f)
+  var msg = ""
+  try:
+    unseal(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg,
+    "an age vault with signer = gpg unsealed: " & msg
+  doAssert not fileExists(dir / "planted.txt") and not fileExists(f)
+  msg = ""
+  try:
+    discard check(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg, "check passed: " & msg
+  writeFile(f, "age-edit")
+  msg = ""
+  try:
+    seal(dir, bypass)
+  except CatchableError as e:
+    msg = e.msg
+  doAssert "does not sign an age vault" in msg, "seal wrote an unsigned record: " & msg
+  removeDir(dir)
+  echo "PASS: an age vault refuses signer = gpg"
+
+block missingSshSignerSettingsFail:
+  ## A record whose signature could not be checked was skipped uncounted, so
+  ## unseal reported an empty vault and check asked for a secret key.
+  let (dir, c) = freshAgeVault()
+  let f = dir / "tok.txt"
+  writeFile(f, "age-settings")
+  add(dir, f, c)
+  seal(dir, c)
+  removeFile(f)
+  var noAllowed = c
+  noAllowed.allowedSigners = ""
+  var lostAllowed = c
+  lostAllowed.allowedSigners = dir / "no-such-allowed-signers"
+  var noIdentity = c
+  noIdentity.signerIdentity = ""
+  for (broken, want) in [(noAllowed, "no allowed_signers"),
+                         (lostAllowed, "allowed_signers not found"),
+                         (noIdentity, "no signer_identity")]:
+    var msg = ""
+    try:
+      unseal(dir, broken)
+    except CatchableError as e:
+      msg = e.msg
+    doAssert want in msg, "unseal: " & want & ": " & msg
+    doAssert not fileExists(f)
+    msg = ""
+    try:
+      discard check(dir, broken)
+    except CatchableError as e:
+      msg = e.msg
+    doAssert want in msg, "check: " & want & ": " & msg
+  unseal(dir, c)
+  doAssert readFile(f).strip() == "age-settings"
+  removeDir(dir)
+  echo "PASS: missing ssh signer settings fail unseal and check"
 
 removeDir(work)
 echo "All age backend tests passed."

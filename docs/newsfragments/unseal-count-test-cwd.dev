@@ -1,0 +1,1 @@
+The test that `unseal` reports the records it could not open runs the CLI from inside the vault repository. Run from another git checkout, as in CI, the CLI refuses `root = repo` before it reaches the count.

@@ -1,0 +1,1 @@
+Public-key add uses the same read-path check as seal. A directory symlink above the file that resolves outside `$HOME` or the vault root is refused before a fragment is written.

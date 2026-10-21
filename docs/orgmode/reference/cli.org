@@ -44,7 +44,9 @@ A crash before the record is durable leaves the previous blob in place. A
 crash after the record is written leaves ~.pending~, which the next read
 promotes when its hash matches.
 
-Exits non-zero if any plaintext file is missing.
+Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+directory symlink above it, resolves outside ~$HOME~ or ~root~. ~rotate
+--rekey~ seals, so it refuses the same paths.
 
 A public-key writer (~--public-only~, ~NIMVAULT_PUBLIC_ONLY=1~, or a gpg home
 with no secret key) does not decrypt the vault. ~add~ already sealed the new
@@ -93,19 +95,32 @@ files.
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).
 
+A record encrypted only to keys whose secret part is not on this machine
+belongs to a wrap group the machine is not in. ~unseal~ skips it and prints
+how many records it could not open. A record that names a key this machine
+holds and still does not decrypt is corrupt or forged, and is fatal.
+
 Exits non-zero if:
+- No record opens with the secret keys on this machine
+- A record for a key this machine holds does not decrypt
+- A record opens but holds no entry this version can read
 - Any blob file is missing
 - Any blob hash does not match the manifest
-- Any signature is invalid or missing (unless ~--allow-unsigned~)
+- Any signature does not verify, or comes from a key the config does not name
+- Any signature is missing (unless ~--allow-unsigned~)
 - Any target path escapes the expected boundary
 
 *** ~--allow-unsigned~
 
-Accept unsigned legacy records. Missing signatures are accepted, but blob-hash
-verification and path-safety checks still run. A bad signature (~BADSIG~) or a
-signature by an unconfigured key is still fatal. Use this only for migrating
-legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
-the vault to signed records.
+Accept a record, manifest or blob that carries no signature. A signature that
+is present is still checked: one that does not verify, and a good one from a
+key the config does not name, are fatal. Blob-hash and path-safety checks
+still run.
+
+The flag authenticates nothing it lets through. Anyone who can write to the
+vault repository and holds the recipient's public key can add an unsigned
+record, and with the flag ~unseal~ writes it. Use it only to migrate a vault
+created before v0.2.0, then run ~nimvault seal~ to sign every record.
 
 An unadopted fragment under ~.vault/a/~ is not written unless this flag is
 passed. A fragment whose path matches a signed record is refused even with
@@ -182,7 +197,10 @@ nimvault mv <old-path> <new-path> [--recipient KEY]
 
 Move/rename a vault entry's target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
-updated.
+updated. A symlink at either path is refused, and so is a directory
+symlink above either path that resolves outside ~$HOME~ or ~root~. Across
+filesystems the file is copied beside the new path, owner-only, given the
+source's mode, and renamed into place.
 
 ** adopt
 
@@ -203,8 +221,9 @@ nimvault get <path> [--allow-unsigned]
 
 Print one entry's plaintext on stdout without unsealing the vault or writing
 the plaintext to disk, including the runtime directory. Applies the same
-path-safety and blob-integrity checks ~unseal~ does. Deliberately quiet, so
-nothing decorative shares the stream with a secret.
+path-safety and blob-integrity checks ~unseal~ does, and ~--allow-unsigned~
+means the same as it does there. Deliberately quiet, so nothing decorative
+shares the stream with a secret.
 
 An unadopted ~.vault/a/~ fragment is refused unless ~--allow-unsigned~ is
 passed. When a signed record names the same path, ~get~ returns that record.
@@ -215,21 +234,23 @@ passed. When a signed record names the same path, ~get~ returns that record.
 nimvault check [--recipient KEY] [--json] [--public-only] [--digests FILE] [--write-digests FILE] [--noninteractive]
 #+end_src
 
-Compare payload blobs to the records, or to ~.vault/blob-index~ when this
-process has no secret key. Neither comparison decrypts a payload. Exit 2 when
-anything is inconsistent, so a pre-push hook or a CI job can gate on it.
+Compare payload blobs to the records this machine can open, or to
+~.vault/blob-index~ when this process has no secret key. Neither comparison
+decrypts a payload. Exit 2 when anything is inconsistent, so a pre-push hook
+or a CI job can gate on it.
 
 With a secret key the anchor is the manifest. The hashes live in the encrypted
 records, so ~check~ decrypts those records, verifies their signatures, and
-does not decrypt the payloads. It reports how many records it could not open
-with the available secret keys. A corrupt record that is not a missing secret
-key fails the command. A missing blob, a hash that does not match, a v1 entry
-with no hash, and a payload id that is not in the records are problems. When
-no record opens at all, the message says to import the secret key. A public
-key alone cannot open the records. Without a secret key the anchor is the
-blob-index (id and ciphertext sha256, no paths): added, changed and missing
-ids. If there is no index and no digest list, and ciphertext exists, that
-itself is a problem.
+does not decrypt the payloads. A record encrypted only to keys this machine
+lacks is not checked; ~check~ reports how many it could not open. A corrupt
+record that is not a missing secret key fails the command, including one that
+opens but holds no entry. A missing blob, a hash that does not match, a v1
+entry with no hash, and a payload id that is not in the records are problems.
+When no record opens at all, the message says to import the secret key. A
+public key alone cannot open the records. Without a secret key the anchor is
+the blob-index (id and ciphertext sha256, no paths): added, changed and
+missing ids. If there is no index and no digest list, and ciphertext exists,
+that itself is a problem.
 
 ~--digests FILE~ diffs a previous snapshot of every file under ~.vault/~
 except ~config~ and ~*.tmp~. A delta exits 2, including an intentional add.

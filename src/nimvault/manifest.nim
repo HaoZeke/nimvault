@@ -197,15 +197,16 @@ proc sealKey*(cfg: GpgConfig): string =
 proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: string] =
   var got = false
   for line in plain.splitLines:
-    let stripped = line.strip()
+    # A pre-v6 entry has no data key, so its record ends in a tab.
+    let stripped = line.strip(chars = Whitespace - {'\t'})
     if stripped.len == 0 or stripped.startsWith("#"):
       continue
     let parts = stripped.split('\t')
-    if parts.len < 6:
+    if parts.len < 5:
       continue
     let kind = if parts[3] == "dir": ekDir else: ekFile
     result.entry = (parts[0], parts[1], parts[2], kind, parts[4])
-    result.dek = parts[5]
+    result.dek = if parts.len > 5: parts[5] else: ""
     result.ok = true
     got = true
     break
@@ -235,10 +236,12 @@ proc recalledRecord(path: string): string =
     ""
 
 proc loadSplitEntries*(repo: string, cfg: GpgConfig,
-                       verifySig = false): tuple[entries: seq[VaultEntry],
-                                                 deks: DekTable,
-                                                 unread: int] =
-  ## Union of every per-entry record this machine can open.
+                       verifySig = false,
+                       checkPresent = false): tuple[entries: seq[VaultEntry],
+                                                    deks: DekTable,
+                                                    unread, unparsed: int] =
+  ## Union of every per-entry record this machine can open. `unparsed` counts
+  ## records that opened and verified but hold no entry line.
   let dir = entryDir(repo)
   if not dirExists(dir):
     return
@@ -246,9 +249,9 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
   # decrypt is skippable. The first is a replaced trust root, the second is
   # "not for us".
   template sigFailure(msg: string): bool =
-    verifySig and ("signature verification failed" in msg or
-                   "missing signature" in msg or
-                   "signature required" in msg)
+    (verifySig or checkPresent) and ("signature verification failed" in msg or
+                                     "missing signature" in msg or
+                                     "signature required" in msg)
   proc noSecretKey(msg: string): bool =
     if cfg.usesAge:
       let low = msg.toLowerAscii()
@@ -264,15 +267,13 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       continue
     if name.endsWith(".sig"):
       continue
-    if verifySig:
-      try:
-        verifyManifest(cfg, path, true)
-      except CatchableError:
-        if sigFailure(getCurrentExceptionMsg()):
-          raise
-        continue
+    # Every failure here is fatal. A missing allowed_signers, signer_identity
+    # or ssh-keygen means the signature cannot be checked, which says nothing
+    # about whether the record is for this machine.
+    if verifySig or checkPresent:
+      verifyManifest(cfg, path, verifySig, checkPresent)
     paths.add(path)
-  let plains = decryptManyToString(cfg, paths, verifySig)
+  let plains = decryptManyToString(cfg, paths, verifySig, checkPresent)
   for i, path in paths:
     let (plain, err) = plains[i]
     if err.len > 0:
@@ -288,6 +289,8 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
       result.entries.add(parsed.entry)
       if parsed.dek.len > 0:
         result.deks[parsed.entry.id] = parsed.dek
+    else:
+      result.unparsed.inc
 
 proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) =
   ## Write one signed encrypted record. A different id is a different path,
@@ -443,28 +446,34 @@ proc loadAppendEntries(repo: string, cfg: GpgConfig): seq[VaultEntry] =
       result.add(parsed.entry)
 
 proc loadManifestMeta*(repo: string, verifySig = false,
-                       cfg = GpgConfig()): tuple[entries: seq[VaultEntry],
-                                                 sealKey: string,
-                                                 envelope: bool,
-                                                 unopened: int] =
+                       cfg = GpgConfig(),
+                       checkPresent = false): tuple[entries: seq[VaultEntry],
+                                                    sealKey: string,
+                                                    envelope: bool,
+                                                    unopened, unparsed: int] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
-  ## Returns empty seq if no manifest exists.
+  ## Returns empty seq if no manifest exists. `unparsed` counts records and
+  ## manifest lines that opened but hold no entry this binary can read.
   ## Supports v1–v5 (v4 adds plaintext contentHash for fast `status`;
   ## v5 adds the `# vault-seal-key` header).
   ##
   ## `cfg` is optional so the many call sites that only read a gpg vault stay
   ## unchanged. `findManifest` still refuses to report a vault sealed by the
   ## other backend as empty, so omitting it fails loudly rather than quietly.
+  ##
+  ## `checkPresent` is `--allow-unsigned`: with `verifySig` off, a signature
+  ## that is present must still verify and come from a configured signer.
   let sealed = hasSplitEntries(repo) or hasAppendEntries(repo)
   if publicKeyOnly(cfg) and (sealed or findManifest(repo, cfg).len > 0):
     nvRaise("FATAL: no secret key; cannot read sealed entries.\n" &
             "  A public-key writer can add and seal new entries, and check " &
             "without a key.", 3)
   if sealed:
-    let split = loadSplitEntries(repo, cfg, verifySig)
+    let split = loadSplitEntries(repo, cfg, verifySig, checkPresent)
     result.entries = split.entries
     result.unopened = split.unread
+    result.unparsed = split.unparsed
     result.envelope = true
     var seen = initHashSet[string]()
     for e in result.entries:
@@ -492,9 +501,9 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "", false, 0)
-  verifyManifest(cfg, enc, verifySig)
-  let plain = decryptToString(cfg, enc, verifySig)
+    return (@[], "", false, 0, 0)
+  verifyManifest(cfg, enc, verifySig, checkPresent)
+  let plain = decryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:
     let stripped = line.strip()
     if stripped.startsWith(SealKeyHeader):
@@ -506,7 +515,9 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     if stripped.len == 0 or stripped.startsWith("#"):
       continue
     let parts = stripped.split('\t')
-    if parts.len == 2:
+    if parts.len < 2:
+      result.unparsed.inc
+    elif parts.len == 2:
       # v1: id\tpath
       result.entries.add((parts[0], parts[1], "", ekFile, ""))
     elif parts.len == 3:
@@ -522,9 +533,9 @@ proc loadManifestMeta*(repo: string, verifySig = false,
       result.entries.add((parts[0], parts[1], parts[2], kind, parts[4]))
 
 proc loadManifest*(repo: string, verifySig = false,
-                   cfg = GpgConfig()): seq[VaultEntry] =
+                   cfg = GpgConfig(), checkPresent = false): seq[VaultEntry] =
   ## Entries only; see [loadManifestMeta] when the seal key matters.
-  loadManifestMeta(repo, verifySig, cfg).entries
+  loadManifestMeta(repo, verifySig, cfg, checkPresent).entries
 
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                    sealKey = "", envelope = false,

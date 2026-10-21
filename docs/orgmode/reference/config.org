@@ -57,13 +57,25 @@ Whitespace around the ~=~ is ignored. Recognized keys:
   portability.
 - ~wrap~ :: Repeatable. ~<glob>:<recipient>[,<recipient>...]~ -- which
   recipients may open the entries matching a path pattern. See below.
-- ~backend~ :: ~gpg~ (default) or ~age~. Also ~NIMVAULT_BACKEND~.
+- ~backend~ :: ~gpg~ (default) or ~age~. Also ~NIMVAULT_BACKEND~. Any other
+  value is refused.
 - ~identity~ :: Age identity file. Also ~NIMVAULT_AGE_IDENTITY~.
 - ~signer~ :: ~gpg~ (default for the GPG backend), ~ssh~ (default for age),
-  or ~none~.
+  or ~none~. Any other value is refused, and so is ~gpg~ with ~backend = age~:
+  gpg signs only what it encrypts, so it would sign and verify nothing. With
+  ~none~, ~unseal~ and ~get~ need ~--allow-unsigned~.
 - ~sign_key~ :: SSH private key used to sign the manifest when ~signer = ssh~.
 - ~allowed_signers~ :: SSH allowed-signers file used to verify that signature.
 - ~signer_identity~ :: Principal to match inside ~allowed_signers~.
+
+** The config is trusted as written
+
+~.vault/config~ is plaintext, committed and unsigned. The ~recipient~ and
+~wrap~ lines decide who may sign records and who the next ~seal~ encrypts to;
+~allowed_signers~ and ~signer_identity~ decide whose ssh signature verifies.
+Whoever can change the file can change who may sign and who can read. Review
+a diff to it as you would review code, before the next ~unseal~ or ~seal~.
+See the [[file:../explanation/threat-model.org][threat model]].
 
 * Per-path recipients
 
@@ -71,12 +83,12 @@ Not every machine should read every secret. A ~wrap~ rule maps a path pattern
 to the recipients allowed to open those entries:
 
 #+begin_src ini
-recipient = LAPTOPKEY
+recipient = laptop@example.com
 
 # Specific rules first: the first match decides.
-wrap = ~/.ssh/**:LAPTOPKEY
-wrap = ~/.gnupg/**:LAPTOPKEY
-wrap = **:LAPTOPKEY,BUILDBOXKEY
+wrap = ~/.ssh/**:laptop@example.com
+wrap = ~/.gnupg/**:laptop@example.com
+wrap = **:laptop@example.com,buildbox@example.com
 #+end_src
 
 Order in the file is precedence, so the narrow rules go above the general one.
@@ -138,11 +150,19 @@ threshold scheme or any additional machinery.
 
 * GPG key ID
 
-The recipient value is any string GPG accepts as a recipient identifier:
+The recipient, and each recipient in a ~wrap~ rule, must name a key
+exactly:
 
 - Long key ID: ~9CCCE36402CB49A6~
 - Fingerprint: ~ABCD1234...~
-- Email: ~user@example.com~
+- Email: ~user@example.com~ or ~<user@example.com>~
+- Subkey ID or fingerprint, optionally with gpg's trailing ~!~. The key it
+  belongs to is the one allowed to sign.
+
+Any other string, such as a name, is refused when the config loads, whether
+it comes from ~.vault/config~, ~--recipient~ or ~NIMVAULT_GPG_RECIPIENT~. gpg
+matches such a string anywhere in a user ID, so ~Alice~ also names
+~Malice <malice@example.com>~, and that key could then sign records.
 
 Long key IDs are recommended for unambiguous matching.
 
@@ -158,6 +178,11 @@ This signer set is vault-wide. Any configured recipient (base ~recipient~ or a
 recipient listed in any ~wrap~ rule) can sign records for any path in the
 vault. ~wrap~ controls *decryption scope* only; it does not scope who may sign
 which path. Per-glob signer scoping is a known limit.
+
+So a key named only in a ~wrap~ rule can write every path. In the example
+above, the build box can sign a record for =~/.bashrc= or
+=~/.ssh/authorized_keys=, and the laptop writes it on the next ~unseal~. Name
+a machine in a ~wrap~ rule only if you would let it write those files.
 
 An email spec is matched as an exact address (~<user@example.com>~), and
 matches every key in the keyring that carries that exact email. Use a
