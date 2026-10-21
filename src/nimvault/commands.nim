@@ -692,6 +692,10 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   ## The same checks `unseal` performs still apply. A caller asking for one
   ## entry has no less need of a path-safety check and an integrity check than
   ## one asking for all of them.
+  ##
+  ## Holds the vault lock: `resolveBlob` may rename a pending blob over the
+  ## live one, which a seal in progress may be publishing too.
+  let lk {.used.} = acquire(repo)
   let requireSig = not allowUnsigned
   let entries = loadManifest(repo, verifySig = requireSig, cfg = cfg)
 
@@ -1149,6 +1153,8 @@ proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string,
 
 proc statusReport*(repo: string, cfg: GpgConfig): string =
   ## Library-friendly status (no colors). Fast path uses contentHash when present.
+  ## Holds the vault lock for the pending-blob rename in `resolveBlob`.
+  let lk {.used.} = acquire(repo)
   let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     return "vault is empty\n"
@@ -1390,6 +1396,8 @@ proc checkVault*(repo: string, cfg: GpgConfig): CheckResult =
   ## checking each leaf against it is enough to detect a blob that has drifted.
   ## The digests sit inside the encrypted records, so reading them takes the
   ## secret key that opens the records; a public key alone verifies nothing.
+  ## Holds the vault lock for the pending-blob rename in `resolveBlob`.
+  let lk {.used.} = acquire(repo)
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
   if entries.len == 0 and splitRecordIds(repo).len > 0:
@@ -1445,6 +1453,8 @@ proc check*(repo: string, cfg: GpgConfig) =
 
 proc status*(repo: string, cfg: GpgConfig) =
   ## Terminal status (colors). Delegates logic to statusReport for library reuse.
+  ## Holds the vault lock for the pending-blob rename in `resolveBlob`.
+  let lk {.used.} = acquire(repo)
   let entries = loadManifest(repo, cfg = cfg)
   if entries.len == 0:
     echo "vault is empty"
