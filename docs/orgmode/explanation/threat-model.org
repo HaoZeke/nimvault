@@ -148,3 +148,7 @@ Still accepted:
   place.
 - Per-glob signer scoping is not implemented. Any configured or wrap-rule
   recipient key can sign records for any path.
+- With the age backend, a record whose stanza for this identity is corrupted
+  reads as one for another wrap group: age reports both as no identity
+  matched. ~unseal~ and ~check~ print how many records they skipped. The gpg
+  backend tells the two apart and fails.

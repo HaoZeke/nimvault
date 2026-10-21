@@ -82,7 +82,14 @@ files.
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).
 
+A record encrypted only to keys whose secret part is not on this machine
+belongs to a wrap group the machine is not in. ~unseal~ skips it and prints
+how many records it could not open. A record that names a key this machine
+holds and still does not decrypt is corrupt or forged, and is fatal.
+
 Exits non-zero if:
+- No record opens with the secret keys on this machine
+- A record for a key this machine holds does not decrypt
 - Any blob file is missing
 - Any blob hash does not match the manifest
 - Any signature does not verify, or comes from a key the config does not name
@@ -195,7 +202,8 @@ are stored in the encrypted manifest and the per-entry records, so ~check~
 decrypts the records and does not decrypt the payload blobs. It verifies every
 record this machine can open, and reports how many records it could not open
 with the available secret keys. Exits non-zero when a blob differs, when a
-decryptable record is corrupt, or when no record opens at all.
+record for a key this machine holds does not decrypt, or when no record opens
+at all.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about

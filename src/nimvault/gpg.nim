@@ -334,9 +334,57 @@ proc gpgVerdict*(status, path: string, code: int, verifySig: bool,
     return gpgSignerProblem(status, path, allowed)
   ""
 
+proc pkdecryptCodes(status: string): seq[int] =
+  ## Error code of each `ERROR pkdecrypt_failed` line: the low 16 bits of the
+  ## gpg_error_t gpg prints. 17 is no secret key, 18 wrong secret key.
+  const prefix = "[GNUPG:] ERROR pkdecrypt_failed "
+  for line in status.splitLines:
+    let s = line.strip()
+    if s.startsWith(prefix):
+      try:
+        result.add(parseInt(s[prefix.len .. ^1].strip()) and 0xFFFF)
+      except ValueError:
+        result.add(-1)
+
+proc encToKeyIds(status: string): seq[string] =
+  const prefix = "[GNUPG:] ENC_TO "
+  for line in status.splitLines:
+    let s = line.strip()
+    if s.startsWith(prefix):
+      let fields = s[prefix.len .. ^1].splitWhitespace()
+      if fields.len > 0:
+        result.add(fields[0].toUpperAscii())
+
+proc holdsSecretKey(keyId: string): bool =
+  ## True when the keyring has the secret part of key or subkey `keyId`, not
+  ## only a stub.
+  if keyId.len == 0 or not keyId.allIt(it in HexDigits):
+    return false
+  let p = startProcess("gpg",
+    args = @["--batch", "--no-options", "--with-colons", "--list-secret-keys",
+             "--", keyId],
+    options = {poUsePath, poStdErrToStdOut})
+  let listing = p.outputStream.readAll()
+  discard p.waitForExit()
+  p.close()
+  for line in listing.splitLines:
+    let fields = line.split(':')
+    if fields.len > 14 and fields[0] in ["sec", "ssb"] and
+       fields[4].toUpperAscii() == keyId and fields[14] != "#":
+      return true
+
 proc gpgNoSecretKey*(status: string): bool =
-  ## True when a GPG decrypt failure is specifically "no secret key".
-  gpgStatusHas(status, "NO_SECKEY") or ("no secret key" in status.toLowerAscii)
+  ## True when a decrypt failed because the record is not for this machine.
+  ## gpg reports NO_SECKEY for a session-key packet that names a key it holds
+  ## but cannot open (code 18, wrong secret key), which is what a corrupted or
+  ## forged packet looks like. That is skippable only when every failure was
+  ## code 17 or the keyring holds none of the keys the record names.
+  if not gpgStatusHas(status, "NO_SECKEY"):
+    return false
+  let codes = pkdecryptCodes(status)
+  if codes.len > 0 and codes.allIt(it == 17):
+    return true
+  not encToKeyIds(status).anyIt(holdsSecretKey(it))
 
 proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path. With `verifySig` the
