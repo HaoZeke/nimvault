@@ -676,26 +676,22 @@ exec """ & realGpg.quoteShell & """ "$@"
 
 proc secondRecordDecryptSwapHook(realGpg, targetRecord, replacement,
                                  marker, seen: string): string =
-  ## Swap one record just before the second decrypt of that record path.
-  ## `add` first verifies the record while loading the manifest, then loads
-  ## data keys. A swap in between must not be re-signed.
-  """#!/bin/sh
-set -eu
-last=""
-for arg in "$@"; do last="$arg"; done
-case " $* " in
-  *" -d "*|*" --decrypt "*) decrypt=1 ;;
-  *) decrypt="" ;;
-esac
-if [ -n "$decrypt" ] && [ "$last" = """ & targetRecord.quoteShell & """ ]; then
-  if [ -e """ & seen.quoteShell & """ ] && [ ! -e """ & marker.quoteShell & """ ]; then
-    cat """ & replacement.quoteShell & """ > """ & targetRecord.quoteShell & """
-    : >""" & marker.quoteShell & """
-  fi
-  : >""" & seen.quoteShell & """
-fi
-exec """ & realGpg.quoteShell & """ "$@"
-"""
+  ## Swap one record right after a verified decrypt of that record path.
+  ## `add` and `add-dir` must not re-sign that swapped DEK on a later write.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "last=\"\"\n" &
+    "for arg in \"$@\"; do last=\"$arg\"; done\n" &
+    "case \" $* \" in\n" &
+    "  *\" -d \"*|*\" --decrypt \"*) decrypt=1 ;;\n" &
+    "  *) decrypt=\"\" ;;\n" &
+    "esac\n" &
+    "if [ -n \"$decrypt\" ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "  cat " & replacement.quoteShell & " > " & targetRecord.quoteShell & "\n" &
+    "  : >" & marker.quoteShell & "\n" &
+    "  : >" & seen.quoteShell & "\n" &
+    "fi\n" &
+    "exec " & realGpg.quoteShell & " \"$@\"\n"
 
 block unsealUsesDescriptorAnchoredStaging:
   ## A parent swapped after path checks must now fail before placement.
@@ -756,46 +752,52 @@ block unsealRejectsParentSwapBetweenCheckAndRename:
     echo "SKIP: parent-swap seam needs -d:nimvaultTest"
   else:
     let r = setupRepo()
-    let c = GpgConfig(recipient: keyId, root: r)
-    let inside = r / "inside"
+    let oldHome = getEnv("HOME")
+    let base = createTempDir("nimvault_audit_", "_home")
+    let home = base / "home"
     let outside = createTempDir("nimvault_audit_", "_outside")
     let moved = outside / "inside-moved"
-    createDir(inside)
-    createSymlink(inside, r / "safe")
-    let f = r / "safe" / "secret.txt"
-    writeFile(f, "anchored-secret")
-    add(r, f, c)
-    seal(r, c)
-    removeFile(inside / "secret.txt")
-
-    var swapped = false
-    unsealBeforeRenameHook = proc(destPath: string) =
-      if swapped:
-        return
-      swapped = true
-      doAssert destPath == normalizedPath(f), destPath
-      moveDir(inside, moved)
-      createSymlink(moved, inside)
-
+    createDir(home)
+    putEnv("HOME", home)
     var raised = false
+    var swapped = false
     try:
-      unseal(r, c)
-    except CatchableError:
-      raised = true
+      let c = GpgConfig(recipient: keyId)
+      let inside = home / "inside"
+      createDir(inside)
+      createSymlink(inside, home / "safe")
+      let f = home / "safe" / "secret.txt"
+      writeFile(f, "anchored-secret")
+      add(r, "~/safe/secret.txt", c)
+      seal(r, c)
+      removeFile(inside / "secret.txt")
+      unsealBeforeRenameHook = proc(destPath: string) =
+        if swapped:
+          return
+        swapped = true
+        doAssert destPath == normalizedPath(f), destPath
+        moveDir(inside, moved)
+        createSymlink(moved, inside)
+      try:
+        unseal(r, c)
+      except CatchableError:
+        raised = true
+      doAssert not fileExists(moved / "secret.txt"),
+        "rollback must shred and unlink a misplaced plaintext"
+      doAssert not fileExists(f),
+        "a refused unseal must not restore plaintext at the tracked path"
+      if symlinkExists(home / "safe"):
+        removeFile(home / "safe")
+      if symlinkExists(inside):
+        removeFile(inside)
     finally:
       unsealBeforeRenameHook = nil
+      putEnv("HOME", oldHome)
 
     doAssert swapped, "test seam did not swap the destination parent"
     doAssert raised, "unseal must fail when the parent moves after the pre-check"
-    doAssert not fileExists(moved / "secret.txt"),
-      "rollback must shred and unlink a misplaced plaintext"
-    doAssert not fileExists(f),
-      "a refused unseal must not restore plaintext at the tracked path"
-    if symlinkExists(r / "safe"):
-      removeFile(r / "safe")
-    if symlinkExists(inside):
-      removeFile(inside)
     removeDir(r)
+    removeDir(base)
     removeDir(outside)
     echo "PASS: unseal rolls back if the parent moves between check and rename"
 
@@ -939,6 +941,41 @@ block directEntryIsStagedOnce:
   doAssert stagingFiles(r).len == 0
   removeDir(r)
   echo "PASS: a direct entry is staged once"
+
+block unsealVerifiesAllDirectSignaturesBeforePlacement:
+  ## For direct gpg blobs, every in-band signature must pass before any file
+  ## is restored.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let aPath = r / "a.txt"
+  let bPath = r / "b.txt"
+  writeFile(aPath, "first")
+  writeFile(bPath, "second")
+  createDir(r / ".vault")
+  let aId = "1111111111111111"
+  let bId = "2222222222222222"
+  let aBlob = crypto.blobPath(r, c, aId)
+  let bBlob = crypto.blobPath(r, c, bId)
+  encryptFile(c, aPath, aBlob)
+  encryptFileTo(c, @[c.recipient], bPath, bBlob, sign = false)
+  saveManifest(r, @[
+    (aId, "a.txt", sha256sum(aBlob), ekFile, sha256sum(aPath)),
+    (bId, "b.txt", sha256sum(bBlob), ekFile, sha256sum(bPath)),
+  ], c, sealKey(c))
+  removeFile(aPath)
+  removeFile(bPath)
+  var raised = false
+  try:
+    unseal(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "unseal must fail when one direct blob signature is missing"
+  doAssert not fileExists(aPath),
+    "unseal must not place any file when a later direct signature fails"
+  doAssert not fileExists(bPath),
+    "unseal must not place an entry whose signature fails"
+  removeDir(r)
+  echo "PASS: direct unseal verifies every signature before placement"
 
 block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
   let oldHome = getEnv("HOME")
@@ -1205,6 +1242,16 @@ block recordDekWinsOverKeyFile:
   removeDir(r)
   echo "PASS: the signed record's data key wins over a key file"
 
+proc plantUnsignedDekFile(r: string, c: GpgConfig, id, dek: string) =
+  let work = createTempDir("nimvault_audit_", "_keys")
+  let plain = work / "keys.plain"
+  writeFile(plain, "# vault-keys-v6\n" & id & "\t" & dek & "\n")
+  encryptFileTo(c, @[keyId], plain, r / ".vault" / "keys.evil.gpg", sign = false)
+  removeDir(work)
+
+proc signedRecordDek(r: string, c: GpgConfig, id: string): string =
+  loadManifestMeta(r, verifySig = true, cfg = c).deks.getOrDefault(id)
+
 block addRefusesARecordDekSwappedAfterVerify:
   ## A record swapped after the verified load must not be re-signed with its
   ## attacker data key on a later write.
@@ -1215,7 +1262,6 @@ block addRefusesARecordDekSwappedAfterVerify:
   add(r, f, c)
   seal(r, c)
   let entry = loadManifest(r, cfg = c)[0]
-  let goodDek = loadDeks(r, c)[entry.id]
   let forged = createTempDir("nimvault_audit_", "_recordswap")
   let plain = forged / "record.plain"
   let badDek = repeat('b', 64)
@@ -1233,6 +1279,8 @@ block addRefusesARecordDekSwappedAfterVerify:
   writeFile(wrapper, secondRecordDecryptSwapHook(realGpg,
                                                  entryFile(r, c, entry.id),
                                                  badRec, marker, seen))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
   setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
   writeFile(r / "later.txt", "record-dek-later")
   let oldPath = getEnv("PATH")
@@ -1245,15 +1293,145 @@ block addRefusesARecordDekSwappedAfterVerify:
       raised = true
   finally:
     putEnv("PATH", oldPath)
-  if fileExists(marker):
-    doAssert raised, "a split-record swap after verify must fail"
-  doAssert loadDeks(r, c)[entry.id] == goodDek,
-    "the verified record DEK must stay authoritative"
-  doAssert checkVault(r, c).problems.len == 0
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  doAssert raised or checkFailed,
+    "a post-verify record swap must fail the command or fail check"
   removeDir(forged)
   removeDir(wrapBin)
   removeDir(r)
   echo "PASS: add refuses record-DEK swaps after verify"
+
+block addDirRefusesARecordDekSwappedAfterVerify:
+  ## add-dir must not re-sign a record DEK from an unsigned swapped record.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let keepDir = r / "keep"
+  createDir(keepDir)
+  let keep = keepDir / "secret.txt"
+  writeFile(keep, "record-dek-original")
+  add(r, keep, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let forged = createTempDir("nimvault_audit_", "_recordswap_dir")
+  let plain = forged / "record.plain"
+  let badDek = repeat('b', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_dir")
+  let marker = wrapBin / "swapped"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, secondRecordDecryptSwapHook(realGpg,
+                                                 entryFile(r, c, entry.id),
+                                                 badRec, marker, seen))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let incoming = r / "incoming"
+  createDir(incoming)
+  writeFile(incoming / "later.txt", "record-dek-later")
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  var raised = false
+  try:
+    try:
+      addDir(r, incoming, c)
+    except CatchableError:
+      raised = true
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  doAssert raised or checkFailed,
+    "a post-verify record swap must fail add-dir or fail check"
+  removeDir(forged)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add-dir refuses record-DEK swaps after verify"
+
+block rmDoesNotResignUnsignedLegacyDek:
+  ## rm may rewrite the manifest but must not sign a DEK from keys.evil.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let legacy = r / "legacy.txt"
+  let victim = r / "victim.txt"
+  writeFile(legacy, "legacy")
+  writeFile(victim, "victim")
+  add(r, legacy, c)
+  add(r, victim, c)
+  seal(r, c)
+  let entries = loadManifest(r, cfg = c)
+  var legacyEntry = entries[0]
+  for e in entries:
+    if e.path == "legacy.txt":
+      legacyEntry = e
+  saveEntryRecord(r, c, legacyEntry, "")
+  plantUnsignedDekFile(r, c, legacyEntry.id, repeat('e', 64))
+  remove(r, victim, c)
+  doAssert signedRecordDek(r, c, legacyEntry.id).len == 0,
+    "rm must not sign a DEK loaded only from unsigned keys.*"
+  removeDir(r)
+  echo "PASS: rm does not re-sign unsigned legacy DEKs"
+
+block moveRefusesUnsignedLegacyDek:
+  ## Moving a legacy record whose only DEK is in keys.evil must be refused.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let legacy = r / "legacy.txt"
+  writeFile(legacy, "legacy")
+  add(r, legacy, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  saveEntryRecord(r, c, entry, "")
+  plantUnsignedDekFile(r, c, entry.id, repeat('e', 64))
+  var raised = false
+  try:
+    move(r, legacy, r / "renamed.txt", c)
+  except CatchableError as e:
+    raised = true
+    doAssert "seal --force" in e.msg, e.msg
+  doAssert raised, "move must refuse key-file-only legacy DEKs"
+  doAssert signedRecordDek(r, c, entry.id).len == 0,
+    "move must not sign an unsigned legacy DEK"
+  removeDir(r)
+  echo "PASS: move refuses unsigned legacy DEKs"
+
+block rotateRefusesUnsignedLegacyDek:
+  ## rotate must refuse key-file-only DEKs unless the caller rekeys explicitly.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "legacy.txt"
+  writeFile(f, "legacy")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  saveEntryRecord(r, c, entry, "")
+  plantUnsignedDekFile(r, c, entry.id, repeat('e', 64))
+  var raised = false
+  try:
+    rotate(r, c)
+  except CatchableError as e:
+    raised = true
+    doAssert "seal --force" in e.msg, e.msg
+  doAssert raised, "rotate must refuse key-file-only legacy DEKs"
+  doAssert signedRecordDek(r, c, entry.id).len == 0,
+    "rotate must not sign an unsigned legacy DEK"
+  removeDir(r)
+  echo "PASS: rotate refuses unsigned legacy DEKs"
 
 block gitignoreLineIsLiteral:
   let r = setupRepo()
@@ -1586,7 +1764,6 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   let badBlob = forged / "blob.gpg"
   encryptWithDek(c, dek, payload, badBlob)
   writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
-  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
   let badHash = sha256sum(badBlob)
   let plain = forged / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -1597,7 +1774,6 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   doAssert fileExists(blob)
   doAssert fileExists(badRec)
   doAssert fileExists(badBlob)
-  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
 
   let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
   let marker = wrapBin / "swapped"
@@ -1626,6 +1802,57 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   removeDir(forged)
   removeDir(wrapBin)
   echo "PASS: split-record/blob swaps after verify do not change plaintext"
+
+block unsealRecordOnlySwapKeepsOriginalPlaintext:
+  ## Swapping only the record after verify must not redirect plaintext writes.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "ORIGINAL-PLAINTEXT")
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  let entry = loadManifest(r, cfg = c)[0]
+  let dek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_record_only_forged")
+  let badPath = "evil.txt"
+  let plain = forged / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{badPath}\t{entry.hash}\tfile\t{entry.contentHash}\t{dek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_record_only")
+  let marker = wrapBin / "swapped"
+  writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badRec.quoteShell & " > " & entryFile(r, c, entry.id).quoteShell
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
+  let got = runCli(r, @["unseal"])
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  delEnv("NIMVAULT_SWAP_ON_STDIN")
+  doAssert fileExists(marker), "test wrapper did not swap the split record:\n" & got.outp
+  let planted = r / badPath
+  if got.code == 0:
+    doAssert fileExists(f), got.outp
+    doAssert readFile(f) == "ORIGINAL-PLAINTEXT",
+      "a post-verify record swap must keep the original plaintext:\n" & got.outp
+    doAssert not fileExists(planted),
+      "record-only swap must not redirect plaintext writes:\n" & got.outp
+  else:
+    doAssert not fileExists(f), "a refused unseal must not write the original path"
+    doAssert not fileExists(planted), "a refused unseal must not write the swapped path"
+  removeDir(r)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: record-only swaps after verify keep original plaintext"
 
 block getDecryptsVerifiedSnapshotBytes:
   ## A blob swap hook can only target a path argument. `get` must decrypt the

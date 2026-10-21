@@ -450,10 +450,13 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
   publishSigned(cfg, tmpEnc, encPath)
 
 proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
-                       envelope = false) =
+                       envelope = false,
+                       knownDeks: DekTable = initTable[string, string](),
+                       haveDeks = false) =
   ## Rewrite the entry list without dropping the seal key or the envelope
   ## mark. add/rm/mv/addDir used to call `saveManifest` with the defaults
   ## and so forced the next seal to re-encrypt every blob.
   let meta = loadManifestMeta(repo, verifySig = cfg.effectiveSigner != "none",
                               cfg = cfg, checkPresent = true)
-  saveManifest(repo, entries, cfg, meta.sealKey, meta.envelope or envelope)
+  saveManifest(repo, entries, cfg, meta.sealKey, meta.envelope or envelope,
+               knownDeks = knownDeks, haveDeks = haveDeks)

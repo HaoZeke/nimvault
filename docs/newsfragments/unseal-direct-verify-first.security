@@ -1,0 +1,2 @@
+unseal now verifies every direct gpg blob signature before it places any
+plaintext, so one bad later signature cannot leave earlier files restored.
