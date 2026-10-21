@@ -967,7 +967,7 @@ proc safeMovePath(oldAbs, newAbs: string) =
     shredFile(tmp)
     raise
   renameOver(tmp, newAbs)
-  removeFile(oldAbs)
+  shredFile(oldAbs)
 
 proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   # Mutating command: hold the vault lock so a concurrent nimvault

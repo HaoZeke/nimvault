@@ -1,0 +1,1 @@
+A cross-filesystem `mv` overwrites the source before removing it, as `lock` does. It unlinked the source, which left the plaintext in its blocks and readable through any other link or open descriptor.

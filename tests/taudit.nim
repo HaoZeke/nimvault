@@ -411,6 +411,46 @@ block mvAcrossFilesystemsKeepsTheSourceMode:
       removeDir(shm)
     echo "PASS: cross-device mv keeps the source mode"
 
+block mvAcrossFilesystemsShredsTheSource:
+  ## The copy fallback unlinked the source, which leaves its blocks intact for
+  ## anything still holding the inode. A descriptor opened before the move sees
+  ## whether the bytes were overwritten.
+  let shm = secondFs("nimvault-audit-mvshred-")
+  if shm.len == 0:
+    echo "SKIP: cross-device mv shred (no second filesystem)"
+  else:
+    let oldHome = getEnv("HOME")
+    let base = createTempDir("nimvault_audit_", "_home")
+    let home = base / "home"
+    createDir(home)
+    let r = setupRepo()
+    putEnv("HOME", home)
+    try:
+      let c = GpgConfig(recipient: keyId)
+      let src = home / "secret.txt"
+      let secret = "cross-device-shred-me"
+      writeFile(src, secret)
+      add(r, "~/secret.txt", c)
+      seal(r, c)
+      var held = open(src, fmRead)
+      try:
+        let dst = shm / "secret.txt"
+        move(r, src, dst, c)
+        doAssert not fileExists(src), "mv must remove the source"
+        doAssert readFile(dst) == secret
+        let left = held.readAll()
+        doAssert left.len == secret.len, "shred keeps the length: " & $left.len
+        doAssert left != secret,
+          "mv across filesystems must overwrite the source before removing it"
+      finally:
+        held.close()
+    finally:
+      putEnv("HOME", oldHome)
+      removeDir(r)
+      removeDir(base)
+      removeDir(shm)
+    echo "PASS: cross-device mv shreds the source"
+
 block mvRefusesSourceUnderSymlinkedAncestor:
   ## `rename` follows a directory symlink above the source. With the entry's
   ## directory swapped for a link out of the root, mv would pull the outside

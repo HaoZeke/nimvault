@@ -159,11 +159,22 @@ Still accepted:
 - ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
   some records on the previous wrapping. The data key bytes are unchanged, and
   a second ~rotate~ finishes the job.
-- ~unseal~ now stages, renames and shreds plaintext through one opened parent
-  descriptor, so swapping that parent after checks does not redirect writes.
-  Commands that still reopen plaintext paths by name (for example ~seal~ reads,
-  and ~mv~ source reads) keep a check-to-use race if another writer can replace
-  a writable parent between the check and the open.
+- ~unseal~ opens each destination's parent by walking from =/= without
+  following a symlink, then creates, writes, renames and shreds its staging
+  file through that descriptor. Swapping a parent after the checks does not
+  redirect the plaintext.
+- Other commands check a path, then use it by name. Whoever can replace a
+  writable parent directory between the check and the use wins that race:
+  - ~mv~ creates the destination's parents and renames by name, so a parent
+    swapped for a symlink puts the plaintext where the link points. Across
+    filesystems it copies the source, renames the copy over the destination
+    and shreds the source, all by name.
+  - ~lock~ hashes, overwrites and unlinks each file and its editor backups by
+    name. A parent swapped after the check makes it overwrite and remove a
+    file of the same name in the directory the link points at. ~gc~ shreds
+    staging files the same way.
+  - ~seal~ reads plaintext by name, so a swapped parent puts another file's
+    bytes in the blob.
 - ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
   mode 0600, once every in-band signature has passed. A rename on one
   filesystem is what keeps a destination symlink from being followed. The
