@@ -72,11 +72,13 @@ proc assertResolvedWithinBoundary(cfg: GpgConfig, absPath: string) =
   if not insideBase(resolvedBase(base), real):
     nvRaise(&"FATAL: refusing path outside the vault root: {absPath}")
 
-proc assertParentWithinBoundary(cfg: GpgConfig, absDir: string) =
-  ## `absDir` is already resolved as far as currently-existing components go.
-  ## The final file may not exist yet, so this check is lexical against the
-  ## resolved boundary root.
-  let base = boundaryBase(cfg, absDir)
+proc assertParentWithinBoundary(cfg: GpgConfig, dest, absDir: string) =
+  ## `absDir` is the parent of `dest`, resolved as far as currently-existing
+  ## components go. The final file may not exist yet, so this check is
+  ## lexical against the resolved boundary root. The boundary comes from
+  ## `dest` as written: with no root, a path under $HOME stays under $HOME
+  ## however its parents resolve by now.
+  let base = boundaryBase(cfg, dest)
   if base.len == 0:
     return
   if not insideBase(resolvedBase(base), normalizedPath(absDir)):
@@ -192,7 +194,7 @@ proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
   ## open. The plaintext is written through that descriptor, so a later swap
   ## of a name in the path cannot redirect it.
   let parent = resolvedParentForWrite(dest)
-  assertParentWithinBoundary(cfg, parent)
+  assertParentWithinBoundary(cfg, dest, parent)
   let dirFd = openDirFd(parent, createMissing = true)
   let tmpName = ".nimvault-" & genId() & ".tmp"
   let fd = openAt(dirFd, tmpName.cstring,
