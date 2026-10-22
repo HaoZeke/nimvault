@@ -1235,6 +1235,7 @@ block twoAddsMergeWithoutManifestClash:
   copyFile(srcE, entryFile(a, c, bId))
   let srcBlob = findBlob(b, c, bId)
   copyFile(srcBlob, blobPath(a, c, bId))
+  copyFile(manifestPath(b, c), manifestPath(a, c))
 
   let merged = loadManifest(a, cfg = c)
   doAssert merged.len == 2, "split records must union across a copy: " & $merged.len
