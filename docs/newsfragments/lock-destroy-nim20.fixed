@@ -1,0 +1,2 @@
+Nim 2.0 builds now use a compatible `VaultLock` destructor signature during
+compilation, while newer Nim releases keep the modern destructor form.

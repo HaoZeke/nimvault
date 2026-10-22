@@ -1,0 +1,3 @@
+Tighten record-swap audits: unsigned swaps must make both add and check fail,
+and vault-signed last-decrypt swaps must make add fail or keep original
+plaintext retrievable.

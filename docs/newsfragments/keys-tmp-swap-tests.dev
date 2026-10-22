@@ -1,0 +1,3 @@
+Added regression tests for `add` and `add-dir` that tamper with
+`keys.*.tmp` plaintext during encryption and assert records keep the DEK that
+actually encrypted each payload blob.

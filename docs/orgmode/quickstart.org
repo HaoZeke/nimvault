@@ -99,8 +99,10 @@ nimvault status
 #+end_src
 
 ~status~ compares the plaintext on this machine against the manifest. To check
-the vault itself is intact -- every blob still matching the digest recorded for
-it -- use ~check~, which decrypts nothing and needs no key:
+the vault itself is intact, use ~check~. It compares payload blobs to the
+digests in records this identity can open, reports how many records it could
+not open, and does not decrypt the payloads. The digests are stored in the
+encrypted records:
 
 #+begin_src bash
 nimvault check

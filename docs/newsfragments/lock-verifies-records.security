@@ -1,0 +1,1 @@
+`lock` verifies record signatures with the configured signer, refuses a record path that fails the traversal check, and shreds editor backups only beside an entry that is present and matches its recorded hash. An unsigned record could name any `name~` file, including one outside `$HOME`, for shredding.

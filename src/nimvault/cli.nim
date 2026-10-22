@@ -1,16 +1,20 @@
 ## CLI dispatch for nimvault using cligen.
 
-import std/[os, strutils]
+import std/[os, strutils, posix]
 import cligen
 
 from ./gpg import GpgConfig, initGpgConfig, NimvaultError
-from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous
+from ./vaultrepo import resolveVaultRepo, warnIfRootIsAmbiguous, gitRoot
 from ./commands import nil
 from ./version import Version
 export Version
 
 template cliRun(body: untyped) =
   try:
+    # cligen installs a SIGPIPE handler that exits 0. Ignore SIGPIPE so writes
+    # fail with EPIPE instead, and a closed pipe is reported as a command
+    # failure rather than a silent success.
+    discard sigignore(SIGPIPE)
     body
   except NimvaultError as e:
     stderr.writeLine e.msg
@@ -116,25 +120,37 @@ proc doCheck(recipient = "", vault = "") =
     let (repo, cfg) = resolve(recipient, vault)
     commands.check(repo, cfg)
 
-proc doScan(path: seq[string], recipient = "", vault = "") =
-  if path.len > 1:
-    stderr.writeLine "usage: nimvault scan [PATH]"
+proc doScan(path: seq[string], recipient = "", vault = "", cached = false,
+            rev = "", remote = "") =
+  ## Walk a tree, or with `--cached` the index, or with `--rev` commits.
+  ## `--cached` and `--rev` take no path: they read git, not the worktree.
+  if (cached and rev.len > 0) or ((cached or rev.len > 0) and path.len > 0) or
+     path.len > 1 or (remote.len > 0 and rev.len == 0):
+    stderr.writeLine "usage: nimvault scan [PATH] [--cached | --rev REV [--remote NAME]]"
     quit 1
-  let targetArg = if path.len == 0: "." else: path[0]
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
-    commands.scan(repo, target, cfg)
+    if cached or rev.len > 0:
+      let here = gitRoot()
+      let content = if here.len > 0: here else: repo
+      if cached:
+        commands.scanCached(repo, cfg, content)
+      else:
+        commands.scanRev(repo, cfg, content, rev, remote)
+    else:
+      let targetArg = if path.len == 0: "." else: path[0]
+      let target = if targetArg.isAbsolute: targetArg else: getCurrentDir() / targetArg
+      commands.scan(repo, target, cfg)
 
 proc doWho(recipient = "", vault = "") =
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
     commands.who(repo, cfg)
 
-proc doLock(recipient = "", vault = "") =
+proc doLock(recipient = "", allowUnsigned = false, vault = "") =
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    commands.lockPlaintext(repo, cfg)
+    commands.lockPlaintext(repo, cfg, allowUnsigned)
 
 proc doInit(recipient = "", vault = "") =
   cliRun:
@@ -171,7 +187,7 @@ proc main*(args: seq[string] = commandLineParams()) =
              "force": "re-encrypt every file, not only changed ones"}],
     [doUnseal, cmdName = "unseal", positional = "path",
      help = {"recipient": rh, "vault": vh,
-             "allowUnsigned": "accept unsigned legacy manifests",
+             "allowUnsigned": "accept records with no signature; a present one must verify",
              "path": "restore only these entries (default: all)"}],
     [doAdd, cmdName = "add", positional = "path",
      help = {"recipient": rh, "vault": vh,
@@ -182,7 +198,7 @@ proc main*(args: seq[string] = commandLineParams()) =
     [doRm, cmdName = "rm", positional = "path", help = {"recipient": rh, "vault": vh}],
     [doGet, cmdName = "get", positional = "path",
      help = {"recipient": rh, "vault": vh,
-             "allowUnsigned": "accept unsigned legacy manifests"}],
+             "allowUnsigned": "accept records with no signature; a present one must verify"}],
     [doMv, cmdName = "mv", positional = "paths", help = {"recipient": rh, "vault": vh}],
     [doList, cmdName = "list", help = {"recipient": rh, "vault": vh}],
     [doStatus, cmdName = "status", help = {"recipient": rh, "vault": vh}],
@@ -194,11 +210,15 @@ proc main*(args: seq[string] = commandLineParams()) =
      help = {"recipient": rh, "vault": vh,
              "rekey": "re-encrypt every payload, not just the key wrapping"}],
     [doScan, cmdName = "scan", positional = "path",
-     help = {"recipient": rh, "vault": vh}],
+     help = {"recipient": rh, "vault": vh,
+             "cached": "scan the git index instead of the worktree",
+             "rev": "scan blobs introduced by a commit or A..B range",
+             "remote": "with --rev, skip commits this remote's tracking refs reach"}],
     [doWho, cmdName = "who",
      help = {"recipient": rh, "vault": vh}],
     [doLock, cmdName = "lock",
-     help = {"recipient": rh, "vault": vh}],
+     help = {"recipient": rh, "vault": vh,
+             "allowUnsigned": "accept records with no signature; a present one must verify"}],
     [doInit, cmdName = "init",
      help = {"recipient": rh, "vault": vh}],
     [doHook, cmdName = "hook",

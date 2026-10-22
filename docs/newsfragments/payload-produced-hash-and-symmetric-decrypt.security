@@ -1,0 +1,4 @@
+Payload writes now keep the ciphertext hash from the private work file
+that nimvault produced, instead of re-hashing `.vault` paths after publish.
+DEK payload decrypts also now require gpg status evidence of a symmetric
+decrypt, so literal or public-key packet payloads are refused on that path.

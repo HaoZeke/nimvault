@@ -4,7 +4,6 @@
 
 import std/[os, osproc, strutils, strformat, tempfiles]
 import nimvault/gpg
-from nimvault/crypto import decryptManyToString
 
 proc setupTestGpgHome(): string =
   ## Create a temporary GNUPGHOME with a throwaway key.
@@ -71,10 +70,10 @@ block initGpgConfigFromFile:
   let tmpDir = createTempDir("nimvault_cfg_", "_test")
   let vaultDir = tmpDir / ".vault"
   createDir(vaultDir)
-  writeFile(vaultDir / "config", "# vault config\nrecipient = CONFIGKEY456\nroot = repo\n")
+  writeFile(vaultDir / "config", "# vault config\nrecipient = 9CCCE36402CB49A6\nroot = repo\n")
   delEnv("NIMVAULT_GPG_RECIPIENT")
   let cfg = initGpgConfig("", tmpDir)
-  doAssert cfg.recipient == "CONFIGKEY456"
+  doAssert cfg.recipient == "9CCCE36402CB49A6"
   doAssert cfg.root == tmpDir  # "repo" expands to the repo path
   removeDir(tmpDir)
   echo "PASS: initGpgConfig from config file"
@@ -92,7 +91,7 @@ block encryptDecryptCycle:
   gpgEncrypt(cfg, plainIn, encrypted)
   doAssert fileExists(encrypted), "Encrypted file should exist"
 
-  gpgDecrypt(encrypted, plainOut, verifySig = true)
+  gpgDecrypt(cfg, encrypted, plainOut, verifySig = true)
   doAssert fileExists(plainOut), "Decrypted file should exist"
   doAssert readFile(plainOut) == testContent, "Round-trip content mismatch"
 
@@ -109,11 +108,27 @@ block decryptToString:
 
   writeFile(plainIn, testContent)
   gpgEncrypt(cfg, plainIn, encrypted)
-  let result = gpgDecryptToString(encrypted, verifySig = true)
+  let result = gpgDecryptToString(cfg, encrypted, verifySig = true)
   doAssert result == testContent, "gpgDecryptToString content mismatch"
 
   removeDir(tmpDir)
   echo "PASS: gpgDecryptToString (verified)"
+
+block validSigBindsThePrimaryKey:
+  ## The tenth VALIDSIG field is the primary key; the first is the signing
+  ## subkey. Pinning compares the primary key.
+  let status = "[GNUPG:] NEWSIG\n" &
+    "[GNUPG:] GOODSIG 0123456789ABCDEF Someone\n" &
+    "[GNUPG:] VALIDSIG aaaa1111 2026-10-21 1792540800 0 4 0 1 10 00 bbbb2222\n"
+  doAssert validSigners(status) == @["BBBB2222"]
+  doAssert gpgSignerProblem(status, "rec", @["BBBB2222"]) == ""
+  doAssert "not a key this vault is configured for" in
+    gpgSignerProblem(status, "rec", @["AAAA1111"])
+  doAssert "signature verification failed" in
+    gpgSignerProblem("[GNUPG:] GOODSIG X\n", "rec", @["BBBB2222"])
+  let cfg = GpgConfig(recipient: "A1", wraps: @["~/x/**:B2,A1", "**: C3 "])
+  doAssert vaultSignerSpecs(cfg) == @["A1", "B2", "C3"]
+  echo "PASS: VALIDSIG pins the primary key"
 
 block sha256sumTest:
   let tmpDir = createTempDir("nimvault_sha_", "_test")
@@ -128,35 +143,6 @@ block sha256sumTest:
   doAssert h == h2, "SHA-256 should be deterministic"
   removeDir(tmpDir)
   echo "PASS: sha256sum"
-
-block decryptManyKeepsOrderAndReportsFailures:
-  ## Twenty records decrypt four at a time, in the order asked; a file gpg
-  ## cannot open comes back as its message instead of raising.
-  let tmpDir = createTempDir("nimvault_many_", "_test")
-  let cfg = GpgConfig(recipient: keyId)
-  putEnv("NIMVAULT_GPG_PARALLEL", "4")
-  var paths: seq[string] = @[]
-  for i in 0 ..< 20:
-    let plain = tmpDir / &"r{i}.txt"
-    writeFile(plain, &"record {i}\n")
-    let enc = tmpDir / &"r{i}.gpg"
-    gpgEncrypt(cfg, plain, enc)
-    paths.add(enc)
-  let junk = tmpDir / "junk.gpg"
-  writeFile(junk, "not a gpg file\n")
-  paths.insert(junk, 7)
-  let got = decryptManyToString(cfg, paths, verifySig = true)
-  doAssert got.len == 21
-  for i, path in paths:
-    if path == junk:
-      doAssert got[i].plain.len == 0 and "gpg decrypt failed" in got[i].err, got[i].err
-    else:
-      let n = if i < 7: i else: i - 1
-      doAssert got[i].err.len == 0, got[i].err
-      doAssert got[i].plain == &"record {n}\n", got[i].plain
-  delEnv("NIMVAULT_GPG_PARALLEL")
-  removeDir(tmpDir)
-  echo "PASS: decryptManyToString order and failures"
 
 cleanupTestGpgHome(gpgHome)
 echo "All GPG tests passed."

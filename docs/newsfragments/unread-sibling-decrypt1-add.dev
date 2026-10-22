@@ -1,0 +1,3 @@
+Audit coverage now swaps unread sibling records at decrypt step one of add
+for two- and three-record gpg vaults, and asserts that signed swaps keep the
+original keys while unsigned swaps fail add and check without changing keys.

@@ -53,7 +53,7 @@ git add .nimvault && git commit -m "vault: move to a private repository"
 
 # 4. Verify before committing the removal anywhere
 cd ~/Git/private/dotfiles-vault
-nimvault check                   # every blob still matches the manifest
+nimvault check                   # checks blobs this identity can open
 nimvault get ~/.ssh/config >/dev/null && echo readable
 git add .vault .gitignore && git commit -m "vault: initial import"
 #+end_src

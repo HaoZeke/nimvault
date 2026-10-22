@@ -5,9 +5,35 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism
-from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, sshSign,
-                  sshVerify, ageBinary, ageIdentityPath
+                  gpgDecryptBytesToString,
+                  gpgStatusHas, sha256sum, vaultSigners,
+                  signingKey, AgeGpgSigner
+from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
+                  sshVerify, sshVerifyBytes, ageBinary, ageIdentityPath
+from ./fsat import ONoFollow, writeAll
+
+proc ensureOwnerDir*(dir: string) =
+  ## Create `dir` mode 0700, or tighten a directory this user already owns.
+  ## A symlink or another uid's directory is refused: plaintext and data keys
+  ## are written underneath it.
+  if symlinkExists(dir):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  if not dirExists(dir):
+    if posix.mkdir(dir.cstring, 0o700.Mode) != 0 and posix.errno != posix.EEXIST:
+      nvRaise(&"FATAL: cannot create runtime directory: {dir}")
+  if symlinkExists(dir):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  var st: posix.Stat
+  if posix.lstat(dir.cstring, st) != 0:
+    nvRaise(&"FATAL: cannot stat runtime directory: {dir}")
+  if posix.S_ISLNK(st.st_mode):
+    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+  if not posix.S_ISDIR(st.st_mode):
+    nvRaise(&"FATAL: runtime directory is not a directory: {dir}")
+  if st.st_uid != posix.getuid():
+    nvRaise(&"FATAL: runtime directory is not owned by this user: {dir}")
+  if posix.chmod(dir.cstring, 0o700.Mode) != 0:
+    nvRaise(&"FATAL: cannot restrict runtime directory: {dir}")
 
 proc privateWorkDir*(): string =
   ## Owner-only directory for plaintext and data keys that must not land in
@@ -18,17 +44,152 @@ proc privateWorkDir*(): string =
   let parent =
     if xdg.len > 0 and dirExists(xdg): xdg / "nimvault"
     else: getTempDir() / &"nimvault-{getuid()}"
-  if not dirExists(parent):
-    createDir(parent)
-    setFilePermissions(parent, {fpUserRead, fpUserWrite, fpUserExec})
+  ensureOwnerDir(parent)
   var buf: array[8, byte]
   doAssert urandom(buf)
   var id = ""
   for b in buf:
     id.add(b.toHex(2).toLowerAscii())
   result = parent / id
-  createDir(result)
+  if posix.mkdir(result.cstring, 0o700.Mode) != 0:
+    nvRaise(&"FATAL: cannot create work directory: {result}")
   setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
+
+proc shredFile*(path: string) =
+  ## Overwrite a regular file, then unlink it. A symlink is unlinked and not
+  ## followed. Best effort: a filesystem that keeps old blocks can still
+  ## recover them.
+  if path.len == 0:
+    return
+  if symlinkExists(path):
+    try: removeFile(path) except CatchableError: discard
+    return
+  if not fileExists(path):
+    return
+  let fd = posix.open(path.cstring, posix.O_WRONLY or ONoFollow)
+  if fd >= 0:
+    var left = getFileSize(path)
+    var buf: array[8192, byte]
+    while left > 0:
+      let n = min(left.int, buf.len)
+      if not urandom(buf):
+        for i in 0 ..< buf.len: buf[i] = 0
+      let w = posix.write(fd, addr buf[0], n)
+      if w <= 0: break
+      left -= w
+    discard posix.fsync(fd)
+    discard posix.close(fd)
+  try: removeFile(path) except CatchableError: discard
+
+proc discardPrivate*(dir: string) =
+  ## Shred files under a work directory this process created, then remove it.
+  if dir.len == 0 or symlinkExists(dir) or not dirExists(dir):
+    return
+  for path in walkDirRec(dir, yieldFilter = {pcFile, pcLinkToFile}):
+    shredFile(path)
+  try: removeDir(dir) except CatchableError: discard
+
+proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
+  ## `rename(2)`. Replaces `dest` when it is a symlink and does not follow it.
+  ## Nim's posix module does not wrap this call.
+
+proc syncParentDir*(path: string)
+
+proc copyPathToFd(src: string, fd: cint) =
+  var f: File
+  if not open(f, src, fmRead):
+    nvRaise(&"FATAL: cannot read staged ciphertext: {src}")
+  defer:
+    f.close()
+  var buf = newString(1024 * 1024)
+  while true:
+    let n = f.readBuffer(addr buf[0], buf.len)
+    if n <= 0:
+      break
+    let err = writeAll(fd, addr buf[0], n)
+    if err != 0:
+      nvRaise("FATAL: cannot write staged ciphertext: " &
+              osErrorMsg(OSErrorCode(err)))
+
+proc openVaultRegularReadFd(path: string): cint =
+  ## Open `path` without following a final symlink and require a regular file.
+  let fd = posix.open(path.cstring, O_RDONLY or ONoFollow or O_NONBLOCK or
+                      O_CLOEXEC)
+  if fd < 0:
+    if errno == ELOOP:
+      nvRaise(&"FATAL: refusing symlinked vault file: {path}")
+    nvRaise(&"FATAL: could not open vault file: {path}")
+  var st: Stat
+  if fstat(fd, st) != 0:
+    discard posix.close(fd)
+    nvRaise(&"FATAL: could not stat vault file: {path}")
+  if not S_ISREG(st.st_mode):
+    discard posix.close(fd)
+    nvRaise(&"FATAL: refusing non-regular vault file: {path}")
+  fd
+
+proc assertVaultRegularFile*(path: string) =
+  ## Fail unless `path` is a regular file reached without symlink following.
+  let fd = openVaultRegularReadFd(path)
+  discard posix.close(fd)
+
+proc readVaultRegularFile*(path: string): string =
+  ## Read one vault file through one nofollow descriptor.
+  let fd = openVaultRegularReadFd(path)
+  defer:
+    discard posix.close(fd)
+  var buf: array[65536, char]
+  while true:
+    let n = posix.read(fd, addr buf[0], buf.len)
+    if n < 0:
+      if errno == EINTR or errno == EAGAIN:
+        continue
+      nvRaise(&"FATAL: could not read vault file: {path}")
+    if n == 0:
+      break
+    let at = result.len
+    result.setLen(at + n)
+    copyMem(addr result[at], addr buf[0], n)
+
+proc publishFileNofollow*(src, dest: string) =
+  ## Copy `src` into `dest.tmp` opened O_EXCL|O_NOFOLLOW, then rename.
+  ## A planted symlink at that temp name is refused instead of followed.
+  let tmp = dest & ".tmp"
+  let fd = posix.open(tmp.cstring,
+                      posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                      ONoFollow or O_CLOEXEC,
+                      0o600.Mode)
+  if fd < 0:
+    nvRaise(&"FATAL: could not open publish temp for {dest}")
+  var wrote = false
+  try:
+    copyPathToFd(src, fd)
+    discard posix.fsync(fd)
+    wrote = true
+  finally:
+    discard posix.close(fd)
+    if not wrote:
+      try: removeFile(tmp) except CatchableError: discard
+  if renameAt(tmp.cstring, dest.cstring) != 0:
+    try: removeFile(tmp) except CatchableError: discard
+    nvRaise(&"FATAL: could not publish ciphertext at {dest}")
+  syncParentDir(dest)
+  try: removeFile(src) except CatchableError: discard
+
+proc publishPending*(src, dest: string) =
+  ## Replace `dest` with `src`. A failed rename leaves `src` where it is:
+  ## the record may already name those bytes, and deleting them would leave
+  ## the record pointing at ciphertext that is no longer on disk.
+  if renameAt(src.cstring, dest.cstring) != 0:
+    nvRaise(&"FATAL: could not publish blob {dest}")
+
+proc renameOver*(src, dest: string) =
+  ## `rename` replaces `dest` even when `dest` is a symlink, and does not
+  ## follow it. The copy fallback in `moveFile` does follow, which writes
+  ## plaintext through a symlink when the two paths are on different devices.
+  if renameAt(src.cstring, dest.cstring) != 0:
+    shredFile(src)
+    nvRaise(&"FATAL: could not place plaintext at {dest}")
 
 template withPrivateUmask*(body: untyped) =
   ## Decrypt/encrypt sidecars inherit the process umask. Force 077 so a
@@ -95,6 +256,31 @@ proc findBlob*(repo: string, cfg: GpgConfig, id: string): string =
     return other
   return mine   ## report the expected path in the caller's "missing" error
 
+proc resolveBlob*(repo: string, cfg: GpgConfig, id, expectedHash: string): string =
+  ## The live blob when it matches `expectedHash`. A `.pending` sibling is
+  ## the ciphertext a seal wrote before it could rename it into place; if
+  ## that sibling is the one the record names, promote it.
+  if expectedHash.len == 0:
+    return findBlob(repo, cfg, id)
+  let live = findBlob(repo, cfg, id)
+  proc matches(path: string): bool =
+    fileExists(path) and sha256sum(path) == expectedHash
+  let pend = blobPath(repo, cfg, id) & ".pending"
+  if matches(live):
+    if fileExists(pend):
+      try: removeFile(pend) except CatchableError: discard
+    return live
+  if matches(pend):
+    let dest = blobPath(repo, cfg, id)
+    if renameAt(pend.cstring, dest.cstring) != 0:
+      if matches(dest): return dest
+      if matches(live): return live
+      return ""
+    syncPath(dest)
+    syncParentDir(dest)
+    return dest
+  return ""
+
 proc manifestPath*(repo: string, cfg: GpgConfig): string =
   ## Path the configured backend would write. Use `findManifest` to read.
   repo / ".vault" / ("manifest" & cfg.blobExt)
@@ -122,54 +308,17 @@ proc decryptFile*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   ## That is not a weakening: the manifest records each blob's SHA-256 and the
   ## callers verify it before decrypting, with the manifest itself signed.
   if cfg.usesAge: ageDecrypt(cfg, inPath, outPath)
-  else: gpgDecrypt(inPath, outPath, verifySig)
+  else: gpgDecrypt(cfg, inPath, outPath, verifySig)
 
-proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false): string =
+proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                      checkPresent = false): string =
   if cfg.usesAge: ageDecryptToString(cfg, inPath)
-  else: gpgDecryptToString(inPath, verifySig)
+  else: gpgDecryptToString(cfg, inPath, verifySig, checkPresent)
 
-type Decrypted* = tuple[plain, err: string]
-  ## One file's plaintext, or the message `decryptToString` would have raised.
-
-proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
-                          verifySig = false): seq[Decrypted] =
-  ## `decryptToString` over many small files, in the same order, with no
-  ## raise: each failure comes back as its message. gpg runs
-  ## `gpgParallelism()` processes at a time; a vault of a few hundred split
-  ## records otherwise pays one process start and one agent round trip per
-  ## record, in series, on every command that loads the manifest. age stays
-  ## sequential, since its decrypt is in-process fast.
-  result = newSeq[Decrypted](paths.len)
-  if cfg.usesAge:
-    for i, path in paths:
-      try:
-        result[i] = (ageDecryptToString(cfg, path), "")
-      except CatchableError as err:
-        result[i] = ("", err.msg)
-    return
-  let batch = gpgParallelism()
-  for start in countup(0, paths.high, batch):
-    let stop = min(start + batch - 1, paths.high)
-    var procs: seq[(int, Process)] = @[]
-    for i in start .. stop:
-      procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", paths[i]],
-        options = {poUsePath})))
-    for (i, p) in procs:
-      let plain = p.outputStream.readAll()
-      let status = p.errorStream.readAll()
-      let code = p.waitForExit()
-      p.close()
-      let path = paths[i]
-      result[i] =
-        if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
-          ("", &"FATAL: signature verification failed for {path}")
-        elif code != 0:
-          ("", &"FATAL: gpg decrypt failed (exit {code})\n{status}")
-        elif verifySig and not gpgStatusHas(status, "GOODSIG"):
-          ("", &"FATAL: missing signature on {path}. Pass --allow-unsigned to accept unsigned vaults.")
-        else:
-          (plain, "")
+proc decryptBytesToString*(cfg: GpgConfig, cipher, label: string,
+                           verifySig = false, checkPresent = false): string =
+  if cfg.usesAge: ageDecryptBytesToString(cfg, cipher)
+  else: gpgDecryptBytesToString(cfg, cipher, label, verifySig, checkPresent)
 
 proc effectiveSigner*(cfg: GpgConfig): string =
   ## An empty signer means the config was built without going through
@@ -185,19 +334,66 @@ proc signManifest*(cfg: GpgConfig, path: string) =
   ## all, which is why an age vault defaults to an ssh signer.
   case cfg.effectiveSigner
   of "ssh": sshSign(cfg, path)
-  of "none", "gpg": discard
+  of "gpg":
+    if cfg.usesAge:
+      nvRaise("FATAL: " & AgeGpgSigner)
+  of "none": discard
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
 
-proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool) =
+proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
+  ## Move freshly encrypted `tmp` over `dest` along with its detached
+  ## signature. The signature is made over `tmp` first, so a signer that
+  ## fails leaves `dest` and the signature that covers it untouched; signing
+  ## `dest` after the rename put new ciphertext under the old signature, or
+  ## under none once ssh-keygen had removed it. The two renames are not one
+  ## step: a crash between them leaves the new signature at `<dest>.sig` and
+  ## the record it covers at `<dest>.tmp`; moving that file over `dest`
+  ## finishes the write.
+  let tmpSig = tmp & ".sig"
+  try:
+    signManifest(cfg, tmp)
+  except CatchableError:
+    for leftover in [tmp, tmpSig]:
+      try: removeFile(leftover) except CatchableError: discard
+    raise
+  syncPath(tmp)
+  if fileExists(tmpSig):
+    syncPath(tmpSig)
+    publishFileNofollow(tmpSig, dest & ".sig")
+  publishFileNofollow(tmp, dest)
+
+proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
+                     checkPresent = false) =
+  ## `checkPresent` (`--allow-unsigned`) lets a missing detached signature
+  ## pass and still verifies one that is there.
   if not requireSig:
+    if checkPresent and cfg.effectiveSigner == "ssh" and fileExists(path & ".sig"):
+      sshVerify(cfg, path)
     return
   case cfg.effectiveSigner
   of "ssh": sshVerify(cfg, path)
-  of "gpg": discard  ## checked inline while decrypting
+  of "gpg":
+    # Checked inline while decrypting, which an age record has nothing for.
+    if cfg.usesAge:
+      nvRaise("FATAL: signature verification failed: " & AgeGpgSigner)
   of "none":
     nvRaise("FATAL: signature required but this vault is configured with " &
             "`signer = none`.\n  Pass --allow-unsigned to read it anyway.")
   else: nvRaise(&"FATAL: unknown signer: {cfg.signer}")
+
+proc verifyAndDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                               checkPresent = false): string =
+  ## Verify and decrypt one ciphertext while reading it only once where
+  ## detached signatures are used.
+  let signer = cfg.effectiveSigner
+  if cfg.usesAge and signer == "ssh":
+    let cipher = readFile(inPath)
+    if verifySig or (checkPresent and fileExists(inPath & ".sig")):
+      sshVerifyBytes(cfg, inPath, cipher)
+    return ageDecryptBytesToString(cfg, cipher)
+  if verifySig or checkPresent:
+    verifyManifest(cfg, inPath, verifySig, checkPresent)
+  decryptToString(cfg, inPath, verifySig, checkPresent)
 
 proc signaturesInBand*(cfg: GpgConfig): bool =
   ## Whether decrypting a blob also proves who wrote it.
@@ -217,12 +413,26 @@ proc decryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   ## `unseal` and `status` stay backend-agnostic.
   if cfg.usesAge:
     startProcess(ageBinary(),
-      args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, inPath],
+      args = @["-d", "-i", ageIdentityPath(cfg), "-o", outPath, "--", inPath],
       options = {poUsePath})
   else:
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-               "-d", "-o", outPath, inPath],
+               "-d", "-o", outPath, "--", inPath],
+      options = {poUsePath})
+
+proc decryptStream*(cfg: GpgConfig, inPath: string): Process =
+  ## Spawn a decryption of `inPath` that writes the plaintext to stdout and,
+  ## for gpg, its status lines to stderr. Where the bytes land is the
+  ## caller's choice, so no path is handed to the backend.
+  if cfg.usesAge:
+    startProcess(ageBinary(),
+      args = @["-d", "-i", ageIdentityPath(cfg), "--", inPath],
+      options = {poUsePath})
+  else:
+    startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+               "-d", "--", inPath],
       options = {poUsePath})
 
 proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
@@ -244,9 +454,11 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
   var args: seq[string] = @[]
   if cfg.usesAge:
     for r in recipients:
+      if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
+        nvRaise("FATAL: invalid recipient")
       args.add("-r")
       args.add(r)
-    args.add(@["-o", outPath, inPath])
+    args.add(@["-o", outPath, "--", inPath])
     let p = startProcess(ageBinary(), args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
@@ -258,12 +470,14 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
     args.add(@["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always"])
     if sign:
-      args.add("--sign")
+      let signer = signingKey(cfg)
+      args.add(@["--local-user", signer, "--sign"])
     args.add("-e")
     for r in recipients:
-      args.add("-r")
-      args.add(r)
-    args.add(@["--set-filename", "", "-o", outPath, inPath])
+      if r.len == 0 or r[0] == '-' or '\n' in r or '\r' in r or '\0' in r:
+        nvRaise("FATAL: invalid recipient")
+      args.add("--recipient=" & r)
+    args.add(@["--set-filename", "", "-o", outPath, "--", inPath])
     let p = startProcess("gpg", args = args,
                          options = {poUsePath, poStdErrToStdOut})
     let output = p.outputStream.readAll()
@@ -275,12 +489,14 @@ proc encryptFileTo*(cfg: GpgConfig, recipients: seq[string],
 proc encryptProcess*(cfg: GpgConfig, inPath, outPath: string): Process =
   if cfg.usesAge:
     startProcess(ageBinary(),
-      args = @["-r", cfg.recipient, "-o", outPath, inPath],
+      args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})
   else:
+    let signer = signingKey(cfg)
     startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
                "--trust-model", "always",
-               "--sign", "-e", "-r", cfg.recipient,
-               "--set-filename", "", "-o", outPath, inPath],
+               "--local-user", signer,
+               "--sign", "-e", "--recipient=" & cfg.recipient,
+               "--set-filename", "", "-o", outPath, "--", inPath],
       options = {poUsePath, poStdErrToStdOut})

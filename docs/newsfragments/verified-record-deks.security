@@ -1,0 +1,4 @@
+Mutating commands now thread signature-verified record DEKs through manifest
+rewrites. add and add-dir sign only fresh DEKs for new ids, and move/rotate
+refuse entries whose DEK exists only in unsigned keys.* until an explicit
+migration step (for example seal --force) mints signed record DEKs.

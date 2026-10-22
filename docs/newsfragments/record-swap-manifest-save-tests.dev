@@ -1,0 +1,3 @@
+Audit tests now cover the last-decrypt split-record swap during `add`,
+and assert `loadDeks` still rejects unsigned records after an
+unverified read path.

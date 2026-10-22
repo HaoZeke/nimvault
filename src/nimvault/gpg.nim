@@ -1,7 +1,8 @@
 ## GPG encryption/decryption and recipient resolution.
 
-import std/[os, osproc, strutils, strformat, streams]
+import std/[os, osproc, strutils, strformat, streams, sequtils]
 import checksums/sha2
+from ./fsat import runWithInput
 
 type
   NimvaultError* = object of CatchableError
@@ -87,6 +88,8 @@ proc resolveRecipient*(cli, env, configRecipient: string): string =
     return configRecipient
   nvRaise("FATAL: no GPG recipient found. Set via --recipient, NIMVAULT_GPG_RECIPIENT env, or .vault/config")
 
+proc checkGpgConfig(cfg: GpgConfig)
+
 proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
   ## Build a GpgConfig by resolving recipient and root from the 3-tier chain.
   let configPath = repo / ".vault" / "config"
@@ -130,6 +133,7 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
     signerIdentity: c.signerIdentity,
     wraps: c.wraps,
   )
+  checkGpgConfig(result)
 
 proc gpgStatusHas*(status, token: string): bool =
   ## True when a `[GNUPG:] TOKEN` field is present. A UID that happens
@@ -142,13 +146,228 @@ proc gpgStatusHas*(status, token: string): bool =
     if s.startsWith(prefix) and s.len > prefix.len and s[prefix.len] in {' ', '\t'}:
       return true
 
+proc vaultSignerSpecs*(cfg: GpgConfig): seq[string] =
+  ## Key specifiers allowed to sign this vault: the recipient and every
+  ## recipient a wrap rule names. A machine that writes records is one the
+  ## config already lists, since it has to be able to read them.
+  proc keep(acc: var seq[string], s: string) =
+    let t = s.strip()
+    if t.len > 0 and t notin acc:
+      acc.add(t)
+  keep(result, cfg.recipient)
+  for rule in cfg.wraps:
+    let idx = rule.rfind(':')
+    if idx <= 0:
+      continue
+    for r in rule[idx + 1 .. ^1].split(','):
+      keep(result, r)
+
+proc normalizeHexSpec(s: string): string =
+  ## A trailing `!` asks gpg for that subkey exactly; the key it names is the
+  ## same.
+  var t = s.strip()
+  if t.len >= 2 and (t[0] == '0') and (t[1] in {'x', 'X'}):
+    t = t[2 .. ^1]
+  if t.endsWith('!'):
+    t = t[0 ..< ^1]
+  t.toUpperAscii()
+
+proc isHexSpec(s: string): bool =
+  let t = normalizeHexSpec(s)
+  if t.len < 16:
+    return false
+  for ch in t:
+    if ch notin {'0'..'9', 'A'..'F'}:
+      return false
+  true
+
+proc isShortHexSpec(s: string): bool =
+  let t = normalizeHexSpec(s)
+  if t.len != 8:
+    return false
+  for ch in t:
+    if ch notin {'0'..'9', 'A'..'F'}:
+      return false
+  true
+
+proc parseEmailSpec(s: string): string =
+  var t = s.strip()
+  if t.startsWith("<") and t.endsWith(">") and t.len > 2:
+    t = t[1 ..< t.len - 1].strip()
+  if t.len == 0 or '@' notin t:
+    return ""
+  if ' ' in t or '\t' in t:
+    return ""
+  t.toLowerAscii()
+
+proc uidEmail(uid: string): string =
+  let lo = uid.rfind('<')
+  if lo >= 0:
+    let hi = uid.find('>', lo + 1)
+    if hi > lo + 1:
+      return uid[lo + 1 ..< hi].strip().toLowerAscii()
+  let t = uid.strip()
+  if '@' in t and ' ' notin t and '\t' notin t:
+    return t.toLowerAscii()
+  ""
+
+type
+  KeyName = tuple[keyId, fpr: string]
+  ListedKey = tuple[keyId, fpr: string, emails: seq[string], subkeys: seq[KeyName]]
+
+proc parseListedKeys(listing: string): seq[ListedKey] =
+  var cur = -1
+  var needFpr = false
+  var needSubFpr = false
+  for line in listing.splitLines:
+    let fields = line.split(':')
+    if fields.len < 10:
+      continue
+    case fields[0]
+    of "pub", "sec":
+      result.add((fields[4].toUpperAscii(), "", @[], @[]))
+      cur = result.high
+      needFpr = true
+      needSubFpr = false
+    of "sub", "ssb":
+      if cur >= 0:
+        result[cur].subkeys.add((fields[4].toUpperAscii(), ""))
+        needFpr = false
+        needSubFpr = true
+    of "fpr":
+      if cur >= 0 and needFpr and fields[9].len > 0:
+        result[cur].fpr = fields[9].toUpperAscii()
+        needFpr = false
+      elif cur >= 0 and needSubFpr and fields[9].len > 0:
+        result[cur].subkeys[^1].fpr = fields[9].toUpperAscii()
+        needSubFpr = false
+    of "uid":
+      if cur >= 0 and fields[9].len > 0:
+        let email = uidEmail(fields[9])
+        if email.len > 0 and email notin result[cur].emails:
+          result[cur].emails.add(email)
+    else:
+      discard
+
+proc hexNames(hex: string, key: KeyName): bool =
+  let keyId = normalizeHexSpec(key.keyId)
+  let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
+  fpr == hex or keyId == hex
+
+proc signerFingerprints*(specs: seq[string], secretOnly = false): seq[string] =
+  ## Primary-key fingerprints, upper case, of every key in the keyring that one
+  ## of `specs` names. Email specs are exact (`<addr>`), and key IDs or
+  ## fingerprints are exact hex matches against the primary key or a subkey;
+  ## a vault may name the encryption subkey it is sealed to.
+  for raw in specs:
+    let s = raw.strip()
+    if s.len == 0 or s[0] == '-' or '\n' in s or '\r' in s or '\0' in s:
+      continue
+    let email = parseEmailSpec(s)
+    let hex = if email.len == 0 and isHexSpec(s): normalizeHexSpec(s) else: ""
+    if email.len == 0 and hex.len == 0:
+      continue
+    let query = if email.len > 0: "<" & email & ">" else: hex
+    var args = @["--batch", "--no-options", "--with-colons", "--fingerprint",
+                 (if secretOnly: "--list-secret-keys" else: "--list-keys"), "--",
+                 query]
+    let p = startProcess("gpg", args = args, options = {poUsePath, poStdErrToStdOut})
+    let listing = p.outputStream.readAll()
+    discard p.waitForExit()
+    p.close()
+    for key in parseListedKeys(listing):
+      let fpr = normalizeHexSpec(if key.fpr.len > 0: key.fpr else: key.keyId)
+      let ok =
+        if email.len > 0:
+          key.emails.anyIt(it == email)
+        else:
+          hexNames(hex, (key.keyId, key.fpr)) or key.subkeys.anyIt(hexNames(hex, it))
+      if ok and fpr.len > 0 and fpr notin result:
+        result.add(fpr)
+
+proc vaultSigners*(cfg: GpgConfig): seq[string] =
+  signerFingerprints(vaultSignerSpecs(cfg))
+
+proc exactKeySpec(s: string): bool =
+  ## An email address, key ID or fingerprint. gpg matches any other string
+  ## anywhere in a user ID, so `Alice` also names `Malice <malice@...>`.
+  parseEmailSpec(s).len > 0 or isHexSpec(s)
+
+const AgeGpgSigner* = "signer = gpg does not sign an age vault: gpg signs " &
+  "only what it encrypts.\n  Use signer = ssh with sign_key, allowed_signers " &
+  "and signer_identity."
+
+proc checkGpgConfig(cfg: GpgConfig) =
+  ## Refuse a config whose signer would sign and verify nothing without
+  ## saying so.
+  if cfg.backend notin ["gpg", "age"]:
+    nvRaise(&"FATAL: unknown backend `{cfg.backend}`; use gpg or age")
+  if cfg.signer notin ["gpg", "ssh", "none"]:
+    nvRaise(&"FATAL: unknown signer `{cfg.signer}`; use gpg, ssh or none")
+  if cfg.backend == "age" and cfg.signer == "gpg":
+    nvRaise("FATAL: " & AgeGpgSigner)
+  if cfg.backend == "gpg":
+    for spec in vaultSignerSpecs(cfg):
+      if isShortHexSpec(spec):
+        nvRaise(&"FATAL: recipient `{spec}` uses an 8-hex short key id.\n" &
+                "  Use a 16-hex long key id or a full fingerprint.")
+      if not exactKeySpec(spec):
+        nvRaise(&"FATAL: recipient `{spec}` does not name one key.\n" &
+                "  Use an email address, a key ID or a fingerprint. gpg " &
+                "matches any other string anywhere in a user ID.")
+
+proc signingKey*(cfg: GpgConfig): string =
+  ## Pick an allowed signer key this machine can use, in config order.
+  let specs = vaultSignerSpecs(cfg)
+  for spec in specs:
+    let mine = signerFingerprints(@[spec], secretOnly = true)
+    if mine.len > 0:
+      return mine[0]
+  nvRaise("FATAL: no allowed secret key is available for signing.\n" &
+          "  Signers are the recipient and the wrap-rule recipients in .vault/config.")
+
+proc validSigners*(status: string): seq[string] =
+  ## Primary-key fingerprint of each VALIDSIG line, upper case. gpg omits the
+  ## primary field for a signature by a primary key on some versions; the
+  ## signing-key fingerprint is then the primary one.
+  const prefix = "[GNUPG:] VALIDSIG "
+  for line in status.splitLines:
+    let s = line.strip()
+    if not s.startsWith(prefix):
+      continue
+    let fields = s[prefix.len .. ^1].splitWhitespace()
+    if fields.len >= 10:
+      result.add(fields[9].toUpperAscii())
+    elif fields.len >= 1:
+      result.add(fields[0].toUpperAscii())
+
+proc gpgSignerProblem*(status, path: string, allowed: seq[string]): string =
+  ## Empty when every signature gpg validated was made by a key in
+  ## `allowed`. GOODSIG alone only says that some key in the keyring signed.
+  ## The message keeps "signature verification failed" so callers that sort
+  ## fatal from skippable failures treat it as fatal.
+  let got = validSigners(status)
+  if got.len == 0:
+    return &"FATAL: signature verification failed for {path}: no VALIDSIG status"
+  for fpr in got:
+    if fpr notin allowed:
+      return &"FATAL: signature verification failed for {path}: signed by " &
+             &"{fpr}, which is not a key this vault is configured for.\n" &
+             "  Signers are the recipient and the wrap-rule recipients in .vault/config."
+  ""
+
 proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## Encrypt and sign a file using GPG with the configured recipient.
+  if cfg.recipient.len == 0 or cfg.recipient[0] == '-' or
+     '\n' in cfg.recipient or '\r' in cfg.recipient or '\0' in cfg.recipient:
+    nvRaise("FATAL: invalid recipient")
+  let signer = signingKey(cfg)
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--no-options", "--no-encrypt-to",
              "--trust-model", "always",
-             "--sign", "-e", "-r", cfg.recipient,
-             "--set-filename", "", "-o", outPath, inPath],
+             "--local-user", signer,
+             "--sign", "-e", "--recipient=" & cfg.recipient,
+             "--set-filename", "", "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -156,37 +375,121 @@ proc gpgEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   if code != 0:
     nvRaise(&"FATAL: gpg encrypt failed (exit {code}):\n{output}")
 
-proc gpgDecrypt*(inPath, outPath: string, verifySig = false) =
-  ## Decrypt a GPG-encrypted file to a target path.
+proc gpgVerdict*(status, path: string, code: int, verifySig: bool,
+                 allowed: seq[string], checkPresent = false): string =
+  ## Empty when a decrypt that exited with `code` and wrote `status` is
+  ## acceptable; otherwise the message to raise. `checkPresent` is what
+  ## `--allow-unsigned` asks for: a missing signature passes, but one that is
+  ## there must verify and come from a key in `allowed`.
+  let strict = verifySig or checkPresent
+  if strict and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
+    return &"FATAL: signature verification failed for {path}"
+  if code != 0:
+    return &"FATAL: gpg decrypt failed (exit {code})\n{status}"
+  if verifySig and not gpgStatusHas(status, "GOODSIG"):
+    return &"FATAL: missing signature on {path}. Pass --allow-unsigned to accept unsigned vaults."
+  if verifySig or (checkPresent and (gpgStatusHas(status, "GOODSIG") or
+                                     validSigners(status).len > 0)):
+    return gpgSignerProblem(status, path, allowed)
+  ""
+
+proc pkdecryptCodes(status: string): seq[int] =
+  ## Error code of each `ERROR pkdecrypt_failed` line: the low 16 bits of the
+  ## gpg_error_t gpg prints. 17 is no secret key, 18 wrong secret key.
+  const prefix = "[GNUPG:] ERROR pkdecrypt_failed "
+  for line in status.splitLines:
+    let s = line.strip()
+    if s.startsWith(prefix):
+      try:
+        result.add(parseInt(s[prefix.len .. ^1].strip()) and 0xFFFF)
+      except ValueError:
+        result.add(-1)
+
+proc encToKeyIds(status: string): seq[string] =
+  const prefix = "[GNUPG:] ENC_TO "
+  for line in status.splitLines:
+    let s = line.strip()
+    if s.startsWith(prefix):
+      let fields = s[prefix.len .. ^1].splitWhitespace()
+      if fields.len > 0:
+        result.add(fields[0].toUpperAscii())
+
+proc holdsSecretKey(keyId: string): bool =
+  ## True when the keyring has the secret part of key or subkey `keyId`, not
+  ## only a stub.
+  if keyId.len == 0 or not keyId.allIt(it in HexDigits):
+    return false
+  let p = startProcess("gpg",
+    args = @["--batch", "--no-options", "--with-colons", "--list-secret-keys",
+             "--", keyId],
+    options = {poUsePath, poStdErrToStdOut})
+  let listing = p.outputStream.readAll()
+  discard p.waitForExit()
+  p.close()
+  for line in listing.splitLines:
+    let fields = line.split(':')
+    if fields.len > 14 and fields[0] in ["sec", "ssb"] and
+       fields[4].toUpperAscii() == keyId and fields[14] != "#":
+      return true
+
+proc gpgNoSecretKey*(status: string): bool =
+  ## True when a decrypt failed because the record is not for this machine.
+  ## gpg reports NO_SECKEY for a session-key packet that names a key it holds
+  ## but cannot open (code 18, wrong secret key), which is what a corrupted or
+  ## forged packet looks like. That is skippable only when every failure was
+  ## code 17 or the keyring holds none of the keys the record names.
+  if not gpgStatusHas(status, "NO_SECKEY"):
+    return false
+  let codes = pkdecryptCodes(status)
+  if codes.len > 0 and codes.allIt(it == 17):
+    return true
+  not encToKeyIds(status).anyIt(holdsSecretKey(it))
+
+proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
+  ## Decrypt a GPG-encrypted file to a target path. With `verifySig` the
+  ## signature must come from a key `cfg` names.
+  let allowed = if verifySig: vaultSigners(cfg) else: @[]
   let p = startProcess("gpg",
     args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-             "-d", "-o", outPath, inPath],
+             "-d", "-o", outPath, "--", inPath],
     options = {poUsePath})
   discard p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
-  if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
-    nvRaise(&"FATAL: signature verification failed for {inPath}")
-  if code != 0:
-    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
-  if verifySig and not gpgStatusHas(status, "GOODSIG"):
-    nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
+  let problem = gpgVerdict(status, inPath, code, verifySig, allowed)
+  if problem.len > 0:
+    nvRaise(problem)
 
-proc gpgDecryptToString*(inPath: string, verifySig = false): string =
+proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
+                         checkPresent = false): string =
+  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
   let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", inPath],
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", inPath],
     options = {poUsePath})
   result = p.outputStream.readAll()
   let status = p.errorStream.readAll()
   let code = p.waitForExit()
   p.close()
-  if verifySig and (gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG")):
-    nvRaise(&"FATAL: signature verification failed for {inPath}")
-  if code != 0:
-    nvRaise(&"FATAL: gpg decrypt failed (exit {code})\n{status}")
-  if verifySig and not gpgStatusHas(status, "GOODSIG"):
-    nvRaise(&"FATAL: missing signature on {inPath}. Pass --allow-unsigned to accept unsigned vaults.")
+  let problem = gpgVerdict(status, inPath, code, verifySig, allowed, checkPresent)
+  if problem.len > 0:
+    nvRaise(problem)
+
+proc gpgDecryptBytesToString*(cfg: GpgConfig, cipher: string, label: string,
+                              verifySig = false, checkPresent = false): string =
+  ## Decrypt ciphertext bytes while checking gpg status output.
+  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
+  let p = startProcess("gpg",
+    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", "-"],
+    options = {poUsePath})
+  let io = runWithInput(p, cipher)
+  if io.writeErr != 0 and io.code == 0:
+    nvRaise("FATAL: gpg decrypt failed while writing ciphertext: " &
+            osErrorMsg(OSErrorCode(io.writeErr)))
+  let problem = gpgVerdict(io.err, label, io.code, verifySig, allowed, checkPresent)
+  if problem.len > 0:
+    nvRaise(problem)
+  result = io.outp
 
 proc gpgParallelism*(): int =
   let raw = getEnv("NIMVAULT_GPG_PARALLEL")

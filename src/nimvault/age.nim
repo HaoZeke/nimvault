@@ -19,6 +19,7 @@
 
 import std/[os, osproc, streams, strformat, strutils]
 from ./gpg import GpgConfig, nvRaise
+from ./fsat import runWithInput
 
 const
   ageBins = ["age", "rage"]        ## rage is a drop-in; prefer whichever exists
@@ -76,8 +77,11 @@ proc ageEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
   ## manifest signature covers this blob through its recorded hash.
   if cfg.recipient.len == 0:
     nvRaise("FATAL: no age recipient configured")
+  if cfg.recipient[0] == '-' or '\n' in cfg.recipient or
+     '\r' in cfg.recipient or '\0' in cfg.recipient:
+    nvRaise("FATAL: invalid age recipient")
   let p = startProcess(ageBinary(),
-    args = @["-r", cfg.recipient, "-o", outPath, inPath],
+    args = @["-r", cfg.recipient, "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -88,7 +92,7 @@ proc ageEncrypt*(cfg: GpgConfig, inPath, outPath: string) =
 proc ageDecrypt*(cfg: GpgConfig, inPath, outPath: string) =
   let ident = ageIdentityPath(cfg)
   let p = startProcess(ageBinary(),
-    args = @["-d", "-i", ident, "-o", outPath, inPath],
+    args = @["-d", "-i", ident, "-o", outPath, "--", inPath],
     options = {poUsePath, poStdErrToStdOut})
   let output = p.outputStream.readAll()
   let code = p.waitForExit()
@@ -96,17 +100,26 @@ proc ageDecrypt*(cfg: GpgConfig, inPath, outPath: string) =
   if code != 0:
     nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{output}")
 
-proc ageDecryptToString*(cfg: GpgConfig, inPath: string): string =
+proc ageDecryptBytesToString*(cfg: GpgConfig, cipher: string): string =
+  ## Decrypt ciphertext bytes provided by the caller.
   let ident = ageIdentityPath(cfg)
   let p = startProcess(ageBinary(),
-    args = @["-d", "-i", ident, inPath],
+    args = @["-d", "-i", ident, "--", "-"],
     options = {poUsePath})
-  result = p.outputStream.readAll()
-  let err = p.errorStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
-    nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+  let io = runWithInput(p, cipher)
+  if io.writeErr != 0:
+    var msg = "FATAL: age decrypt failed while writing ciphertext: " &
+              osErrorMsg(OSErrorCode(io.writeErr))
+    let detail = io.err.strip()
+    if detail.len > 0:
+      msg.add("\n" & detail)
+    nvRaise(msg)
+  if io.code != 0:
+    nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
+  result = io.outp
+
+proc ageDecryptToString*(cfg: GpgConfig, inPath: string): string =
+  ageDecryptBytesToString(cfg, readFile(inPath))
 
 ## --- detached signing over the manifest ---
 
@@ -147,7 +160,7 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   if not fileExists(sigPath):
     nvRaise(&"FATAL: ssh-keygen reported success but wrote no signature at {sigPath}")
 
-proc sshVerify*(cfg: GpgConfig, path: string) =
+proc sshVerifyBytes*(cfg: GpgConfig, path, payload: string) =
   ## Verify `<path>.sig` against the allowed-signers file. A missing signature
   ## is a failure, not a skip: an unsigned manifest is exactly what an attacker
   ## who replaced it would produce.
@@ -166,11 +179,18 @@ proc sshVerify*(cfg: GpgConfig, path: string) =
   let p = startProcess(sshKeygenBin,
     args = @["-Y", "verify", "-f", allowed, "-I", cfg.signerIdentity,
              "-n", "nimvault", "-s", sig],
-    options = {poUsePath, poStdErrToStdOut})
-  p.inputStream.write(readFile(path))
-  p.inputStream.close()
-  let output = p.outputStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
+    options = {poUsePath})
+  let io = runWithInput(p, payload)
+  let output = (io.outp & io.err).strip()
+  if io.writeErr != 0:
+    var msg = &"FATAL: signature verification failed for {path}:\n" &
+              "  ssh-keygen closed stdin before verification finished: " &
+              osErrorMsg(OSErrorCode(io.writeErr))
+    if output.len > 0:
+      msg.add("\n" & output)
+    nvRaise(msg)
+  if io.code != 0:
     nvRaise(&"FATAL: signature verification failed for {path}:\n{output}")
+
+proc sshVerify*(cfg: GpgConfig, path: string) =
+  sshVerifyBytes(cfg, path, readFile(path))

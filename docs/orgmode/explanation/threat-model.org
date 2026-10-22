@@ -21,7 +21,7 @@ This is the threat model for the CLI, not a third-party audit.
 * What the commands buy
 
 | Command | Gives | Does not give |
-| ~check~ | blob digests still match the signed manifest; no key needed | that you can decrypt; that git history is gone |
+| ~check~ | blob digests still match the signed records; needs the key that opens the records, not the payloads | that the payloads decrypt; that git history is gone |
 | ~rotate~ | a removed recipient can no longer unwrap the data keys | post-compromise secrecy for a leaked data key |
 | ~rotate --rekey~ | new data keys and new payloads | erasure of old objects on the remote |
 | ~status~ | local plaintext vs the recorded content hash | blob integrity |
@@ -32,10 +32,46 @@ This is the threat model for the CLI, not a third-party audit.
 The manifest is signed. Age payloads have no in-band signature; GPG v5
 blobs do. v6 payloads are symmetric and unsigned in-band. Authenticity
 for those is the signed manifest plus the blob digest ~unseal~ and ~get~
-check before decrypting.
+check before decrypting. The bytes that are hashed are the bytes decrypted:
+the commands do not hash one path read and then reopen that path later.
 
-Key files are encrypted and not signed. A tampered key file fails to
-decrypt rather than forging plaintext.
+Key files are encrypted and not signed. Commands never re-sign a DEK that
+came only from ~keys.*~; they use the signed record's DEK, or refuse and ask
+for an explicit migrate step (for example ~seal --force~).
+
+* The config is trusted as written
+
+~.vault/config~ is plaintext, committed and unsigned, and it defines the
+trust root. Its ~recipient~ and ~wrap~ lines decide who may sign records and
+who the next ~seal~ encrypts to. ~allowed_signers~ and ~signer_identity~
+decide whose ssh signature verifies. Whoever can change the file can change
+all of that:
+
+- A key added to any ~wrap~ rule is an allowed signer for every path.
+- ~wrap = **:<their key>~ also makes the next ~seal~ encrypt every entry to
+  them.
+- ~allowed_signers~ pointed at a file in the repository, or a changed
+  ~signer_identity~, makes records signed with their ssh key verify.
+
+No signature in the vault can vouch for the file that names the signers.
+Review a diff to ~.vault/config~ as you would review code, and read it
+before the next ~unseal~ or ~seal~ on that checkout. A pull request that
+touches it changes the trust root.
+
+* Signer authority
+
+With ~signer = gpg~, the allowed signer set is the configured ~recipient~ plus
+every recipient named in any ~wrap~ rule. Any one of those keys can sign a
+record for any path in the vault. ~wrap~ scopes who can decrypt records, not
+who can sign which path.
+
+So naming a key in a ~wrap~ rule trusts it to write every path. A build box
+that appears only in ~wrap = **:laptop@example.com,buildbox@example.com~ can
+sign a record for =~/.bashrc= or =~/.ssh/authorized_keys=, and every machine
+that unseals writes it.
+
+Email specs are matched as exact addresses (the ~<addr>~ form), but they still
+authorize every key in the keyring that carries that exact email.
 
 * Limits that stay
 
@@ -44,7 +80,10 @@ decrypt rather than forging plaintext.
   opens with an old data key.
 - A private vault repository is the way to keep ciphertext off a public
   remote. Rotation cannot reach the GitHub fork network.
-- ~--allow-unsigned~ is a migration hatch. It is not a daily mode.
+- ~--allow-unsigned~ is a migration hatch. It is not a daily mode. It
+  accepts an unsigned record from anyone who holds the recipient's public key
+  and can write to the repository. A signature that is present must still
+  verify and come from a configured signer.
 
 * In-repo review (2026-09)
 
@@ -67,3 +106,96 @@ Accepted:
 - Unsigned GPG in-band signatures on key files stay unsigned so a second
   machine does not need the signer's public key to decrypt.
 - Third-party review is not commissioned from this sitting.
+
+* In-repo review (2026-10)
+
+- ~lock~ deleted plaintext when the blob was missing or did not match the
+  record. It now requires a matching blob, overwrites the file, and removes
+  editor backups beside it.
+- ~seal~ replaced the live blob before the record was durable. New ciphertext
+  is ~<id>.gpg.pending~ until the record names it, then renamed into place.
+  A pending file the record names is promoted on read. ~gc~ removes any other
+  pending file.
+- ~unseal~ followed a directory symlink, and across devices copied through a
+  symlink at the destination. The destination is written beside the final
+  path and renamed over it. ~add~ refuses a symlink.
+- ~get~ wrote plaintext under the runtime directory. v6 decrypt stays in
+  memory.
+- An unsigned ~keys.*~ file could replace the data key stored in the signed
+  record. The record wins. ~seal~ writes that same key back.
+- ~gpg~ and ~age~ treated an operand named like an option as an option.
+- A ~.gitignore~ line was not literal, so a leading ~#~ or a ~*~ in the name
+  did not ignore that one path.
+- ~pre-commit~ read the worktree and skipped vaulted paths, so a staged
+  secret passed. It now runs ~scan --cached~. ~pre-push~ runs ~scan --rev~
+  on the pushed commits, then ~check~.
+- The runtime directory could stay mode 0755, or be a symlink prepared in
+  advance.
+- The vault lock did not exclude a second thread in the same process, and
+  moving the lock closed standard input.
+- A tab or newline in a path was stored in the record and shifted its columns.
+- ~scan~ skipped every directory named ~tmp~. That skip now applies only
+  under ~.claude~ or ~.codex~.
+- The docs called ~check~ keyless. The blob digests are inside the encrypted
+  records. With only the public key imported, ~check~ reports that this
+  identity cannot open the records and does not compare the blobs. It does
+  not decrypt the payloads.
+
+Still accepted:
+
+- Blob counts, sizes and mtimes are visible.
+- Old git objects survive ~rotate --rekey~. Nothing here rewrites history.
+- ~scan~ matches a fixed pattern list. It skips binaries, files over 2MB,
+  lines over 2000 characters, and dependency directories on a worktree walk.
+- ~--allow-unsigned~ remains a migration hatch: it accepts missing signatures
+  from legacy records, and does not skip blob-hash verification. A good
+  signature from a key the config does not name is refused with the flag as
+  without it.
+- Absolute paths outside ~$HOME~ with no ~root~ are the caller's choice.
+- Key files stay unsigned.
+- Overwriting a file does not erase every copy a filesystem keeps.
+- ~lock~ and cross-device ~mv~ overwrite the source inode before unlinking it,
+  so another hard link to that inode loses the plaintext too.
+- An ~fcntl~ lock is not reliable on NFS.
+- A change to the seal key still re-encrypts every payload.
+- ~add~ writes a new blob before its record. The previous version is not at
+  risk; the plaintext is still on disk, and ~gc~ removes a blob no record names.
+- ~rotate~ without ~--rekey~ rewraps records in place. A crash mid-way leaves
+  some records on the previous wrapping. The data key bytes are unchanged, and
+  a second ~rotate~ finishes the job.
+- ~unseal~ opens each destination's parent by walking from =/= without
+  following a symlink, then creates and writes its staging file through that
+  descriptor. It checks the parent before rename, renames through that held
+  descriptor, then re-checks the parent from the boundary root; if the parent
+  moved or now leaves the boundary, the placed file is overwritten through its
+  descriptor, unlinked, and that entry is refused.
+- Other commands check a path, then use it by name. Whoever can replace a
+  writable parent directory between the check and the use wins that race:
+  - ~mv~ creates the destination's parents and renames by name, so a parent
+    swapped for a symlink puts the plaintext where the link points. Across
+    filesystems it copies the source, renames the copy over the destination
+    and shreds the source, all by name.
+  - ~lock~ hashes, overwrites and unlinks each file and its editor backups by
+    name. A parent swapped after the check makes it overwrite and remove a
+    file of the same name in the directory the link points at. ~gc~ shreds
+    staging files the same way.
+  - ~seal~ reads plaintext by name, so a swapped parent puts another file's
+    bytes in the blob.
+- ~unseal~ decrypts each entry to =.nimvault-<id>.tmp= beside its destination,
+  mode 0600, once every in-band signature has passed. A rename on one
+  filesystem is what keeps a destination symlink from being followed. The
+  price is plaintext in that directory while its entry is decrypted, left
+  there if the process is killed. ~gc~ shreds those files. A failure part way
+  through leaves the entries already placed.
+- An ssh-signed record is signed as ~<id>.age.tmp~, then its signature and the
+  record are renamed in two steps. A crash between them leaves the new
+  signature over ~<id>.age.tmp~; moving that file over ~<id>.age~ finishes the
+  write (~mv .vault/e/<id>.age.tmp .vault/e/<id>.age~), then ~nimvault seal~
+  refreshes signatures and hashes. A signing failure leaves the old pair in
+  place.
+- Per-glob signer scoping is not implemented. Any configured or wrap-rule
+  recipient key can sign records for any path.
+- With the age backend, a record whose stanza for this identity is corrupted
+  reads as one for another wrap group: age reports both as no identity
+  matched. ~unseal~ and ~check~ print how many records they skipped. The gpg
+  backend tells the two apart and fails.

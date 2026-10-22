@@ -1,0 +1,3 @@
+`unseal` and `get` now decrypt the same blob bytes they hash. They no longer
+rehash a live blob path after decryption or reopen a path that can be swapped
+between the hash check and decrypt.

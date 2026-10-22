@@ -1,0 +1,3 @@
+Age-backed record and manifest loads verify and decrypt the same ciphertext
+bytes. `unseal` and `get` now decrypt the exact blob snapshot bytes they hash,
+instead of hashing one path read and decrypting a later path reopen.

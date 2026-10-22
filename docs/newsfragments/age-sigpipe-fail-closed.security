@@ -1,0 +1,2 @@
+age signature verification now fails closed on short writes: SIGPIPE no longer
+returns exit 0, and a verifier that closes stdin early now reports an error.
