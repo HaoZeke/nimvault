@@ -175,8 +175,9 @@ proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: str
     result.ok = false
 
 var recordCache {.threadvar.}: Table[string, tuple[cipherHash, plain: string]]
-  ## Plaintext cache for split records, keyed by ciphertext digest. This is a
-  ## speed cache, not an authority: callers still compare against live bytes.
+  ## Plaintext cache for split records, keyed by the digest of the ciphertext
+  ## this process decrypted or wrote. Callers still compare that digest to the
+  ## live ciphertext before trusting the cached plaintext.
 
 proc recordCipherHash(path: string): string =
   ## Hash of the encrypted record bytes; empty when unreadable.
@@ -289,8 +290,9 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
   try:
     encryptFileTo(cfg, recips, plainPath, cipherPath, sign = not cfg.usesAge)
+    let cipherHash = sha256sum(cipherPath)
     publishSigned(cfg, cipherPath, dest)
-    rememberRecord(dest, sha256sum(dest), content)
+    rememberRecord(dest, cipherHash, content)
   finally:
     discardPrivate(work)
 
