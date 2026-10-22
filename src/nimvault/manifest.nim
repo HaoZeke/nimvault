@@ -80,15 +80,19 @@ proc vaultDir*(repo: string): string =
 proc entryDir*(repo: string): string =
   vaultDir(repo) / EntryDirName
 
+proc isRecordCipherName(name: string): bool =
+  name.endsWith(".gpg") or name.endsWith(".age")
+
 proc hasSplitEntries*(repo: string): bool =
   let dir = entryDir(repo)
   if not dirExists(dir):
     return false
   for kind, path in walkDir(dir):
-    if kind != pcFile:
-      continue
     let name = path.extractFilename
-    if name.endsWith(".gpg") or name.endsWith(".age"):
+    if kind == pcLinkToFile and (isRecordCipherName(name) or
+        name.endsWith(".sig")):
+      nvRaise(&"FATAL: refusing symlinked record file: {path}")
+    if kind == pcFile and isRecordCipherName(name):
       return true
   return false
 
@@ -97,9 +101,13 @@ proc entryFile*(repo: string, cfg: GpgConfig, id: string): string =
 
 proc findEntryFile*(repo: string, cfg: GpgConfig, id: string): string =
   let mine = entryFile(repo, cfg, id)
+  if symlinkExists(mine):
+    nvRaise(&"FATAL: refusing symlinked record file: {mine}")
   if fileExists(mine):
     return mine
   let other = entryDir(repo) / (id & (if cfg.usesAge: ".gpg" else: ".age"))
+  if symlinkExists(other):
+    nvRaise(&"FATAL: refusing symlinked record file: {other}")
   if fileExists(other):
     return other
   return ""
@@ -112,12 +120,15 @@ proc splitRecordIds*(repo: string): HashSet[string] =
   if not dirExists(dir):
     return
   for kind, path in walkDir(dir):
+    let name = path.extractFilename
+    if kind == pcLinkToFile and (isRecordCipherName(name) or
+        name.endsWith(".sig")):
+      nvRaise(&"FATAL: refusing symlinked record file: {path}")
     if kind != pcFile:
       continue
-    let name = path.extractFilename
     if name.endsWith(".sig"):
       continue
-    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+    if not isRecordCipherName(name):
       continue
     result.incl(name.rsplit('.', maxsplit = 1)[0])
 
@@ -215,10 +226,13 @@ proc loadSplitEntries*(repo: string, cfg: GpgConfig,
   defer:
     discardPrivate(work)
   for kind, path in walkDir(dir):
+    let name = path.extractFilename
+    if kind == pcLinkToFile and (isRecordCipherName(name) or
+        name.endsWith(".sig")):
+      nvRaise(&"FATAL: refusing symlinked record file: {path}")
     if kind != pcFile:
       continue
-    let name = path.extractFilename
-    if not (name.endsWith(".gpg") or name.endsWith(".age")):
+    if not isRecordCipherName(name):
       continue
     if name.endsWith(".sig"):
       continue
@@ -267,19 +281,18 @@ proc saveEntryRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string) 
   createDir(entryDir(repo))
   let work = privateWorkDir()
   let plainPath = work / "entry.plain"
+  let cipherPath = work / ("entry" & cfg.blobExt)
   let dest = entryFile(repo, cfg, e.id)
   var content = EntryHeader & "\n"
   content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\t{dek}\n")
   writeFile(plainPath, content)
   setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
-  let tmp = dest & ".tmp"
   try:
-    encryptFileTo(cfg, recips, plainPath, tmp, sign = not cfg.usesAge)
+    encryptFileTo(cfg, recips, plainPath, cipherPath, sign = not cfg.usesAge)
+    publishSigned(cfg, cipherPath, dest)
+    rememberRecord(dest, sha256sum(dest), content)
   finally:
     discardPrivate(work)
-  let tmpHash = sha256sum(tmp)
-  publishSigned(cfg, tmp, dest)
-  rememberRecord(dest, tmpHash, content)
 
 proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
                           dek: string): bool =
@@ -292,6 +305,8 @@ proc entryRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
   let path = findEntryFile(repo, cfg, e.id)
   if path.len == 0:
     return false
+  if symlinkExists(path):
+    nvRaise(&"FATAL: refusing symlinked record file: {path}")
   let plain = recalledRecord(path)
   let checked =
     if plain.len > 0:
@@ -439,21 +454,21 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
   setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
-  # Encrypt beside the real manifest and rename over it. Writing encPath in
-  # place leaves a window where it is half a file, and a reader that lands in
-  # that window sees the trust root for every blob truncated. Rename within one
-  # directory is atomic, so a reader sees either the old manifest or the new.
-  let tmpEnc = encPath & ".tmp"
+  # Encrypt under the private work directory, then publish with a no-follow
+  # temp in the destination directory. Writing encPath in place leaves a window
+  # where it is half a file, and a reader that lands in that window sees the
+  # trust root for every blob truncated.
+  let tmpEnc = work / ("manifest" & cfg.blobExt)
   try:
     encryptFile(cfg, plainPath, tmpEnc)
+    # Durability, which rename alone does not give: flush the bytes before the
+    # rename that points at them, and the directory entry after, or a crash can
+    # leave the trust root present and empty. See `syncPath`.
+    # The manifest is the trust root: its hashes are what vouch for every blob,
+    # so it is the one thing that has to be signed when the backend cannot.
+    publishSigned(cfg, tmpEnc, encPath)
   finally:
     discardPrivate(work)
-  # Durability, which rename alone does not give: flush the bytes before the
-  # rename that points at them, and the directory entry after, or a crash can
-  # leave the trust root present and empty. See `syncPath`.
-  # The manifest is the trust root: its hashes are what vouch for every blob,
-  # so it is the one thing that has to be signed when the backend cannot.
-  publishSigned(cfg, tmpEnc, encPath)
 
 proc saveManifestKeep*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                        envelope = false,

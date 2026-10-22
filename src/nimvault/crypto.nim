@@ -10,7 +10,7 @@ from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, sshVerifyBytes, ageBinary, ageIdentityPath
-from ./fsat import ONoFollow
+from ./fsat import ONoFollow, writeAll
 
 proc ensureOwnerDir*(dir: string) =
   ## Create `dir` mode 0700, or tighten a directory this user already owns.
@@ -92,6 +92,49 @@ proc discardPrivate*(dir: string) =
 proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
   ## `rename(2)`. Replaces `dest` when it is a symlink and does not follow it.
   ## Nim's posix module does not wrap this call.
+
+proc syncParentDir*(path: string)
+
+proc copyPathToFd(src: string, fd: cint) =
+  var f: File
+  if not open(f, src, fmRead):
+    nvRaise(&"FATAL: cannot read staged ciphertext: {src}")
+  defer:
+    f.close()
+  var buf = newString(1024 * 1024)
+  while true:
+    let n = f.readBuffer(addr buf[0], buf.len)
+    if n <= 0:
+      break
+    let err = writeAll(fd, addr buf[0], n)
+    if err != 0:
+      nvRaise("FATAL: cannot write staged ciphertext: " &
+              osErrorMsg(OSErrorCode(err)))
+
+proc publishFileNofollow*(src, dest: string) =
+  ## Copy `src` into `dest.tmp` opened O_EXCL|O_NOFOLLOW, then rename.
+  ## A planted symlink at that temp name is refused instead of followed.
+  let tmp = dest & ".tmp"
+  let fd = posix.open(tmp.cstring,
+                      posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                      ONoFollow or O_CLOEXEC,
+                      0o600.Mode)
+  if fd < 0:
+    nvRaise(&"FATAL: could not open publish temp for {dest}")
+  var wrote = false
+  try:
+    copyPathToFd(src, fd)
+    discard posix.fsync(fd)
+    wrote = true
+  finally:
+    discard posix.close(fd)
+    if not wrote:
+      try: removeFile(tmp) except CatchableError: discard
+  if renameAt(tmp.cstring, dest.cstring) != 0:
+    try: removeFile(tmp) except CatchableError: discard
+    nvRaise(&"FATAL: could not publish ciphertext at {dest}")
+  syncParentDir(dest)
+  try: removeFile(src) except CatchableError: discard
 
 proc publishPending*(src, dest: string) =
   ## Replace `dest` with `src`. A failed rename leaves `src` where it is:
@@ -276,9 +319,8 @@ proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
   syncPath(tmp)
   if fileExists(tmpSig):
     syncPath(tmpSig)
-    moveFile(tmpSig, dest & ".sig")
-  moveFile(tmp, dest)
-  syncParentDir(dest)
+    publishFileNofollow(tmpSig, dest & ".sig")
+  publishFileNofollow(tmp, dest)
 
 proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
                      checkPresent = false) =
