@@ -1,0 +1,3 @@
+saveEntryRecord now caches the digest of the ciphertext nimvault just
+encrypted in its private work directory before publish, instead of
+rehashing the destination path after rename.
