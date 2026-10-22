@@ -2147,7 +2147,7 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.gpg"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
   writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
   let badHash = sha256sum(badBlob)
   let plain = forged / "record.plain"
@@ -2256,7 +2256,7 @@ block getDecryptsVerifiedSnapshotBytes:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.gpg"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
   writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
 
   let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
@@ -2775,7 +2775,7 @@ block listAndStatusVerifyRecordsBeforePendingPromotion:
   let payload = work / "payload"
   writeFile(payload, "forged-pending")
   let pend = crypto.blobPath(r, c, entry.id) & ".pending"
-  encryptWithDek(c, deks[entry.id], payload, pend)
+  discard encryptWithDek(c, deks[entry.id], payload, pend)
   let forgedHash = sha256sum(pend)
   let plain = work / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -2930,7 +2930,7 @@ block recipientEmailRefusesMaliceSigner:
     writeFile(payload, "planted-by-malice")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -2978,7 +2978,7 @@ block recordSignedByAnotherKeyIsRefused:
     writeFile(payload, "planted-by-other-key")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -3055,7 +3055,7 @@ block allowUnsignedRefusesAnUnconfiguredRecordSigner:
     writeFile(payload, "planted-by-other-key")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -3205,7 +3205,7 @@ block nameSpecifierIsRefused:
     writeFile(payload, "planted-by-malice")
     let key = newDek(honest)
     let blob = crypto.blobPath(r, honest, id)
-    encryptWithDek(honest, key, payload, blob)
+    discard encryptWithDek(honest, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")

@@ -478,9 +478,9 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   let id = genId()
   let outPath = crypto.blobPath(repo, cfg, id)
   let key = newDek(cfg)
-  encryptWithDek(cfg, key, absPath, outPath)
+  let cipherHash = encryptWithDek(cfg, key, absPath, outPath)
   deks[id] = key
-  entries.add((id, storedPath, sha256sum(outPath), ekFile, sha256sum(absPath)))
+  entries.add((id, storedPath, cipherHash, ekFile, sha256sum(absPath)))
   nvEcho(&"  {storedPath}")
 
 type BlobSnapshot = object
@@ -813,9 +813,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       let inPath = resolvePath(cfg, e.path)
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
       let key = newDek(cfg)
-      encryptWithDek(cfg, key, inPath, pend)
+      let cipherHash = encryptWithDek(cfg, key, inPath, pend)
       pendingPaths.add(pend)
-      pendingHash[e.id] = sha256sum(pend)
+      pendingHash[e.id] = cipherHash
       deks[e.id] = key
       recordDeks[e.id] = key
       syncPath(pend)
