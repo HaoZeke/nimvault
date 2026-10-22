@@ -145,9 +145,15 @@ proc keyFiles*(repo: string, cfg: GpgConfig): seq[string] =
     return
   for kind, path in walkDir(dir):
     let name = path.extractFilename
-    if kind == pcLinkToFile and isKeyFileName(name):
+    let keyNode = isKeyFileName(name)
+    if kind == pcLinkToFile and keyNode:
       nvRaise(&"FATAL: refusing symlinked key file: {path}")
-    if kind == pcFile and name.startsWith(KeysFileStem & ".") and
+    if not keyNode:
+      continue
+    if kind != pcFile:
+      nvRaise(&"FATAL: refusing non-regular key file: {path}")
+    assertVaultRegularFile(path)
+    if name.startsWith(KeysFileStem & ".") and
        (name.endsWith(".gpg") or name.endsWith(".age")):
       result.add(path)
 
@@ -161,12 +167,14 @@ proc findKeysFile*(repo: string, cfg: GpgConfig): string =
   if symlinkExists(mine):
     nvRaise(&"FATAL: refusing symlinked key file: {mine}")
   if fileExists(mine):
+    assertVaultRegularFile(mine)
     return mine
   let other = repo / ".vault" / (KeysFileStem &
               (if cfg.usesAge: ".gpg" else: ".age"))
   if symlinkExists(other):
     nvRaise(&"FATAL: refusing symlinked key file: {other}")
   if fileExists(other):
+    assertVaultRegularFile(other)
     return other
   return ""
 
@@ -201,14 +209,19 @@ proc loadDeksFromKeys*(repo: string, cfg: GpgConfig): DekTable =
   var candidates: seq[string] = @[]
   for kind, path in walkDir(dir):
     let name = path.extractFilename
-    if kind == pcLinkToFile and isKeyFileName(name):
+    let keyNode = isKeyFileName(name)
+    if kind == pcLinkToFile and keyNode:
       nvRaise(&"FATAL: refusing symlinked key file: {path}")
-    if kind == pcFile and isKeyFileName(name):
-      candidates.add(path)
+    if not keyNode:
+      continue
+    if kind != pcFile:
+      nvRaise(&"FATAL: refusing non-regular key file: {path}")
+    assertVaultRegularFile(path)
+    candidates.add(path)
   for path in candidates:
     var plain = ""
     try:
-      plain = decryptToString(cfg, path, false)
+      plain = decryptBytesToString(cfg, readVaultRegularFile(path), path, false)
     except CatchableError:
       continue
     for line in plain.splitLines:
@@ -242,26 +255,45 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
       gpgNoSecretKey(msg)
   let edir = dir / "e"
   if dirExists(edir):
+    let work = privateWorkDir()
+    defer:
+      discardPrivate(work)
+    var snapN = 0
     for kind, path in walkDir(edir):
       let name = path.extractFilename
-      if kind == pcLinkToFile and (name.endsWith(".gpg") or
-                                   name.endsWith(".age") or
-                                   name.endsWith(".sig")):
+      let recordNode = name.endsWith(".gpg") or name.endsWith(".age") or
+                       name.endsWith(".sig")
+      if kind == pcLinkToFile and recordNode:
         nvRaise(&"FATAL: refusing symlinked record file: {path}")
+      if not recordNode:
+        continue
       if kind != pcFile:
+        nvRaise(&"FATAL: refusing non-regular record file: {path}")
+      assertVaultRegularFile(path)
+      if name.endsWith(".sig"):
         continue
-      if not (name.endsWith(".gpg") or name.endsWith(".age")):
-        continue
+      let ext = if name.endsWith(".age"): ".age" else: ".gpg"
+      let snap = work / ("record-" & $snapN & ext)
+      inc snapN
+      writeFile(snap, readVaultRegularFile(path))
+      let sig = path & ".sig"
+      if fileExists(sig):
+        writeFile(snap & ".sig", readVaultRegularFile(sig))
       var plain = ""
       try:
-        plain = verifyAndDecryptToString(cfg, path, verifySig = requireSig,
+        plain = verifyAndDecryptToString(cfg, snap, verifySig = requireSig,
                                          checkPresent = true)
       except CatchableError as err:
-        if sigFailure(err.msg):
-          nvRaise(err.msg)
-        if noSecretKey(err.msg):
+        var msg = err.msg
+        if snap in msg:
+          msg = msg.replace(snap, path)
+        if (snap & ".sig") in msg:
+          msg = msg.replace(snap & ".sig", path & ".sig")
+        if sigFailure(msg):
+          nvRaise(msg)
+        if noSecretKey(msg):
           continue
-        nvRaise(err.msg)
+        nvRaise(msg)
       for line in plain.splitLines:
         let s = line.strip()
         if s.len == 0 or s.startsWith("#"):
@@ -332,10 +364,10 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
       except CatchableError:
         discard
 
-proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
+proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string): string =
   ## Encrypt a payload under its data key. No recipient is involved, which is
-  ## the whole point. Write beside the live blob and rename so a crash
-  ## does not truncate the last sealed copy.
+  ## the whole point. Return the digest of the ciphertext this process wrote
+  ## before publishing it, so callers can keep metadata bound to those bytes.
   createDir(outPath.parentDir)
   let work = privateWorkDir()
   let tmp = work / ("cipher" & cfg.blobExt)
@@ -367,6 +399,7 @@ proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
       if code != 0:
         if fileExists(tmp): removeFile(tmp)
         nvRaise(&"FATAL: gpg symmetric encrypt failed (exit {code}):\n{output}")
+    result = sha256sum(tmp)
     syncPath(tmp)
     publishFileNofollow(tmp, outPath)
   finally:
@@ -404,6 +437,7 @@ proc decryptWithDekBytesToString*(cfg: GpgConfig, dek, cipher: string): string =
     setFilePermissions(passFile, {fpUserRead, fpUserWrite})
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
+               "--status-fd", "2",
                "--passphrase-file", passFile, "--pinentry-mode", "loopback",
                "--", "-"],
       options = {poUsePath})
@@ -413,6 +447,10 @@ proc decryptWithDekBytesToString*(cfg: GpgConfig, dek, cipher: string): string =
               osErrorMsg(OSErrorCode(io.writeErr)))
     if io.code != 0:
       nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {io.code}):\n{io.err}")
+    if not gpgStatusHas(io.err, "NEED_PASSPHRASE_SYM") or
+       not gpgStatusHas(io.err, "DECRYPTION_OKAY"):
+      nvRaise("FATAL: payload decrypt did not use the entry's symmetric data " &
+              "key.\n" & io.err)
     result = io.outp
 
 proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
