@@ -387,20 +387,35 @@ proc selectEntries(cfg: GpgConfig, entries: seq[VaultEntry],
       nvRaise(&"Not in vault: {sel}")
 
 proc persistDeks(repo: string, cfg: GpgConfig, deks: DekTable,
-                 entries: seq[VaultEntry]) =
+                 entries: seq[VaultEntry],
+                 startRecordDeks: DekTable = initTable[string, string]()) =
   ## Write the live data keys, grouped the way the current wrap rules say.
   ## Callers pass the entry list they are about to persist so a removed id
   ## is not written back into the default group.
+  ##
+  ## A command may decrypt records more than once. Reject a persist when an id
+  ## that already had a signed record key at command start now carries another
+  ## key in memory: that would adopt a mid-command swap into keys.*.
+  discard loadSplitEntries(repo, cfg,
+                           verifySig = recordsNeedSig(cfg),
+                           checkPresent = true)
   var live: DekTable
+  var pathOf = initTable[string, string]()
   var groupOf = initTable[string, string]()
   var recipsOf = initTable[string, seq[string]]()
   for e in entries:
+    pathOf[e.id] = e.path
     if deks.hasKey(e.id):
       live[e.id] = deks[e.id]
     let recips = recipientsFor(cfg, e.path)
     let gid = groupId(recips)
     groupOf[e.id] = gid
     recipsOf[gid] = recips
+  for id, key in live:
+    if startRecordDeks.hasKey(id) and startRecordDeks[id] != key:
+      let path = pathOf.getOrDefault(id, id)
+      nvRaise("FATAL: refusing to persist a data key that changed " &
+              "mid-command for " & path)
   if live.len == 0:
     # Only drop key files this identity can open. Unread wrap-group
     # files belong to another machine.
@@ -898,7 +913,7 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
   for e in entries:
     if e.id notin existing and e.id in deks:
       recordDeks[e.id] = deks[e.id]
-  persistDeks(repo, cfg, deks, entries)
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
   saveManifestKeep(repo, entries, cfg, envelope = true,
                    knownDeks = recordDeks, haveDeks = true)
   let last = entries[^1]
@@ -957,7 +972,7 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   for e in entries:
     if e.id notin existing and e.id in deks:
       recordDeks[e.id] = deks[e.id]
-  persistDeks(repo, cfg, deks, entries)
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
   saveManifestKeep(repo, entries, cfg, envelope = true,
                    knownDeks = recordDeks, haveDeks = true)
   nvEcho(&"\nAdded {filesToAdd.len} file(s) from directory.")
@@ -1003,7 +1018,7 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   var recordDeks = meta.deks
   if droppedId in recordDeks:
     recordDeks.del(droppedId)
-  persistDeks(repo, cfg, deks, newEntries)
+  persistDeks(repo, cfg, deks, newEntries, startRecordDeks = meta.deks)
   saveManifestKeep(repo, newEntries, cfg,
                    knownDeks = recordDeks, haveDeks = true)
   dropEntryRecord(repo, cfg, droppedId)
@@ -1152,7 +1167,8 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   else:
     nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
   entries[idx].path = newStored
-  persistDeks(repo, cfg, deksForEntries(repo, cfg, entries, meta.deks), entries)
+  persistDeks(repo, cfg, deksForEntries(repo, cfg, entries, meta.deks), entries,
+              startRecordDeks = meta.deks)
   saveManifestKeep(repo, entries, cfg,
                    knownDeks = meta.deks, haveDeks = true)
   nvEcho(&"  Updated manifest (blob unchanged)")
@@ -1638,7 +1654,7 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   if deks.len == 0:
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
-  persistDeks(repo, cfg, deks, entries)
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
   saveSplitEntries(repo, cfg, entries, meta.deks, force = true)
 
   var enveloped = 0

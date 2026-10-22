@@ -1,0 +1,3 @@
+Mutating commands now refuse to persist keys.* when a record that had a
+signed DEK at command start carries a different DEK at persist time.
+This blocks mid-command record swaps from replacing trusted key rows.
