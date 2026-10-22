@@ -1019,9 +1019,9 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   if droppedId in recordDeks:
     recordDeks.del(droppedId)
   persistDeks(repo, cfg, deks, newEntries, startRecordDeks = meta.deks)
-  saveManifestKeep(repo, newEntries, cfg,
-                   knownDeks = recordDeks, haveDeks = true)
   dropEntryRecord(repo, cfg, droppedId)
+  saveManifest(repo, newEntries, cfg, meta.sealKey, meta.envelope,
+               knownDeks = recordDeks, haveDeks = true)
   nvEcho("  (local plaintext file NOT deleted)")
 
 proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
@@ -1656,6 +1656,8 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
             "  Run 'nimvault seal --force' once to move it to v6.")
   persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
   saveSplitEntries(repo, cfg, entries, meta.deks, force = true)
+  saveManifest(repo, entries, cfg, meta.sealKey, envelope = true,
+               knownDeks = meta.deks, haveDeks = true)
 
   var enveloped = 0
   for e in entries:
