@@ -1,0 +1,4 @@
+Record, manifest, blob, and key writes now encrypt into a private work
+directory and publish through destination-local temps opened with
+O_EXCL|O_NOFOLLOW before rename. Symlinked record and key files are now
+refused during load instead of being skipped.

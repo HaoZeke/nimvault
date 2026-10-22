@@ -1588,7 +1588,8 @@ block addDirRefusesARecordDekSwappedAfterVerify:
   echo "PASS: add-dir refuses record-DEK swaps after verify"
 
 block addDoesNotSignDekSwappedInKeysTmp:
-  ## A keys.*.tmp plaintext swap must not change the DEK signed into records.
+  ## keys.* is now encrypted in a private work directory, so a wrapper that
+  ## only tampers `keys.*.tmp` under `.vault/` must not run.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let f = r / "secret.txt"
@@ -1609,11 +1610,12 @@ block addDoesNotSignDekSwappedInKeysTmp:
     add(r, f, c)
   finally:
     putEnv("PATH", oldPath)
-  doAssert fileExists(marker), "test wrapper did not tamper keys.*.tmp"
+  doAssert not fileExists(marker),
+    "add should not write key temp files under .vault/"
   let entry = loadManifest(r, cfg = c)[0]
   let fromKeys = loadDeksFromKeys(r, c)
-  doAssert fromKeys.getOrDefault(entry.id) == badDek,
-    "test wrapper did not replace the key-file DEK"
+  doAssert fromKeys.getOrDefault(entry.id) != badDek,
+    "a .vault/keys.*.tmp hook must not change the key-file DEK"
   let signedDek = signedRecordDek(r, c, entry.id)
   doAssert signedDek.len > 0
   doAssert signedDek != badDek,
@@ -1623,10 +1625,10 @@ block addDoesNotSignDekSwappedInKeysTmp:
     "add must keep the signed DEK bound to the blob it encrypted"
   removeDir(wrapBin)
   removeDir(r)
-  echo "PASS: add keeps the signed DEK after a keys.*.tmp swap"
+  echo "PASS: add keeps signed DEKs when .vault keys temp hooks run"
 
 block addDirDoesNotSignDekSwappedInKeysTmp:
-  ## add-dir must also sign the DEK generated for the payload, not keys.*.tmp.
+  ## add-dir uses the same private-work key write path as add.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let incoming = r / "incoming"
@@ -1649,11 +1651,12 @@ block addDirDoesNotSignDekSwappedInKeysTmp:
     addDir(r, incoming, c)
   finally:
     putEnv("PATH", oldPath)
-  doAssert fileExists(marker), "test wrapper did not tamper keys.*.tmp"
+  doAssert not fileExists(marker),
+    "add-dir should not write key temp files under .vault/"
   let entry = loadManifest(r, cfg = c)[0]
   let fromKeys = loadDeksFromKeys(r, c)
-  doAssert fromKeys.getOrDefault(entry.id) == badDek,
-    "test wrapper did not replace the key-file DEK"
+  doAssert fromKeys.getOrDefault(entry.id) != badDek,
+    "a .vault/keys.*.tmp hook must not change the key-file DEK"
   let signedDek = signedRecordDek(r, c, entry.id)
   doAssert signedDek.len > 0
   doAssert signedDek != badDek,
@@ -1663,7 +1666,66 @@ block addDirDoesNotSignDekSwappedInKeysTmp:
     "add-dir must keep the signed DEK bound to the blob it encrypted"
   removeDir(wrapBin)
   removeDir(r)
-  echo "PASS: add-dir keeps the signed DEK after a keys.*.tmp swap"
+  echo "PASS: add-dir keeps signed DEKs when .vault keys temp hooks run"
+
+block plantedRecordTmpSymlinkStaysSafe:
+  ## A planted `.vault/e/<id>.gpg.tmp` symlink must not be written through.
+  ## rotate/add/seal may fail or ignore that path, but the victim file must
+  ## stay untouched.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let tracked = r / "secret.txt"
+  writeFile(tracked, "tmp-link-secret")
+  add(r, tracked, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let recTmp = entryFile(r, c, entry.id) & ".tmp"
+  let victimDir = createTempDir("nimvault_audit_", "_victim")
+  let victim = victimDir / "victim.txt"
+  let untouched = "victim-must-stay-plain"
+  writeFile(victim, untouched)
+  proc plantTmpLink() =
+    if fileExists(recTmp) or symlinkExists(recTmp):
+      removeFile(recTmp)
+    createSymlink(victim, recTmp)
+  proc assertVictimSafe(why: string) =
+    doAssert readFile(victim) == untouched, why
+
+  plantTmpLink()
+  var rotateRaised = false
+  try:
+    rotate(r, c)
+  except CatchableError:
+    rotateRaised = true
+  doAssert rotateRaised, "rotate should refuse a planted record temp symlink"
+  assertVictimSafe("rotate must not write through a planted record temp symlink")
+  if symlinkExists(recTmp): removeFile(recTmp)
+
+  writeFile(r / "later.txt", "tmp-link-later")
+  plantTmpLink()
+  var addRaised = false
+  try:
+    add(r, r / "later.txt", c)
+  except CatchableError:
+    addRaised = true
+  assertVictimSafe("add must not write through a planted record temp symlink")
+  if not addRaised:
+    check(r, c)
+  if symlinkExists(recTmp): removeFile(recTmp)
+
+  writeFile(tracked, "tmp-link-secret-edited")
+  plantTmpLink()
+  var sealRaised = false
+  try:
+    seal(r, c)
+  except CatchableError:
+    sealRaised = true
+  doAssert sealRaised, "seal should refuse a planted record temp symlink"
+  assertVictimSafe("seal must not write through a planted record temp symlink")
+  if symlinkExists(recTmp): removeFile(recTmp)
+  removeDir(victimDir)
+  removeDir(r)
+  echo "PASS: planted record temp symlinks are refused safely"
 
 block rmDoesNotResignUnsignedLegacyDek:
   ## rm may rewrite the manifest but must not sign a DEK from keys.evil.
