@@ -478,9 +478,9 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   let id = genId()
   let outPath = crypto.blobPath(repo, cfg, id)
   let key = newDek(cfg)
-  encryptWithDek(cfg, key, absPath, outPath)
+  let cipherHash = encryptWithDek(cfg, key, absPath, outPath)
   deks[id] = key
-  entries.add((id, storedPath, sha256sum(outPath), ekFile, sha256sum(absPath)))
+  entries.add((id, storedPath, cipherHash, ekFile, sha256sum(absPath)))
   nvEcho(&"  {storedPath}")
 
 type BlobSnapshot = object
@@ -813,9 +813,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       let inPath = resolvePath(cfg, e.path)
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
       let key = newDek(cfg)
-      encryptWithDek(cfg, key, inPath, pend)
+      let cipherHash = encryptWithDek(cfg, key, inPath, pend)
       pendingPaths.add(pend)
-      pendingHash[e.id] = sha256sum(pend)
+      pendingHash[e.id] = cipherHash
       deks[e.id] = key
       recordDeks[e.id] = key
       syncPath(pend)
@@ -1019,9 +1019,9 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   if droppedId in recordDeks:
     recordDeks.del(droppedId)
   persistDeks(repo, cfg, deks, newEntries, startRecordDeks = meta.deks)
-  saveManifestKeep(repo, newEntries, cfg,
-                   knownDeks = recordDeks, haveDeks = true)
   dropEntryRecord(repo, cfg, droppedId)
+  saveManifest(repo, newEntries, cfg, meta.sealKey, meta.envelope,
+               knownDeks = recordDeks, haveDeks = true)
   nvEcho("  (local plaintext file NOT deleted)")
 
 proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
@@ -1656,6 +1656,8 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
             "  Run 'nimvault seal --force' once to move it to v6.")
   persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
   saveSplitEntries(repo, cfg, entries, meta.deks, force = true)
+  saveManifest(repo, entries, cfg, meta.sealKey, envelope = true,
+               knownDeks = meta.deks, haveDeks = true)
 
   var enveloped = 0
   for e in entries:

@@ -304,7 +304,7 @@ block splitRecordSwapDuringSshVerifyIsRefused:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.age"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
   let badHash = sha256sum(badBlob)
   let plain = forged / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -417,7 +417,7 @@ block legacyManifestSwapDuringSshVerifyIsRefused:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.age"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
   let badHash = sha256sum(badBlob)
   let badTarget = "secrets/evil.txt"
   let badPlain = forged / "manifest.plain"
@@ -474,7 +474,7 @@ block ageGetDecryptsVerifiedSnapshotBytes:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.age"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
 
   let wrapBin = createTempDir("nimvault_age_", "_agewrap")
   let marker = wrapBin / "swapped"
@@ -521,7 +521,7 @@ block legacyAgeGetDecryptsVerifiedSnapshotBytes:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.age"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
 
   let wrapBin = createTempDir("nimvault_age_", "_agewrap")
   let marker = wrapBin / "swapped"
@@ -724,7 +724,7 @@ block ageWithAGpgSignerIsRefused:
   writeFile(payload, "planted")
   let key = newDek(c)
   let blob = crypto.blobPath(dir, c, id)
-  encryptWithDek(c, key, payload, blob)
+  discard encryptWithDek(c, key, payload, blob)
   let plain = scratch / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
     &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")

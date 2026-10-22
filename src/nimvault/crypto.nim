@@ -111,6 +111,46 @@ proc copyPathToFd(src: string, fd: cint) =
       nvRaise("FATAL: cannot write staged ciphertext: " &
               osErrorMsg(OSErrorCode(err)))
 
+proc openVaultRegularReadFd(path: string): cint =
+  ## Open `path` without following a final symlink and require a regular file.
+  let fd = posix.open(path.cstring, O_RDONLY or ONoFollow or O_NONBLOCK or
+                      O_CLOEXEC)
+  if fd < 0:
+    if errno == ELOOP:
+      nvRaise(&"FATAL: refusing symlinked vault file: {path}")
+    nvRaise(&"FATAL: could not open vault file: {path}")
+  var st: Stat
+  if fstat(fd, st) != 0:
+    discard posix.close(fd)
+    nvRaise(&"FATAL: could not stat vault file: {path}")
+  if not S_ISREG(st.st_mode):
+    discard posix.close(fd)
+    nvRaise(&"FATAL: refusing non-regular vault file: {path}")
+  fd
+
+proc assertVaultRegularFile*(path: string) =
+  ## Fail unless `path` is a regular file reached without symlink following.
+  let fd = openVaultRegularReadFd(path)
+  discard posix.close(fd)
+
+proc readVaultRegularFile*(path: string): string =
+  ## Read one vault file through one nofollow descriptor.
+  let fd = openVaultRegularReadFd(path)
+  defer:
+    discard posix.close(fd)
+  var buf: array[65536, char]
+  while true:
+    let n = posix.read(fd, addr buf[0], buf.len)
+    if n < 0:
+      if errno == EINTR or errno == EAGAIN:
+        continue
+      nvRaise(&"FATAL: could not read vault file: {path}")
+    if n == 0:
+      break
+    let at = result.len
+    result.setLen(at + n)
+    copyMem(addr result[at], addr buf[0], n)
+
 proc publishFileNofollow*(src, dest: string) =
   ## Copy `src` into `dest.tmp` opened O_EXCL|O_NOFOLLOW, then rename.
   ## A planted symlink at that temp name is refused instead of followed.
