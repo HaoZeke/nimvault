@@ -1,0 +1,1 @@
+Config load now refuses 8-hex short GPG key IDs and asks for a 16-hex key ID or a full fingerprint.

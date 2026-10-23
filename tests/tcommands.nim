@@ -453,14 +453,30 @@ block sealLeavesManifestAloneWhenNothingChanged:
 
 block vaultLockExcludesAnotherProcess:
   ## fcntl records are per process, so this has to fork to mean anything.
+  ## The child writes one byte after it takes the lock and waits for one
+  ## byte before it releases. A fixed sleep raced when the child was slow.
+  var heldPipe, dropPipe: array[2, cint]
+  doAssert pipe(heldPipe) == 0, "pipe failed"
+  doAssert pipe(dropPipe) == 0, "pipe failed"
   let pid = fork()
   if pid == 0:
+    discard close(heldPipe[0])
+    discard close(dropPipe[1])
     var held = acquire(incRepo)
-    sleep(1500)
+    var mark: char = '1'
+    doAssert write(heldPipe[1], addr mark, 1) == 1
+    discard close(heldPipe[1])
+    doAssert read(dropPipe[0], addr mark, 1) == 1
+    discard close(dropPipe[0])
     release(held)
     quit(0)
   doAssert pid > 0, "fork failed"
-  sleep(400)          # let the child take the lock first
+  discard close(heldPipe[1])
+  discard close(dropPipe[0])
+  var mark: char
+  doAssert read(heldPipe[0], addr mark, 1) == 1 and mark == '1',
+    "child did not take the lock"
+  discard close(heldPipe[0])
 
   var raised = false
   try:
@@ -468,9 +484,13 @@ block vaultLockExcludesAnotherProcess:
     release(mine)
   except CatchableError:
     raised = true
+  mark = '1'
+  doAssert write(dropPipe[1], addr mark, 1) == 1
+  discard close(dropPipe[1])
   var status: cint
   discard waitpid(pid, status, 0)
   doAssert raised, "a second process must not get the lock while it is held"
+  doAssert WIFEXITED(status) and WEXITSTATUS(status) == 0, "child failed"
 
   # Once the holder is gone the lock is free again, with nothing to clean up.
   var after = acquire(incRepo, timeoutMs = 1000)

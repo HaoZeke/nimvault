@@ -1,0 +1,1 @@
+The docs now consistently say that `check` verifies blobs for records this identity can open, and reports how many records it could not open.
