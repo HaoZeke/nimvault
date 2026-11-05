@@ -36,13 +36,34 @@ proc getTestKeyId(): string =
         return parts[4]
   doAssert false, "Could not find test key ID"
 
+proc pinGitIdentity() =
+  ## Throwaway repos commit and merge.
+  ## A runner with no user.email refuses the commit, the clone is empty,
+  ## and the next assertion reports a missing record.
+  ## Signing follows the ambient config and is not what these tests check.
+  putEnv("GIT_AUTHOR_NAME", "NimVault Test")
+  putEnv("GIT_AUTHOR_EMAIL", "test@nimvault.local")
+  putEnv("GIT_COMMITTER_NAME", "NimVault Test")
+  putEnv("GIT_COMMITTER_EMAIL", "test@nimvault.local")
+  putEnv("GIT_CONFIG_COUNT", "1")
+  putEnv("GIT_CONFIG_KEY_0", "commit.gpgsign")
+  putEnv("GIT_CONFIG_VALUE_0", "false")
+
+proc gitCommit(repo, msg: string) =
+  ## A discarded failure leaves HEAD where it was.
+  pinGitIdentity()
+  let (output, code) = execCmdEx(
+    &"git add -A && git commit -m {msg.quoteShell}", workingDir = repo)
+  doAssert code == 0, output
+
 proc setupTestRepo(): string =
   result = createTempDir("nimvault_repo_", "_test")
+  pinGitIdentity()
   let (_, code) = execCmdEx("git init", workingDir = result)
   doAssert code == 0
   # Create initial commit so git rev-parse works
   writeFile(result / ".gitkeep", "")
-  discard execCmdEx("git add . && git commit -m init", workingDir = result)
+  gitCommit(result, "init")
 
 # Setup
 let gpgHome = setupTestGpgHome()
@@ -1274,7 +1295,7 @@ block twoAddsDoNotRewriteSharedRecord:
   let onePath = findEntryFile(a, c, oneId)
   doAssert onePath.len > 0
   let oneBytes = readFile(onePath)
-  discard execCmdEx("git add -A && git commit -m one", workingDir = a)
+  gitCommit(a, "one")
 
   let b = createTempDir("nimvault_repo_", "_clone")
   let (cloneOut, cloneCode) = execCmdEx(&"git clone -- {a.quoteShell} {b.quoteShell}")
@@ -1290,8 +1311,8 @@ block twoAddsDoNotRewriteSharedRecord:
   add(a, a / "secrets" / "three.txt", c)
   doAssert readFile(findEntryFile(a, c, oneId)) == oneBytes,
     "add three must not rewrite e/<one-id>"
-  discard execCmdEx("git add -A && git commit -m three", workingDir = a)
-  discard execCmdEx("git add -A && git commit -m two", workingDir = b)
+  gitCommit(a, "three")
+  gitCommit(b, "two")
 
   let (fetchOut, fetchCode) = execCmdEx("git fetch -- origin", workingDir = b)
   doAssert fetchCode == 0, fetchOut
