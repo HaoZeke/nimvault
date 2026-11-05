@@ -1,0 +1,1 @@
+`--noninteractive` refuses pinentry and exits 3 when gpg would have prompted. `status`, `who`, `check` and `doctor` accept `--json`. `check` and `doctor` exit 2 when the vault is inconsistent.

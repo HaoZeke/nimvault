@@ -19,7 +19,7 @@ subcommand is a thin wrapper around the corresponding ~commands~ module proc.
 ** seal
 
 #+begin_src text
-nimvault seal [--recipient KEY] [--force]
+nimvault seal [--recipient KEY] [--force] [--public-only] [--noninteractive]
 #+end_src
 
 Encrypt every entry whose plaintext changed, and write the manifest.
@@ -43,9 +43,22 @@ the manifest that records their digests.
 
 Exits non-zero if any plaintext file is missing.
 
+A public-key writer (~--public-only~, ~NIMVAULT_PUBLIC_ONLY=1~, or a gpg home
+with no secret key) does not decrypt the vault. ~add~ already sealed the new
+entry. ~seal~ reports that existing records were left untouched.
+
 *** ~--force~
 
-Re-encrypt every entry, not only the changed ones.
+Re-encrypt every entry, not only the changed ones. Ignored for a public-key
+writer, which cannot read the entries it would re-encrypt.
+
+*** ~--public-only~
+
+Append without a secret key. Do not read the manifest.
+
+*** ~--noninteractive~
+
+Fail instead of prompting. See [[file:../howto/machine-writers.org][machine writers]].
 
 ** unseal
 
@@ -85,7 +98,7 @@ the vault to signed v2 format.
 ** add-dir
 
 #+begin_src text
-nimvault add-dir <directory> [--recipient KEY] [--no-gitignore]
+nimvault add-dir <directory> [--recipient KEY] [--no-gitignore] [--public-only] [--noninteractive]
 #+end_src
 
 Add a directory recursively to the vault. Walks the directory tree and adds each
@@ -93,7 +106,8 @@ file individually with its own encrypted blob. The directory structure is
 preserved via the relative paths stored in the manifest.
 
 Each file undergoes the same checks as ~nimvault add~:
-- Verifies the file is not already in the vault
+- With a secret key, verifies the file is not already in the vault. A
+  public-key add cannot see existing entries.
 - Checks ~git ls-files~ to ensure the file is not tracked by git
 - Appends to ~.gitignore~ unless ~--no-gitignore~ is passed
 
@@ -109,12 +123,17 @@ Exits non-zero if:
 ** add
 
 #+begin_src text
-nimvault add <path> [--recipient KEY] [--no-gitignore]
+nimvault add <path> [--recipient KEY] [--no-gitignore] [--public-only] [--noninteractive]
 #+end_src
 
 Add a file to the vault. The path is stored with =~/= for portability. Generates
-a random 16-char hex ID, encrypts and signs the file, computes a SHA-256 blob
-hash, and appends to the manifest.
+a random 16-char hex ID, encrypts the file, computes a SHA-256 blob
+hash, and appends a record.
+
+With a secret key the record is signed under ~.vault/e/~. With public keys
+only it is an unsigned fragment under ~.vault/a/~, encrypted to the wrap-rule
+recipients, and the existing records are not decrypted. See
+[[file:../howto/machine-writers.org][machine writers]].
 
 Checks ~git ls-files~ to verify the file is not already tracked by git. If the
 file is tracked, exits with an error instructing the user to untrack it first.
@@ -124,8 +143,9 @@ path is already gitignored.
 
 Exits non-zero if:
 - The file does not exist
-- The file is already in the vault
+- The file is already in the vault (needs a secret key to see that)
 - The file is tracked by git
+- The matching wrap rule names no recipient
 
 ** rm
 
@@ -160,18 +180,29 @@ a secret.
 ** check
 
 #+begin_src text
-nimvault check [--recipient KEY]
+nimvault check [--recipient KEY] [--json] [--public-only] [--digests FILE] [--write-digests FILE] [--noninteractive]
 #+end_src
 
-Verify every blob against the hash the manifest records for it. Decrypts
-nothing and needs no key material, so it is cheap enough for a pre-push hook or
-a continuous-integration job. Exits non-zero when anything is inconsistent.
+Compare payload blobs to the records, or to ~.vault/blob-index~ when this
+process has no secret key. Neither comparison decrypts a payload. Exit 2 when
+anything is inconsistent, so a pre-push hook or a CI job can gate on it.
+
+With a secret key the anchor is the manifest: a missing blob, a hash that
+does not match, a v1 entry with no hash, and a payload id that is not in the
+records. Without a secret key the anchor is the blob-index (id and ciphertext
+sha256, no paths): added, changed and missing ids. If there is no index and
+no digest list, and ciphertext exists, that itself is a problem.
+
+~--digests FILE~ diffs a previous snapshot of every file under ~.vault/~
+except ~config~ and ~*.tmp~. A delta exits 2, including an intentional add.
+~--write-digests FILE~ writes that snapshot of the bytes on disk.
+~--json~ prints one object: ~ok~, ~keyless~, ~anchor~, ~checked~, ~problems~,
+and ~manifest~ / ~digests~ objects with ~added~, ~changed~, ~missing~.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about
-whether the blobs still match; a blob committed without the manifest that
+whether the blobs still match; a blob committed without the record that
 vouches for it looks healthy there right up until an ~unseal~ somewhere else.
-Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.
 
 ** gc
 
@@ -231,7 +262,7 @@ List all vault entries showing their ID and target path.
 ** status
 
 #+begin_src text
-nimvault status [--recipient KEY]
+nimvault status [--recipient KEY] [--json] [--noninteractive]
 #+end_src
 
 Show sync status of all vault entries by comparing local plaintext SHA-256
@@ -249,10 +280,14 @@ in ~list~ and ~status~ output. The directory structure is implicit in the paths.
 ** who
 
 #+begin_src text
-nimvault who [--recipient KEY] [--vault DIR]
+nimvault who [PATH...] [--recipient KEY] [--vault DIR] [--json] [--noninteractive]
 #+end_src
 
-Print which wrap-rule recipients can open each entry.
+Print the path, the recipients and the wrap rule (~recipient~ when the
+configured recipient is the fallback).
+
+Naming paths answers the rule from ~.vault/config~ and needs no secret key.
+With no path, list the entries this identity can open.
 
 ** lock
 
@@ -283,11 +318,12 @@ that runs ~nimvault scan~. Refuses to overwrite existing hooks.
 ** doctor
 
 #+begin_src text
-nimvault doctor [--recipient KEY] [--vault DIR]
+nimvault doctor [--recipient KEY] [--vault DIR] [--json] [--public-only] [--noninteractive]
 #+end_src
 
-Print backend, recipient, binaries, manifest and ~check~ status. Exits
-non-zero when something will not work.
+Print backend, recipient, binaries, manifest and ~check~ status. Exits 2
+when something will not work. ~--json~ is one object with ~ok~, ~vault~,
+~backend~, ~recipient~, ~gpg~, ~age~, ~manifest~, ~append~ and ~problems~.
 
 * Where the vault lives
 
@@ -311,14 +347,18 @@ See the [[file:../howto/private-vault-repo.org][private vault repository how-to]
 
 * Exit codes
 
-| Code | Meaning                                                           |
-|------+-------------------------------------------------------------------|
-|    0 | Success                                                           |
-|    1 | Error (missing file, GPG failure, integrity check, traversal, etc) |
+| Code | Meaning                                                                 |
+|------+-------------------------------------------------------------------------|
+|    0 | Success                                                                 |
+|    1 | Operational error (missing file, GPG failure, integrity check, traversal) |
+|    2 | ~check~ or ~doctor~ found an inconsistency                              |
+|    3 | Non-interactive run would have prompted, or no secret key to read entries |
 
 * Security model
 
-All encryption operations also GPG-sign the payload. On ~unseal~, signatures and
+Signed records under ~.vault/e/~ are the trust root. A public-key fragment
+under ~.vault/a/~ is encrypted to the recipients and not signed; a missing or
+bad signature on ~.vault/e/~ is still fatal. On ~unseal~, signatures and
 blob hashes are verified before any plaintext is written to disk:
 
 1. Manifest signature is checked during decryption
@@ -332,7 +372,8 @@ blob hashes are verified before any plaintext is written to disk:
 6. Only after all checks pass are files moved to their final paths
 
 This design prevents forgery, ciphertext swapping, path traversal, and release
-of unverified plaintext.
+of unverified plaintext for the signed records. An unsigned ~.vault/a/~
+fragment is not that guarantee.
 
 ** Known limitations
 

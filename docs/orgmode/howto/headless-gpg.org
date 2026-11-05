@@ -51,3 +51,9 @@ is world-readable).
 If the machine is unattended and only needs a subset of secrets, make a
 service vault with its own empty-passphrase key and ~wrap~ rules. See
 [[file:service-vault.org][service vaults]].
+
+* Public keys, no prompt
+
+A job that only appends entries needs the recipients' public keys, not a
+passphrase and not a secret key. Set ~NIMVAULT_PUBLIC_ONLY=1~ and
+~NIMVAULT_NONINTERACTIVE=1~. See [[file:machine-writers.org][machine writers]].

@@ -1,0 +1,1 @@
+Without a secret key, `check` reports added, changed and missing payload blobs against `.vault/blob-index`. `--digests` diffs a previous ciphertext snapshot.
