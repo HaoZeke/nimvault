@@ -109,9 +109,10 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#overview">1 Overview</a></li>
 <li><a class="reference internal" href="#format">2 Format</a><ul>
-<li><a class="reference internal" href="#v5-current">2.1 v5 (current)</a></li>
-<li><a class="reference internal" href="#earlier-versions">2.2 Earlier versions</a></li>
-<li><a class="reference internal" href="#fields">2.3 Fields</a></li>
+<li><a class="reference internal" href="#v7-split-records-current">2.1 v7 split records (current)</a></li>
+<li><a class="reference internal" href="#v5-combined-manifest-compatibility-stub">2.2 v5 combined manifest (compatibility stub)</a></li>
+<li><a class="reference internal" href="#earlier-combined-manifest-versions">2.3 Earlier combined-manifest versions</a></li>
+<li><a class="reference internal" href="#fields">2.4 Fields</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#blob-files">3 Blob files</a><ul>
@@ -218,32 +219,52 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#overview" id="id2">1 Overview</a></p></li>
 <li><p><a class="reference internal" href="#format" id="id3">2 Format</a></p>
 <ul>
-<li><p><a class="reference internal" href="#v5-current" id="id4">2.1 v5 (current)</a></p></li>
-<li><p><a class="reference internal" href="#earlier-versions" id="id5">2.2 Earlier versions</a></p></li>
-<li><p><a class="reference internal" href="#fields" id="id6">2.3 Fields</a></p></li>
+<li><p><a class="reference internal" href="#v7-split-records-current" id="id4">2.1 v7 split records (current)</a></p></li>
+<li><p><a class="reference internal" href="#v5-combined-manifest-compatibility-stub" id="id5">2.2 v5 combined manifest (compatibility stub)</a></p></li>
+<li><p><a class="reference internal" href="#earlier-combined-manifest-versions" id="id6">2.3 Earlier combined-manifest versions</a></p></li>
+<li><p><a class="reference internal" href="#fields" id="id7">2.4 Fields</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#blob-files" id="id7">3 Blob files</a></p>
+<li><p><a class="reference internal" href="#blob-files" id="id8">3 Blob files</a></p>
 <ul>
-<li><p><a class="reference internal" href="#envelope-keys-v6" id="id8">3.1 Envelope keys (v6)</a></p></li>
+<li><p><a class="reference internal" href="#envelope-keys-v6" id="id9">3.1 Envelope keys (v6)</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#integrity-model" id="id9">4 Integrity model</a></p></li>
-<li><p><a class="reference internal" href="#directory-layout" id="id10">5 Directory layout</a></p></li>
+<li><p><a class="reference internal" href="#integrity-model" id="id10">4 Integrity model</a></p></li>
+<li><p><a class="reference internal" href="#directory-layout" id="id11">5 Directory layout</a></p></li>
 </ul>
 </li>
 </ul>
 </nav>
 <section id="overview">
 <h2><a class="toc-backref" href="#id2" role="doc-backlink">1 Overview</a><a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<p>The manifest maps opaque blob IDs to target file paths. It is stored encrypted
-and GPG-signed at <code class="docutils literal notranslate"><span class="pre">.vault/manifest.gpg</span></code> and decrypted on every operation.</p>
+<p>The current manifest is split per-entry records under <code class="docutils literal notranslate"><span class="pre">.vault/e/</span></code>. Each record
+maps one opaque blob ID to its target path and recorded hashes. Records are
+encrypted, signed, and decrypted on every operation.</p>
+<p>An optional combined <code class="docutils literal notranslate"><span class="pre">.vault/manifest.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) remains as a
+compatibility stub for shared metadata such as the seal key.</p>
 <img alt="../_images/manifest_flow.svg" src="../_images/manifest_flow.svg" />
 </section>
 <section id="format">
 <h2><a class="toc-backref" href="#id3" role="doc-backlink">2 Format</a><a class="headerlink" href="#format" title="Link to this heading">¶</a></h2>
-<section id="v5-current">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 v5 (current)</a><a class="headerlink" href="#v5-current" title="Link to this heading">¶</a></h3>
+<section id="v7-split-records-current">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 v7 split records (current)</a><a class="headerlink" href="#v7-split-records-current" title="Link to this heading">¶</a></h3>
+<p>Each entry record at <code class="docutils literal notranslate"><span class="pre">.vault/e/&lt;id&gt;.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) decrypts to:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># vault-entry-v7
+</span><span data-line="2">&lt;id&gt;        &lt;path&gt;  &lt;blob-sha256&gt;   &lt;kind&gt;  &lt;plaintext-sha256&gt;      &lt;dek&gt;
+</span></pre></div>
+</div>
+<ul class="simple">
+<li><p>First line: record version header</p></li>
+<li><p>Entry line: one row per file entry</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dek</span></code>: per-entry data key: 64 lower-case hex digits for gpg, an
+<code class="docutils literal notranslate"><span class="pre">AGE-SECRET-KEY-1...</span></code> identity for age, empty for pre-v6 entries</p></li>
+<li><p>A record that opens but holds no entry line is counted, not dropped:
+<code class="docutils literal notranslate"><span class="pre">check</span></code> reports it and <code class="docutils literal notranslate"><span class="pre">unseal</span></code> refuses to run</p></li>
+</ul>
+</section>
+<section id="v5-combined-manifest-compatibility-stub">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 v5 combined manifest (compatibility stub)</a><a class="headerlink" href="#v5-combined-manifest-compatibility-stub" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># vault-manifest-v5
 </span><span data-line="2"># vault-seal-key 9f2b...  (sha256 over backend, recipient, identity, signer)
 </span><span data-line="3">a1b2c3d4e5f67890    ~/.secret/api_key.txt   e3b0c442...     file    7d865e95...
@@ -263,8 +284,8 @@ under a new key. Any change to the recorded key re-encrypts everything, and a
 manifest with no recorded key (v4 and earlier) seals in full once to establish
 one.</p>
 </section>
-<section id="earlier-versions">
-<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.2 Earlier versions</a><a class="headerlink" href="#earlier-versions" title="Link to this heading">¶</a></h3>
+<section id="earlier-combined-manifest-versions">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">2.3 Earlier combined-manifest versions</a><a class="headerlink" href="#earlier-combined-manifest-versions" title="Link to this heading">¶</a></h3>
 <div class="table-wrapper docutils container">
 <table class="docutils align-default">
 <tbody>
@@ -299,7 +320,7 @@ one.</p>
 blob hashes; pass <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>, then <code class="docutils literal notranslate"><span class="pre">seal</span></code> to upgrade.</p>
 </section>
 <section id="fields">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">2.3 Fields</a><a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">2.4 Fields</a><a class="headerlink" href="#fields" title="Link to this heading">¶</a></h3>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">id</span></code></dt><dd><p>16-character lowercase hex string, generated from 8 bytes of
 cryptographic randomness (<code class="docutils literal notranslate"><span class="pre">std/sysrand</span></code>).</p>
@@ -315,18 +336,20 @@ as-is.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">kind</span></code></dt><dd><p>(v3+) <code class="docutils literal notranslate"><span class="pre">file</span></code> or <code class="docutils literal notranslate"><span class="pre">dir</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">contentHash</span></code></dt><dd><p>(v4+) SHA-256 of the <strong>plaintext</strong>. Lets <code class="docutils literal notranslate"><span class="pre">status</span></code> and the
-incremental <code class="docutils literal notranslate"><span class="pre">seal</span></code> decide what changed without decrypting anything.</p>
+incremental <code class="docutils literal notranslate"><span class="pre">seal</span></code> decide what changed without decrypting the payloads.</p>
 </dd>
 </dl>
 </section>
 </section>
 <section id="blob-files">
-<h2><a class="toc-backref" href="#id7" role="doc-backlink">3 Blob files</a><a class="headerlink" href="#blob-files" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id8" role="doc-backlink">3 Blob files</a><a class="headerlink" href="#blob-files" title="Link to this heading">¶</a></h2>
 <p>Each manifest entry has a corresponding <code class="docutils literal notranslate"><span class="pre">.vault/&lt;id&gt;.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) file
 holding the encrypted contents. <code class="docutils literal notranslate"><span class="pre">--set-filename</span> <span class="pre">&quot;&quot;</span></code> keeps the original filename
-out of GPG metadata.</p>
+out of GPG metadata. <code class="docutils literal notranslate"><span class="pre">seal</span></code> writes <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;.gpg.pending</span></code> first. The pending file
+is the blob the record names until it is renamed over the live path. A read
+promotes a pending file whose hash matches the record.</p>
 <section id="envelope-keys-v6">
-<h3><a class="toc-backref" href="#id8" role="doc-backlink">3.1 Envelope keys (v6)</a><a class="headerlink" href="#envelope-keys-v6" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">3.1 Envelope keys (v6)</a><a class="headerlink" href="#envelope-keys-v6" title="Link to this heading">¶</a></h3>
 <p>Blobs are encrypted under a <strong>per-file data key</strong>, and the data keys live together
 in <code class="docutils literal notranslate"><span class="pre">.vault/keys.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>), itself encrypted to the recipients.</p>
 <p>Before v6 each blob was encrypted straight to the recipient. Both backends do
@@ -362,30 +385,35 @@ the age backend has always used.</p>
 </section>
 </section>
 <section id="integrity-model">
-<h2><a class="toc-backref" href="#id9" role="doc-backlink">4 Integrity model</a><a class="headerlink" href="#integrity-model" title="Link to this heading">¶</a></h2>
-<p>The signed manifest is the integrity anchor. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>:</p>
+<h2><a class="toc-backref" href="#id10" role="doc-backlink">4 Integrity model</a><a class="headerlink" href="#integrity-model" title="Link to this heading">¶</a></h2>
+<p>The signed records are the integrity anchor. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>:</p>
 <ol class="arabic simple">
-<li><p>The manifest is decrypted and its GPG signature is verified</p></li>
-<li><p>Each blob’s SHA-256 hash is compared against the manifest</p></li>
+<li><p>The entry records are decrypted and their signatures are verified</p></li>
+<li><p>Each blob’s SHA-256 hash is compared against the record</p></li>
 <li><p>Blobs are decrypted to temporary files</p></li>
 <li><p>Each blob’s GPG signature is verified, where one exists in band: v5 gpg
 blobs carry one, age blobs and v6 enveloped blobs do not</p></li>
 <li><p>Only after all checks pass are files moved to their final paths</p></li>
 </ol>
-<p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> runs step 2 on its own, over every entry, without decrypting
-and without key material.</p>
+<p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> decrypts the manifest metadata and the per-entry records this
+identity can open, reads their digests, and compares each payload blob to its
+digest. Records this identity cannot open are counted and reported. It does
+not decrypt the payloads. A public key alone cannot open the records.</p>
 <p>This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
 substitutes a v1 unsigned manifest).</p>
 </section>
 <section id="directory-layout">
-<h2><a class="toc-backref" href="#id10" role="doc-backlink">5 Directory layout</a><a class="headerlink" href="#directory-layout" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id11" role="doc-backlink">5 Directory layout</a><a class="headerlink" href="#directory-layout" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">.vault/
 </span><span data-line="2">  config            # recipient configuration (plaintext)
-</span><span data-line="3">  manifest.gpg      # signed + encrypted manifest
-</span><span data-line="4">  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
-</span><span data-line="5">  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
-</span><span data-line="6">  fedcba9876543210.gpg  # signed + encrypted blob
+</span><span data-line="3">  e/                # split per-entry records (v7)
+</span><span data-line="4">    a1b2c3d4e5f67890.gpg
+</span><span data-line="5">    fedcba9876543210.gpg
+</span><span data-line="6">  manifest.gpg      # optional combined metadata stub (v5)
+</span><span data-line="7">  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
+</span><span data-line="8">  a1b2c3d4e5f67890.gpg  # encrypted blob payload
+</span><span data-line="9">  fedcba9876543210.gpg  # encrypted blob payload
 </span></pre></div>
 </div>
 <p>Only <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> is committed to git. The plaintext files live at their target

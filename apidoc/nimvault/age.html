@@ -66,6 +66,10 @@
   <li><a class="reference" href="#ageDecrypt%2CGpgConfig%2Cstring%2Cstring" title="ageDecrypt(cfg: GpgConfig; inPath, outPath: string)">ageDecrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">ageDecryptBytesToString
+  <li><a class="reference" href="#ageDecryptBytesToString%2CGpgConfig%2Cstring" title="ageDecryptBytesToString(cfg: GpgConfig; cipher: string): string">ageDecryptBytesToString(cfg: GpgConfig; cipher: string): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">ageDecryptToString
   <li><a class="reference" href="#ageDecryptToString%2CGpgConfig%2Cstring" title="ageDecryptToString(cfg: GpgConfig; inPath: string): string">ageDecryptToString(cfg: GpgConfig; inPath: string): string</a></li>
 
@@ -91,7 +95,8 @@
 
 </ul>
 <ul class="simple nested-toc-section">sshVerify
-  <li><a class="reference" href="#sshVerify%2CGpgConfig%2Cstring" title="sshVerify(cfg: GpgConfig; path: string)">sshVerify(cfg: GpgConfig; path: string)</a></li>
+  <li><a class="reference" href="#sshVerify%2CGpgConfig%2Cstring%2Cstring" title="sshVerify(cfg: GpgConfig; path, payload: string)">sshVerify(cfg: GpgConfig; path, payload: string)</a></li>
+<li><a class="reference" href="#sshVerify%2CGpgConfig%2Cstring" title="sshVerify(cfg: GpgConfig; path: string)">sshVerify(cfg: GpgConfig; path: string)</a></li>
 
 </ul>
 
@@ -147,12 +152,26 @@
 </div>
 
 </div>
+<div id="ageDecryptBytesToString-procs-all">
+  <div id="ageDecryptBytesToString,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#ageDecryptBytesToString%2CGpgConfig%2Cstring"><span class="Identifier">ageDecryptBytesToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">cipher</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Decrypt ciphertext bytes provided by the caller.
+    
+  </dd>
+</div>
+
+</div>
 <div id="ageDecryptToString-procs-all">
   <div id="ageDecryptToString,GpgConfig,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#ageDecryptToString%2CGpgConfig%2Cstring"><span class="Identifier">ageDecryptToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
-    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     
@@ -228,14 +247,25 @@
 
 </div>
 <div id="sshVerify-procs-all">
-  <div id="sshVerify,GpgConfig,string">
+  <div id="sshVerify,GpgConfig,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#sshVerify%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">sshVerify</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">,</span> <span class="Identifier">payload</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+<div id="sshVerify,GpgConfig,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#sshVerify%2CGpgConfig%2Cstring"><span class="Identifier">sshVerify</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
     <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Verify <tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Identifier">path</span><span class="Operator">&gt;.</span><span class="Identifier">sig</span></span></tt> against the allowed-signers file. A missing signature is a failure, not a skip: an unsigned manifest is exactly what an attacker who replaced it would produce.
+    
     
   </dd>
 </div>
@@ -251,7 +281,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-27 00:02:27 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-06 14:52:51 UTC</small>
       </div>
     </div>
   </div>

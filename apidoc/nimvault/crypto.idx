@@ -1,24 +1,33 @@
 nimTitle	crypto	nimvault/crypto.html	module nimvault/crypto		0
-nim	privateWorkDir	nimvault/crypto.html#privateWorkDir	proc privateWorkDir(): string		12
-nim	withPrivateUmask	nimvault/crypto.html#withPrivateUmask.t,untyped	template withPrivateUmask(body: untyped)		33
-nim	ensureVaultDir	nimvault/crypto.html#ensureVaultDir,string	proc ensureVaultDir(repo: string)		43
-nim	syncPath	nimvault/crypto.html#syncPath,string	proc syncPath(path: string)		51
-nim	syncParentDir	nimvault/crypto.html#syncParentDir,string	proc syncParentDir(path: string)		68
-nim	usesAge	nimvault/crypto.html#usesAge,GpgConfig	proc usesAge(cfg: GpgConfig): bool		72
-nim	blobExt	nimvault/crypto.html#blobExt,GpgConfig	proc blobExt(cfg: GpgConfig): string		75
-nim	blobPath	nimvault/crypto.html#blobPath,string,GpgConfig,string	proc blobPath(repo: string; cfg: GpgConfig; id: string): string		82
-nim	findBlob	nimvault/crypto.html#findBlob,string,GpgConfig,string	proc findBlob(repo: string; cfg: GpgConfig; id: string): string		86
-nim	manifestPath	nimvault/crypto.html#manifestPath,string,GpgConfig	proc manifestPath(repo: string; cfg: GpgConfig): string		98
-nim	findManifest	nimvault/crypto.html#findManifest,string,GpgConfig	proc findManifest(repo: string; cfg: GpgConfig): string		102
-nim	encryptFile	nimvault/crypto.html#encryptFile,GpgConfig,string,string	proc encryptFile(cfg: GpgConfig; inPath, outPath: string)		116
-nim	decryptFile	nimvault/crypto.html#decryptFile,GpgConfig,string,string	proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		120
-nim	decryptToString	nimvault/crypto.html#decryptToString,GpgConfig,string	proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string		127
-nim	Decrypted	nimvault/crypto.html#Decrypted	tuple Decrypted		131
-nim	decryptManyToString	nimvault/crypto.html#decryptManyToString,GpgConfig,seq[string]	proc decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false): seq[\n    Decrypted]		134
-nim	effectiveSigner	nimvault/crypto.html#effectiveSigner,GpgConfig	proc effectiveSigner(cfg: GpgConfig): string		174
-nim	signManifest	nimvault/crypto.html#signManifest,GpgConfig,string	proc signManifest(cfg: GpgConfig; path: string)		183
-nim	verifyManifest	nimvault/crypto.html#verifyManifest,GpgConfig,string,bool	proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)		191
-nim	signaturesInBand	nimvault/crypto.html#signaturesInBand,GpgConfig	proc signaturesInBand(cfg: GpgConfig): bool		202
-nim	decryptProcess	nimvault/crypto.html#decryptProcess,GpgConfig,string,string	proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		214
-nim	encryptFileTo	nimvault/crypto.html#encryptFileTo,GpgConfig,seq[string],string,string	proc encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;\n              sign = true)		228
-nim	encryptProcess	nimvault/crypto.html#encryptProcess,GpgConfig,string,string	proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		275
+nim	ensureOwnerDir	nimvault/crypto.html#ensureOwnerDir,string	proc ensureOwnerDir(dir: string)		14
+nim	privateWorkDir	nimvault/crypto.html#privateWorkDir	proc privateWorkDir(): string		37
+nim	shredFile	nimvault/crypto.html#shredFile,string	proc shredFile(path: string)		57
+nim	discardPrivate	nimvault/crypto.html#discardPrivate,string	proc discardPrivate(dir: string)		83
+nim	publishPending	nimvault/crypto.html#publishPending,string,string	proc publishPending(src, dest: string)		95
+nim	renameOver	nimvault/crypto.html#renameOver,string,string	proc renameOver(src, dest: string)		102
+nim	withPrivateUmask	nimvault/crypto.html#withPrivateUmask.t,untyped	template withPrivateUmask(body: untyped)		110
+nim	ensureVaultDir	nimvault/crypto.html#ensureVaultDir,string	proc ensureVaultDir(repo: string)		120
+nim	syncPath	nimvault/crypto.html#syncPath,string	proc syncPath(path: string)		128
+nim	syncParentDir	nimvault/crypto.html#syncParentDir,string	proc syncParentDir(path: string)		145
+nim	usesAge	nimvault/crypto.html#usesAge,GpgConfig	proc usesAge(cfg: GpgConfig): bool		149
+nim	blobExt	nimvault/crypto.html#blobExt,GpgConfig	proc blobExt(cfg: GpgConfig): string		152
+nim	blobPath	nimvault/crypto.html#blobPath,string,GpgConfig,string	proc blobPath(repo: string; cfg: GpgConfig; id: string): string		159
+nim	findBlob	nimvault/crypto.html#findBlob,string,GpgConfig,string	proc findBlob(repo: string; cfg: GpgConfig; id: string): string		163
+nim	resolveBlob	nimvault/crypto.html#resolveBlob,string,GpgConfig,string,string	proc resolveBlob(repo: string; cfg: GpgConfig; id, expectedHash: string): string		175
+nim	manifestPath	nimvault/crypto.html#manifestPath,string,GpgConfig	proc manifestPath(repo: string; cfg: GpgConfig): string		200
+nim	findManifest	nimvault/crypto.html#findManifest,string,GpgConfig	proc findManifest(repo: string; cfg: GpgConfig): string		204
+nim	encryptFile	nimvault/crypto.html#encryptFile,GpgConfig,string,string	proc encryptFile(cfg: GpgConfig; inPath, outPath: string)		218
+nim	decryptFile	nimvault/crypto.html#decryptFile,GpgConfig,string,string	proc decryptFile(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		222
+nim	decryptToString	nimvault/crypto.html#decryptToString,GpgConfig,string	proc decryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                checkPresent = false): string		229
+nim	Decrypted	nimvault/crypto.html#Decrypted	tuple Decrypted		234
+nim	decryptManyToString	nimvault/crypto.html#decryptManyToString,GpgConfig,seq[string]	proc decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false;\n                    checkPresent = false): seq[Decrypted]		237
+nim	effectiveSigner	nimvault/crypto.html#effectiveSigner,GpgConfig	proc effectiveSigner(cfg: GpgConfig): string		271
+nim	signManifest	nimvault/crypto.html#signManifest,GpgConfig,string	proc signManifest(cfg: GpgConfig; path: string)		280
+nim	publishSigned	nimvault/crypto.html#publishSigned,GpgConfig,string,string	proc publishSigned(cfg: GpgConfig; tmp, dest: string)		291
+nim	verifyManifest	nimvault/crypto.html#verifyManifest,GpgConfig,string,bool	proc verifyManifest(cfg: GpgConfig; path: string; requireSig: bool;\n               checkPresent = false)		314
+nim	verifyAndDecryptToString	nimvault/crypto.html#verifyAndDecryptToString,GpgConfig,string	proc verifyAndDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                         checkPresent = false): string		333
+nim	signaturesInBand	nimvault/crypto.html#signaturesInBand,GpgConfig	proc signaturesInBand(cfg: GpgConfig): bool		350
+nim	decryptProcess	nimvault/crypto.html#decryptProcess,GpgConfig,string,string	proc decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		362
+nim	decryptStream	nimvault/crypto.html#decryptStream,GpgConfig,string	proc decryptStream(cfg: GpgConfig; inPath: string): Process		376
+nim	encryptFileTo	nimvault/crypto.html#encryptFileTo,GpgConfig,seq[string],string,string	proc encryptFileTo(cfg: GpgConfig; recipients: seq[string]; inPath, outPath: string;\n              sign = true)		390
+nim	encryptProcess	nimvault/crypto.html#encryptProcess,GpgConfig,string,string	proc encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process		441

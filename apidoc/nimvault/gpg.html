@@ -89,26 +89,51 @@
 </li>
 <li>
   <details open>
+    <summary><a class="reference reference-toplevel" href="#10" id="60">Consts</a></summary>
+    <ul class="simple simple-toc-section">
+      <li><a class="reference" href="#AgeGpgSigner" title="AgeGpgSigner = &quot;signer = gpg does not sign an age vault: gpg signs only what it encrypts.\n  Use signer = ssh with sign_key, allowed_signers and signer_identity.&quot;">AgeGpgSigner</a></li>
+
+    </ul>
+  </details>
+</li>
+<li>
+  <details open>
     <summary><a class="reference reference-toplevel" href="#12" id="62">Procs</a></summary>
     <ul class="simple simple-toc-section">
       <ul class="simple nested-toc-section">gpgDecrypt
-  <li><a class="reference" href="#gpgDecrypt%2Cstring%2Cstring" title="gpgDecrypt(inPath, outPath: string; verifySig = false)">gpgDecrypt(inPath, outPath: string; verifySig = false)</a></li>
+  <li><a class="reference" href="#gpgDecrypt%2CGpgConfig%2Cstring%2Cstring" title="gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)">gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">gpgDecryptToString
-  <li><a class="reference" href="#gpgDecryptToString%2Cstring" title="gpgDecryptToString(inPath: string; verifySig = false): string">gpgDecryptToString(inPath: string; verifySig = false): string</a></li>
+  <li><a class="reference" href="#gpgDecryptToString%2CGpgConfig%2Cstring" title="gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                   checkPresent = false): string">gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                   checkPresent = false): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">gpgEncrypt
   <li><a class="reference" href="#gpgEncrypt%2CGpgConfig%2Cstring%2Cstring" title="gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)">gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gpgNoSecretKey
+  <li><a class="reference" href="#gpgNoSecretKey%2Cstring" title="gpgNoSecretKey(status: string): bool">gpgNoSecretKey(status: string): bool</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">gpgParallelism
   <li><a class="reference" href="#gpgParallelism" title="gpgParallelism(): int">gpgParallelism(): int</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gpgSignerProblem
+  <li><a class="reference" href="#gpgSignerProblem%2Cstring%2Cstring%2Cseq%5Bstring%5D" title="gpgSignerProblem(status, path: string; allowed: seq[string]): string">gpgSignerProblem(status, path: string; allowed: seq[string]): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">gpgStatusHas
   <li><a class="reference" href="#gpgStatusHas%2Cstring%2Cstring" title="gpgStatusHas(status, token: string): bool">gpgStatusHas(status, token: string): bool</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">gpgVerdict
+  <li><a class="reference" href="#gpgVerdict%2Cstring%2Cstring%2Cint%2Cbool%2Cseq%5Bstring%5D" title="gpgVerdict(status, path: string; code: int; verifySig: bool;
+           allowed: seq[string]; checkPresent = false): string">gpgVerdict(status, path: string; code: int; verifySig: bool;
+           allowed: seq[string]; checkPresent = false): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">initGpgConfig
@@ -129,6 +154,26 @@
 </ul>
 <ul class="simple nested-toc-section">sha256sumBytes
   <li><a class="reference" href="#sha256sumBytes%2Cstring" title="sha256sumBytes(data: string): string">sha256sumBytes(data: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">signerFingerprints
+  <li><a class="reference" href="#signerFingerprints%2Cseq%5Bstring%5D" title="signerFingerprints(specs: seq[string]; secretOnly = false): seq[string]">signerFingerprints(specs: seq[string]; secretOnly = false): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">signingKey
+  <li><a class="reference" href="#signingKey%2CGpgConfig" title="signingKey(cfg: GpgConfig): string">signingKey(cfg: GpgConfig): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">validSigners
+  <li><a class="reference" href="#validSigners%2Cstring" title="validSigners(status: string): seq[string]">validSigners(status: string): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">vaultSigners
+  <li><a class="reference" href="#vaultSigners%2CGpgConfig" title="vaultSigners(cfg: GpgConfig): seq[string]">vaultSigners(cfg: GpgConfig): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">vaultSignerSpecs
+  <li><a class="reference" href="#vaultSignerSpecs%2CGpgConfig" title="vaultSignerSpecs(cfg: GpgConfig): seq[string]">vaultSignerSpecs(cfg: GpgConfig): seq[string]</a></li>
 
 </ul>
 
@@ -204,26 +249,41 @@
 
   </dl>
 </div>
+<div class="section" id="10">
+  <h1><a class="toc-backref" href="#10">Consts</a></h1>
+  <dl class="item">
+    <div id="AgeGpgSigner">
+  <dt><pre><a href="gpg.html#AgeGpgSigner"><span class="Identifier">AgeGpgSigner</span></a> <span class="Other">=</span> <span class="StringLit">&quot;signer = gpg does not sign an age vault: gpg signs only what it encrypts.\n  Use signer = ssh with sign_key, allowed_signers and signer_identity.&quot;</span></pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+  </dl>
+</div>
 <div class="section" id="12">
   <h1><a class="toc-backref" href="#12">Procs</a></h1>
   <dl class="item">
     <div id="gpgDecrypt-procs-all">
-  <div id="gpgDecrypt,string,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#gpgDecrypt%2Cstring%2Cstring"><span class="Identifier">gpgDecrypt</span></a><span class="Other">(</span><span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
+  <div id="gpgDecrypt,GpgConfig,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgDecrypt%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">gpgDecrypt</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Decrypt a GPG-encrypted file to a target path.
+    Decrypt a GPG-encrypted file to a target path. With <tt class="docutils literal"><span class="pre"><span class="Identifier">verifySig</span></span></tt> the signature must come from a key <tt class="docutils literal"><span class="pre"><span class="Identifier">cfg</span></span></tt> names.
     
   </dd>
 </div>
 
 </div>
 <div id="gpgDecryptToString-procs-all">
-  <div id="gpgDecryptToString,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#gpgDecryptToString%2Cstring"><span class="Identifier">gpgDecryptToString</span></a><span class="Other">(</span><span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+  <div id="gpgDecryptToString,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgDecryptToString%2CGpgConfig%2Cstring"><span class="Identifier">gpgDecryptToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+                        <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
@@ -238,12 +298,25 @@
 <div id="gpgEncrypt-procs-all">
   <div id="gpgEncrypt,GpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#gpgEncrypt%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">gpgEncrypt</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Encrypt and sign a file using GPG with the configured recipient.
+    
+  </dd>
+</div>
+
+</div>
+<div id="gpgNoSecretKey-procs-all">
+  <div id="gpgNoSecretKey,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgNoSecretKey%2Cstring"><span class="Identifier">gpgNoSecretKey</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    True when a decrypt failed because the record is not for this machine. gpg reports NO_SECKEY for a session-key packet that names a key it holds but cannot open (code 18, wrong secret key), which is what a corrupted or forged packet looks like. That is skippable only when every failure was code 17 or the keyring holds none of the keys the record names.
     
   </dd>
 </div>
@@ -255,6 +328,18 @@
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="gpgSignerProblem-procs-all">
+  <div id="gpgSignerProblem,string,string,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgSignerProblem%2Cstring%2Cstring%2Cseq%5Bstring%5D"><span class="Identifier">gpgSignerProblem</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">allowed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Empty when every signature gpg validated was made by a key in <tt class="docutils literal"><span class="pre"><span class="Identifier">allowed</span></span></tt>. GOODSIG alone only says that some key in the keyring signed. The message keeps &quot;signature verification failed&quot; so callers that sort fatal from skippable failures treat it as fatal.
     
   </dd>
 </div>
@@ -272,11 +357,24 @@
 </div>
 
 </div>
+<div id="gpgVerdict-procs-all">
+  <div id="gpgVerdict,string,string,int,bool,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgVerdict%2Cstring%2Cstring%2Cint%2Cbool%2Cseq%5Bstring%5D"><span class="Identifier">gpgVerdict</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">,</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">code</span><span class="Other">:</span> <span class="Identifier">int</span><span class="Other">;</span> <span class="Identifier">verifySig</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">;</span>
+                <span class="Identifier">allowed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Empty when a decrypt that exited with <tt class="docutils literal"><span class="pre"><span class="Identifier">code</span></span></tt> and wrote <tt class="docutils literal"><span class="pre"><span class="Identifier">status</span></span></tt> is acceptable; otherwise the message to raise. <tt class="docutils literal"><span class="pre"><span class="Identifier">checkPresent</span></span></tt> is what <tt class="docutils literal"><span class="pre"><span class="Operator">--</span><span class="Identifier">allow</span><span class="Operator">-</span><span class="Identifier">unsigned</span></span></tt> asks for: a missing signature passes, but one that is there must verify and come from a key in <tt class="docutils literal"><span class="pre"><span class="Identifier">allowed</span></span></tt>.
+    
+  </dd>
+</div>
+
+</div>
 <div id="initGpgConfig-procs-all">
   <div id="initGpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#initGpgConfig%2Cstring%2Cstring"><span class="Identifier">initGpgConfig</span></a><span class="Other">(</span><span class="Identifier">cliRecipient</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Build a GpgConfig by resolving recipient and root from the 3-tier chain.
@@ -335,6 +433,70 @@
 </div>
 
 </div>
+<div id="signerFingerprints-procs-all">
+  <div id="signerFingerprints,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#signerFingerprints%2Cseq%5Bstring%5D"><span class="Identifier">signerFingerprints</span></a><span class="Other">(</span><span class="Identifier">specs</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">secretOnly</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Primary-key fingerprints, upper case, of every key in the keyring that one of <tt class="docutils literal"><span class="pre"><span class="Identifier">specs</span></span></tt> names. Email specs are exact (<tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Keyword">addr</span><span class="Operator">&gt;</span></span></tt>), and key IDs or fingerprints are exact hex matches against the primary key or a subkey; a vault may name the encryption subkey it is sealed to.
+    
+  </dd>
+</div>
+
+</div>
+<div id="signingKey-procs-all">
+  <div id="signingKey,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#signingKey%2CGpgConfig"><span class="Identifier">signingKey</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Pick an allowed signer key this machine can use, in config order.
+    
+  </dd>
+</div>
+
+</div>
+<div id="validSigners-procs-all">
+  <div id="validSigners,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#validSigners%2Cstring"><span class="Identifier">validSigners</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Primary-key fingerprint of each VALIDSIG line, upper case. gpg omits the primary field for a signature by a primary key on some versions; the signing-key fingerprint is then the primary one.
+    
+  </dd>
+</div>
+
+</div>
+<div id="vaultSigners-procs-all">
+  <div id="vaultSigners,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#vaultSigners%2CGpgConfig"><span class="Identifier">vaultSigners</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    
+    
+  </dd>
+</div>
+
+</div>
+<div id="vaultSignerSpecs-procs-all">
+  <div id="vaultSignerSpecs,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#vaultSignerSpecs%2CGpgConfig"><span class="Identifier">vaultSignerSpecs</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Key specifiers allowed to sign this vault: the recipient and every recipient a wrap rule names. A machine that writes records is one the config already lists, since it has to be able to read them.
+    
+  </dd>
+</div>
+
+</div>
 
   </dl>
 </div>
@@ -345,7 +507,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-27 00:02:27 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-06 14:52:51 UTC</small>
       </div>
     </div>
   </div>

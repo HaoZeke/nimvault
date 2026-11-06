@@ -5,11 +5,20 @@ nim	nvRaise	nimvault/gpg.html#nvRaise,string	proc nvRaise(msg: string)		24
 nim	nvQuiet	nimvault/gpg.html#nvQuiet	var nvQuiet		28
 nim	VaultConfigFile	nimvault/gpg.html#VaultConfigFile	tuple VaultConfigFile		30
 nim	resolveRecipient	nimvault/gpg.html#resolveRecipient,string,string,string	proc resolveRecipient(cli, env, configRecipient: string): string		76
-nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		90
-nim	gpgStatusHas	nimvault/gpg.html#gpgStatusHas,string,string	proc gpgStatusHas(status, token: string): bool		134
-nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		145
-nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,string,string	proc gpgDecrypt(inPath, outPath: string; verifySig = false)		159
-nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,string	proc gpgDecryptToString(inPath: string; verifySig = false): string		176
-nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		191
-nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		202
-nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		223
+nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		92
+nim	gpgStatusHas	nimvault/gpg.html#gpgStatusHas,string,string	proc gpgStatusHas(status, token: string): bool		137
+nim	vaultSignerSpecs	nimvault/gpg.html#vaultSignerSpecs,GpgConfig	proc vaultSignerSpecs(cfg: GpgConfig): seq[string]		148
+nim	signerFingerprints	nimvault/gpg.html#signerFingerprints,seq[string]	proc signerFingerprints(specs: seq[string]; secretOnly = false): seq[string]		256
+nim	vaultSigners	nimvault/gpg.html#vaultSigners,GpgConfig	proc vaultSigners(cfg: GpgConfig): seq[string]		287
+nim	AgeGpgSigner	nimvault/gpg.html#AgeGpgSigner	const AgeGpgSigner		295
+nim	signingKey	nimvault/gpg.html#signingKey,GpgConfig	proc signingKey(cfg: GpgConfig): string		318
+nim	validSigners	nimvault/gpg.html#validSigners,string	proc validSigners(status: string): seq[string]		328
+nim	gpgSignerProblem	nimvault/gpg.html#gpgSignerProblem,string,string,seq[string]	proc gpgSignerProblem(status, path: string; allowed: seq[string]): string		343
+nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		358
+nim	gpgVerdict	nimvault/gpg.html#gpgVerdict,string,string,int,bool,seq[string]	proc gpgVerdict(status, path: string; code: int; verifySig: bool;\n           allowed: seq[string]; checkPresent = false): string		377
+nim	gpgNoSecretKey	nimvault/gpg.html#gpgNoSecretKey,string	proc gpgNoSecretKey(status: string): bool		434
+nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,GpgConfig,string,string	proc gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		447
+nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,GpgConfig,string	proc gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                   checkPresent = false): string		463
+nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		477
+nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		488
+nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		509

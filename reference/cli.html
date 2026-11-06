@@ -241,60 +241,60 @@ data-aria-dark="Switch to auto color mode">
   </div>
 </div><article class="yue dark-code" role="main">
           <section id="cli-reference">
-<h1><a class="toc-backref" href="#id1" role="doc-backlink">CLI Reference</a><a class="headerlink" href="#cli-reference" title="Link to this heading">¶</a></h1>
+<h1><a class="toc-backref" href="#id2" role="doc-backlink">CLI Reference</a><a class="headerlink" href="#cli-reference" title="Link to this heading">¶</a></h1>
 <nav class="contents" id="contents">
 <p class="topic-title">Contents</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="#cli-reference" id="id1">CLI Reference</a></p>
+<li><p><a class="reference internal" href="#cli-reference" id="id2">CLI Reference</a></p>
 <ul>
-<li><p><a class="reference internal" href="#top-level-usage" id="id2">1 Top-level usage</a></p></li>
-<li><p><a class="reference internal" href="#commands" id="id3">2 Commands</a></p>
+<li><p><a class="reference internal" href="#top-level-usage" id="id3">1 Top-level usage</a></p></li>
+<li><p><a class="reference internal" href="#commands" id="id4">2 Commands</a></p>
 <ul>
-<li><p><a class="reference internal" href="#seal" id="id4">2.1 seal</a></p>
+<li><p><a class="reference internal" href="#seal" id="id5">2.1 seal</a></p>
 <ul>
-<li><p><a class="reference internal" href="#force" id="id5">2.1.1 <code class="docutils literal notranslate"><span class="pre">--force</span></code></a></p></li>
+<li><p><a class="reference internal" href="#force" id="id6">2.1.1 <code class="docutils literal notranslate"><span class="pre">--force</span></code></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#unseal" id="id6">2.2 unseal</a></p>
+<li><p><a class="reference internal" href="#unseal" id="id7">2.2 unseal</a></p>
 <ul>
-<li><p><a class="reference internal" href="#allow-unsigned" id="id7">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a></p></li>
+<li><p><a class="reference internal" href="#allow-unsigned" id="id8">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#add-dir" id="id8">2.3 add-dir</a></p></li>
-<li><p><a class="reference internal" href="#add" id="id9">2.4 add</a></p></li>
-<li><p><a class="reference internal" href="#rm" id="id10">2.5 rm</a></p></li>
-<li><p><a class="reference internal" href="#mv" id="id11">2.6 mv</a></p></li>
-<li><p><a class="reference internal" href="#get" id="id12">2.7 get</a></p></li>
-<li><p><a class="reference internal" href="#check" id="id13">2.8 check</a></p></li>
-<li><p><a class="reference internal" href="#gc" id="id14">2.9 gc</a></p>
+<li><p><a class="reference internal" href="#add-dir" id="id9">2.3 add-dir</a></p></li>
+<li><p><a class="reference internal" href="#add" id="id10">2.4 add</a></p></li>
+<li><p><a class="reference internal" href="#rm" id="id11">2.5 rm</a></p></li>
+<li><p><a class="reference internal" href="#mv" id="id12">2.6 mv</a></p></li>
+<li><p><a class="reference internal" href="#get" id="id13">2.7 get</a></p></li>
+<li><p><a class="reference internal" href="#check" id="id14">2.8 check</a></p></li>
+<li><p><a class="reference internal" href="#gc" id="id15">2.9 gc</a></p>
 <ul>
-<li><p><a class="reference internal" href="#dry-run" id="id15">2.9.1 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></a></p></li>
+<li><p><a class="reference internal" href="#dry-run" id="id16">2.9.1 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#rotate" id="id16">2.10 rotate</a></p>
+<li><p><a class="reference internal" href="#rotate" id="id17">2.10 rotate</a></p>
 <ul>
-<li><p><a class="reference internal" href="#rekey" id="id17">2.10.1 <code class="docutils literal notranslate"><span class="pre">--rekey</span></code></a></p></li>
+<li><p><a class="reference internal" href="#rekey" id="id18">2.10.1 <code class="docutils literal notranslate"><span class="pre">--rekey</span></code></a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#scan" id="id18">2.11 scan</a></p></li>
-<li><p><a class="reference internal" href="#list" id="id19">2.12 list</a></p></li>
-<li><p><a class="reference internal" href="#status" id="id20">2.13 status</a></p></li>
-<li><p><a class="reference internal" href="#who" id="id21">2.14 who</a></p></li>
-<li><p><a class="reference internal" href="#lock" id="id22">2.15 lock</a></p></li>
-<li><p><a class="reference internal" href="#init" id="id23">2.16 init</a></p></li>
-<li><p><a class="reference internal" href="#hook" id="id24">2.17 hook</a></p></li>
-<li><p><a class="reference internal" href="#doctor" id="id25">2.18 doctor</a></p></li>
+<li><p><a class="reference internal" href="#scan" id="id19">2.11 scan</a></p></li>
+<li><p><a class="reference internal" href="#list" id="id20">2.12 list</a></p></li>
+<li><p><a class="reference internal" href="#status" id="id21">2.13 status</a></p></li>
+<li><p><a class="reference internal" href="#who" id="id22">2.14 who</a></p></li>
+<li><p><a class="reference internal" href="#lock" id="id23">2.15 lock</a></p></li>
+<li><p><a class="reference internal" href="#init" id="id24">2.16 init</a></p></li>
+<li><p><a class="reference internal" href="#hook" id="id25">2.17 hook</a></p></li>
+<li><p><a class="reference internal" href="#doctor" id="id26">2.18 doctor</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#where-the-vault-lives" id="id26">3 Where the vault lives</a></p></li>
-<li><p><a class="reference internal" href="#global-options" id="id27">4 Global options</a></p></li>
-<li><p><a class="reference internal" href="#exit-codes" id="id28">5 Exit codes</a></p></li>
-<li><p><a class="reference internal" href="#security-model" id="id29">6 Security model</a></p>
+<li><p><a class="reference internal" href="#where-the-vault-lives" id="id27">3 Where the vault lives</a></p></li>
+<li><p><a class="reference internal" href="#global-options" id="id28">4 Global options</a></p></li>
+<li><p><a class="reference internal" href="#exit-codes" id="id29">5 Exit codes</a></p></li>
+<li><p><a class="reference internal" href="#security-model" id="id30">6 Security model</a></p>
 <ul>
-<li><p><a class="reference internal" href="#known-limitations" id="id30">6.1 Known limitations</a></p>
+<li><p><a class="reference internal" href="#known-limitations" id="id31">6.1 Known limitations</a></p>
 <ul>
-<li><p><a class="reference internal" href="#metadata-leakage" id="id31">6.1.1 Metadata leakage</a></p></li>
-<li><p><a class="reference internal" href="#no-forward-secrecy" id="id32">6.1.2 No forward secrecy</a></p></li>
+<li><p><a class="reference internal" href="#metadata-leakage" id="id32">6.1.1 Metadata leakage</a></p></li>
+<li><p><a class="reference internal" href="#no-forward-secrecy" id="id33">6.1.2 No forward secrecy</a></p></li>
 </ul>
 </li>
 </ul>
@@ -304,7 +304,7 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </nav>
 <section id="top-level-usage">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">1 Top-level usage</a><a class="headerlink" href="#top-level-usage" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">1 Top-level usage</a><a class="headerlink" href="#top-level-usage" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault {SUBCMD} [sub-command options &amp; parameters]
 </span></pre></div>
 </div>
@@ -315,9 +315,9 @@ flag.</p>
 subcommand is a thin wrapper around the corresponding <code class="docutils literal notranslate"><span class="pre">commands</span></code> module proc.</p>
 </section>
 <section id="commands">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">2 Commands</a><a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">2 Commands</a><a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
 <section id="seal">
-<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 seal</a><a class="headerlink" href="#seal" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">2.1 seal</a><a class="headerlink" href="#seal" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault seal [--recipient KEY] [--force]
 </span></pre></div>
 </div>
@@ -333,50 +333,80 @@ encrypted and signed, so writing it is a change in its own right.</p>
 <p>Everything is re-encrypted regardless when the seal key changes, which covers the
 backend, recipient, identity and signer: unchanged plaintext still owes a fresh
 blob under a new key.</p>
-<p>Blobs and the manifest are flushed in crash-safe order – payloads first, then
-the manifest that records their digests.</p>
-<p>Exits non-zero if any plaintext file is missing.</p>
+<p>New ciphertext is written to <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;.gpg.pending</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age.pending</span></code>). The record
+is updated to name that file, and only then is it renamed over the live blob.
+A crash before the record is durable leaves the previous blob in place. A
+crash after the record is written leaves <code class="docutils literal notranslate"><span class="pre">.pending</span></code>, which the next read
+promotes when its hash matches.</p>
+<p>Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+directory symlink above it, resolves outside <code class="docutils literal notranslate"><span class="pre">$HOME</span></code> or <code class="docutils literal notranslate"><span class="pre">root</span></code>. <code class="docutils literal notranslate"><span class="pre">rotate</span> <span class="pre">--rekey</span></code> seals, so it refuses the same paths.</p>
 <section id="force">
-<h4><a class="toc-backref" href="#id5" role="doc-backlink">2.1.1 <code class="docutils literal notranslate"><span class="pre">--force</span></code></a><a class="headerlink" href="#force" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id6" role="doc-backlink">2.1.1 <code class="docutils literal notranslate"><span class="pre">--force</span></code></a><a class="headerlink" href="#force" title="Link to this heading">¶</a></h4>
 <p>Re-encrypt every entry, not only the changed ones.</p>
 </section>
 </section>
 <section id="unseal">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">2.2 unseal</a><a class="headerlink" href="#unseal" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">2.2 unseal</a><a class="headerlink" href="#unseal" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault unseal [PATH...] [--recipient KEY] [--allow-unsigned] [--vault DIR]
 </span></pre></div>
 </div>
 <p>With no path this restores the whole vault. Naming paths restores only
 those entries, and a directory restores everything beneath it. A selector
 that matches nothing is an error.</p>
-<p>Before decryption, verifies:</p>
+<p>Before decrypting a payload, verifies:</p>
 <ul class="simple">
-<li><p>Manifest GPG signature</p></li>
-<li><p>Blob SHA-256 hashes against manifest</p></li>
+<li><p>Record signatures: gpg checks the one inside each record while decrypting
+it, <code class="docutils literal notranslate"><span class="pre">ssh-keygen</span> <span class="pre">-Y</span> <span class="pre">verify</span></code> checks the detached <code class="docutils literal notranslate"><span class="pre">.sig</span></code> with <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">ssh</span></code></p></li>
+<li><p>Blob SHA-256 hashes against the records</p></li>
 <li><p>Path safety (no directory traversal)</p></li>
 </ul>
-<p>Decryption writes to temporary files first. Only after all signatures and hashes
-pass does the tool move files to their final paths. This atomic approach prevents
-release of unverified plaintext.</p>
+<p>Every signature and hash is checked before any plaintext is written. A
+direct gpg blob carries its signature inside the ciphertext, so <code class="docutils literal notranslate"><span class="pre">unseal</span></code>
+first decrypts each of those with the output discarded. Each entry is then
+decrypted to a temporary file beside its destination, checked again, and
+renamed into place before the next is staged; direct gpg blobs go eight at a
+time. A decryption that fails, or a full disk, stops the run there. The files
+already placed stay, and each had passed every check.</p>
+<p>The temporary file is <code class="docutils literal notranslate"><span class="pre">.nimvault-&lt;id&gt;.tmp</span></code> in the destination’s directory,
+mode 0600. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> creates it through a descriptor for that directory and
+copies the plaintext in from gpg’s or age’s standard output; neither tool is
+given a path to write. The rename goes through the same descriptor. It sits
+beside the destination so the final step is a <code class="docutils literal notranslate"><span class="pre">rename</span></code> on one filesystem,
+which replaces a symlink at the destination instead of writing through it.
+The cost: plaintext sits in that directory while its entry is decrypted, and
+a kill before the rename leaves it behind. <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">gc</span></code> shreds such files.
+Any other failure shreds it before <code class="docutils literal notranslate"><span class="pre">unseal</span></code> exits.</p>
 <p>Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).</p>
+<p>A record encrypted only to keys whose secret part is not on this machine
+belongs to a wrap group the machine is not in. <code class="docutils literal notranslate"><span class="pre">unseal</span></code> skips it and prints
+how many records it could not open. A record that names a key this machine
+holds and still does not decrypt is corrupt or forged, and is fatal.</p>
 <p>Exits non-zero if:</p>
 <ul class="simple">
+<li><p>No record opens with the secret keys on this machine</p></li>
+<li><p>A record for a key this machine holds does not decrypt</p></li>
+<li><p>A record opens but holds no entry this version can read</p></li>
 <li><p>Any blob file is missing</p></li>
 <li><p>Any blob hash does not match the manifest</p></li>
-<li><p>Any signature is invalid or missing (unless <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>)</p></li>
+<li><p>Any signature does not verify, or comes from a key the config does not name</p></li>
+<li><p>Any signature is missing (unless <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>)</p></li>
 <li><p>Any target path escapes the expected boundary</p></li>
 </ul>
 <section id="allow-unsigned">
-<h4><a class="toc-backref" href="#id7" role="doc-backlink">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a><a class="headerlink" href="#allow-unsigned" title="Link to this heading">¶</a></h4>
-<p>Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
-(<code class="docutils literal notranslate"><span class="pre">BADSIG</span></code>) are still fatal even with this flag. Use this only for migrating
-legacy vaults created before v0.2.0. Run <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">seal</span></code> afterwards to upgrade
-the vault to signed v2 format.</p>
+<h4><a class="toc-backref" href="#id8" role="doc-backlink">2.2.1 <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></a><a class="headerlink" href="#allow-unsigned" title="Link to this heading">¶</a></h4>
+<p>Accept a record, manifest or blob that carries no signature. A signature that
+is present is still checked: one that does not verify, and a good one from a
+key the config does not name, are fatal. Blob-hash and path-safety checks
+still run.</p>
+<p>The flag authenticates nothing it lets through. Anyone who can write to the
+vault repository and holds the recipient’s public key can add an unsigned
+record, and with the flag <code class="docutils literal notranslate"><span class="pre">unseal</span></code> writes it. Use it only to migrate a vault
+created before v0.2.0, then run <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">seal</span></code> to sign every record.</p>
 </section>
 </section>
 <section id="add-dir">
-<h3><a class="toc-backref" href="#id8" role="doc-backlink">2.3 add-dir</a><a class="headerlink" href="#add-dir" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">2.3 add-dir</a><a class="headerlink" href="#add-dir" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault add-dir &lt;directory&gt; [--recipient KEY] [--no-gitignore]
 </span></pre></div>
 </div>
@@ -400,7 +430,7 @@ multiple sensitive files.</p>
 </ul>
 </section>
 <section id="add">
-<h3><a class="toc-backref" href="#id9" role="doc-backlink">2.4 add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">2.4 add</a><a class="headerlink" href="#add" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault add &lt;path&gt; [--recipient KEY] [--no-gitignore]
 </span></pre></div>
 </div>
@@ -409,8 +439,10 @@ a random 16-char hex ID, encrypts and signs the file, computes a SHA-256 blob
 hash, and appends to the manifest.</p>
 <p>Checks <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">ls-files</span></code> to verify the file is not already tracked by git. If the
 file is tracked, exits with an error instructing the user to untrack it first.</p>
-<p>Appends the file path to <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> unless <code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> is passed or the
-path is already gitignored.</p>
+<p>Appends one <code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> line for that path. The line is anchored at the
+repository root and <code class="docutils literal notranslate"><span class="pre">#</span></code>, <code class="docutils literal notranslate"><span class="pre">\*</span></code> and <code class="docutils literal notranslate"><span class="pre">?</span></code> are escaped, so the line matches the
+file and not a comment or a glob. <code class="docutils literal notranslate"><span class="pre">--no-gitignore</span></code> skips the line. A path
+that is already ignored is left alone.</p>
 <p>Exits non-zero if:</p>
 <ul class="simple">
 <li><p>The file does not exist</p></li>
@@ -419,7 +451,7 @@ path is already gitignored.</p>
 </ul>
 </section>
 <section id="rm">
-<h3><a class="toc-backref" href="#id10" role="doc-backlink">2.5 rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">2.5 rm</a><a class="headerlink" href="#rm" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault rm &lt;path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
@@ -427,32 +459,43 @@ path is already gitignored.</p>
 manifest entry. Does NOT delete the local plaintext file.</p>
 </section>
 <section id="mv">
-<h3><a class="toc-backref" href="#id11" role="doc-backlink">2.6 mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id12" role="doc-backlink">2.6 mv</a><a class="headerlink" href="#mv" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault mv &lt;old-path&gt; &lt;new-path&gt; [--recipient KEY]
 </span></pre></div>
 </div>
 <p>Move/rename a vault entry’s target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.</p>
+<p>A symlink at either path is refused, and so is a directory symlink above
+either path that resolves outside <code class="docutils literal notranslate"><span class="pre">$HOME</span></code> or <code class="docutils literal notranslate"><span class="pre">root</span></code>. Across filesystems the
+file is copied beside the new path, owner-only, given the source’s mode, and
+renamed into place. The source is then overwritten and removed, as <code class="docutils literal notranslate"><span class="pre">lock</span></code>
+does. The checks run before the move, which then uses both paths by name; see
+the <a class="reference external" href="../explanation/threat-model.rst">threat model</a>.</p>
 </section>
 <section id="get">
-<h3><a class="toc-backref" href="#id12" role="doc-backlink">2.7 get</a><a class="headerlink" href="#get" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id13" role="doc-backlink">2.7 get</a><a class="headerlink" href="#get" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault get &lt;path&gt; [--allow-unsigned]
 </span></pre></div>
 </div>
 <p>Print one entry’s plaintext on stdout without unsealing the vault or writing
-anything to disk. Applies the same path-safety and blob-integrity checks
-<code class="docutils literal notranslate"><span class="pre">unseal</span></code> does. Deliberately quiet, so nothing decorative shares the stream with
-a secret.</p>
+the plaintext to disk, including the runtime directory. Applies the same
+path-safety and blob-integrity checks <code class="docutils literal notranslate"><span class="pre">unseal</span></code> does, and <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>
+means the same as it does there. Deliberately quiet, so nothing decorative
+shares the stream with a secret.</p>
 </section>
 <section id="check">
-<h3><a class="toc-backref" href="#id13" role="doc-backlink">2.8 check</a><a class="headerlink" href="#check" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id14" role="doc-backlink">2.8 check</a><a class="headerlink" href="#check" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault check [--recipient KEY]
 </span></pre></div>
 </div>
-<p>Verify every blob against the hash the manifest records for it. Decrypts
-nothing and needs no key material, so it is cheap enough for a pre-push hook or
-a continuous-integration job. Exits non-zero when anything is inconsistent.</p>
+<p>Verify the blob of each record this machine can open against the hash that
+record holds. The hashes are stored in the encrypted manifest and the
+per-entry records, so <code class="docutils literal notranslate"><span class="pre">check</span></code> decrypts the records and does not decrypt the
+payload blobs. A record encrypted only to keys this machine lacks is not
+checked; <code class="docutils literal notranslate"><span class="pre">check</span></code> reports how many it could not open. Exits non-zero when a blob differs, when a
+record for a key this machine holds does not decrypt, when a record opens but
+holds no entry, or when no record opens at all.</p>
 <p>This answers a different question from <code class="docutils literal notranslate"><span class="pre">status</span></code>. <code class="docutils literal notranslate"><span class="pre">status</span></code> compares the
 <strong>plaintext</strong> on this machine against the manifest, so it says nothing about
 whether the blobs still match; a blob committed without the manifest that
@@ -460,7 +503,7 @@ vouches for it looks healthy there right up until an <code class="docutils liter
 Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.</p>
 </section>
 <section id="gc">
-<h3><a class="toc-backref" href="#id14" role="doc-backlink">2.9 gc</a><a class="headerlink" href="#gc" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id15" role="doc-backlink">2.9 gc</a><a class="headerlink" href="#gc" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault gc [--recipient KEY] [--dry-run]
 </span></pre></div>
 </div>
@@ -469,14 +512,21 @@ Reports a missing blob, a drifted blob, and a v1 entry that carries no hash.</p>
 writing the manifest that names it. The vault lock makes that rarer but does not
 remove the case. An orphan is not only clutter: it is a readable copy of a
 secret that nothing tracks, so nothing will ever rotate or remove it.</p>
-<p>Never touches the manifest, the data-key files, or any blob a live entry names.</p>
+<p>Never touches the manifest, the data-key files, or any blob a live entry names.
+A <code class="docutils literal notranslate"><span class="pre">.pending</span></code> file whose hash a record names is kept, and so is one whose record
+this machine cannot open. A <code class="docutils literal notranslate"><span class="pre">.pending</span></code> file is also kept while an in-flight
+record write exists at <code class="docutils literal notranslate"><span class="pre">~.vault/e/&lt;id&gt;.&lt;ext&gt;.tmp</span></code>. Any other <code class="docutils literal notranslate"><span class="pre">.pending</span></code> file is
+removed, as are <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;.gpg.tmp</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;.gpg.pending.tmp</span></code> payloads a killed
+<code class="docutils literal notranslate"><span class="pre">add</span></code> or <code class="docutils literal notranslate"><span class="pre">seal</span></code> was still writing.</p>
+<p><code class="docutils literal notranslate"><span class="pre">gc</span></code> also shreds <code class="docutils literal notranslate"><span class="pre">.nimvault-&lt;id&gt;.tmp</span></code> files beside the entries this machine
+can open. Those are plaintext an interrupted <code class="docutils literal notranslate"><span class="pre">unseal</span></code> staged; see <code class="docutils literal notranslate"><span class="pre">unseal</span></code>.</p>
 <section id="dry-run">
-<h4><a class="toc-backref" href="#id15" role="doc-backlink">2.9.1 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></a><a class="headerlink" href="#dry-run" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id16" role="doc-backlink">2.9.1 <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></a><a class="headerlink" href="#dry-run" title="Link to this heading">¶</a></h4>
 <p>List what would be removed and remove nothing.</p>
 </section>
 </section>
 <section id="rotate">
-<h3><a class="toc-backref" href="#id16" role="doc-backlink">2.10 rotate</a><a class="headerlink" href="#rotate" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id17" role="doc-backlink">2.10 rotate</a><a class="headerlink" href="#rotate" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault rotate [--recipient KEY] [--rekey]
 </span></pre></div>
 </div>
@@ -487,28 +537,43 @@ re-encrypt.</p>
 vault stops being able to. It does nothing about a data key that has already
 leaked, because the old ciphertext is unchanged and the old key still opens it.</p>
 <section id="rekey">
-<h4><a class="toc-backref" href="#id17" role="doc-backlink">2.10.1 <code class="docutils literal notranslate"><span class="pre">--rekey</span></code></a><a class="headerlink" href="#rekey" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id18" role="doc-backlink">2.10.1 <code class="docutils literal notranslate"><span class="pre">--rekey</span></code></a><a class="headerlink" href="#rekey" title="Link to this heading">¶</a></h4>
 <p>Re-encrypt every payload under a fresh data key. This is the form that answers a
 suspected compromise of a data key or of the plaintext, and the only one that
 does. Churn is the intent, so it bypasses the incremental skip.</p>
 </section>
 </section>
 <section id="scan">
-<h3><a class="toc-backref" href="#id18" role="doc-backlink">2.11 scan</a><a class="headerlink" href="#scan" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault scan [PATH...] [--vault DIR]
+<h3><a class="toc-backref" href="#id19" role="doc-backlink">2.11 scan</a><a class="headerlink" href="#scan" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault scan [PATH] [--cached | --rev REV [--remote NAME]] [--vault DIR]
 </span></pre></div>
 </div>
-<p>Look for plaintext secrets that are not in the vault.</p>
+<p>Look for plaintext secrets that are not in the vault. With no flag, walk
+<code class="docutils literal notranslate"><span class="pre">PATH</span></code> (default: the current directory). A directory named <code class="docutils literal notranslate"><span class="pre">tmp</span></code> or <code class="docutils literal notranslate"><span class="pre">log</span></code> in
+the repository is scanned. The same names under <code class="docutils literal notranslate"><span class="pre">.claude</span></code> or <code class="docutils literal notranslate"><span class="pre">.codex</span></code> are not.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--cached</span></code> reads the git index. <code class="docutils literal notranslate"><span class="pre">--rev</span> <span class="pre">REV</span></code> reads blobs introduced by a
+commit (that commit and its ancestors) or by an <code class="docutils literal notranslate"><span class="pre">A..B</span></code> range, including a
+secret added and then removed before the tip. A vaulted path in the index or
+in those commits is reported even when its bytes match no pattern: it is the
+plaintext entering git history. Its bytes are matched against the patterns
+too. The worktree walk skips vaulted paths, since unsealed plaintext belongs
+on disk. Vaulted paths come from verified records and match by absolute path.
+<code class="docutils literal notranslate"><span class="pre">.vault/</span></code> itself is not scanned. <code class="docutils literal notranslate"><span class="pre">--remote</span> <span class="pre">NAME</span></code> leaves out commits that
+<code class="docutils literal notranslate"><span class="pre">NAME</span></code>’s remote-tracking refs already reach. A commit in <code class="docutils literal notranslate"><span class="pre">REV</span></code> that this clone
+does not have is an error that says to fetch first.</p>
+<p>The pattern list skips binaries, files over 2MB, lines over 2000 characters,
+and dependency directories on a worktree walk. It does not print the matching
+line.</p>
 </section>
 <section id="list">
-<h3><a class="toc-backref" href="#id19" role="doc-backlink">2.12 list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id20" role="doc-backlink">2.12 list</a><a class="headerlink" href="#list" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault list [--recipient KEY]
 </span></pre></div>
 </div>
 <p>List all vault entries showing their ID and target path.</p>
 </section>
 <section id="status">
-<h3><a class="toc-backref" href="#id20" role="doc-backlink">2.13 status</a><a class="headerlink" href="#status" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id21" role="doc-backlink">2.13 status</a><a class="headerlink" href="#status" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault status [--recipient KEY]
 </span></pre></div>
 </div>
@@ -529,37 +594,50 @@ content hash are decrypted:</p>
 in <code class="docutils literal notranslate"><span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">status</span></code> output. The directory structure is implicit in the paths.</p>
 </section>
 <section id="who">
-<h3><a class="toc-backref" href="#id21" role="doc-backlink">2.14 who</a><a class="headerlink" href="#who" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id22" role="doc-backlink">2.14 who</a><a class="headerlink" href="#who" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault who [--recipient KEY] [--vault DIR]
 </span></pre></div>
 </div>
 <p>Print which wrap-rule recipients can open each entry.</p>
 </section>
 <section id="lock">
-<h3><a class="toc-backref" href="#id22" role="doc-backlink">2.15 lock</a><a class="headerlink" href="#lock" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault lock [--recipient KEY] [--vault DIR]
+<h3><a class="toc-backref" href="#id23" role="doc-backlink">2.15 lock</a><a class="headerlink" href="#lock" title="Link to this heading">¶</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault lock [--recipient KEY] [--allow-unsigned] [--vault DIR]
 </span></pre></div>
 </div>
 <p>Remove in-sync plaintext. Vault entries stay; <code class="docutils literal notranslate"><span class="pre">unseal</span></code> restores them. A
-modified file is refused.</p>
+modified file is refused. A missing or mismatched blob is refused too: lock
+does not delete the only remaining copy. The file is overwritten before it
+is unlinked. Editor backups beside it (<code class="docutils literal notranslate"><span class="pre">name~</span></code>, <code class="docutils literal notranslate"><span class="pre">#name#</span></code>, <code class="docutils literal notranslate"><span class="pre">.name.swp</span></code>) are
+removed the same way, and only when the file itself is present and in sync.
+A symlink is unlinked and not followed. Records are verified as <code class="docutils literal notranslate"><span class="pre">unseal</span></code>
+verifies them. With <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">none</span></code>, lock refuses unless
+<code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code> is passed. A record path that fails the traversal check is
+refused.</p>
 </section>
 <section id="init">
-<h3><a class="toc-backref" href="#id23" role="doc-backlink">2.16 init</a><a class="headerlink" href="#init" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id24" role="doc-backlink">2.16 init</a><a class="headerlink" href="#init" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault init [--recipient KEY] [--vault DIR]
 </span></pre></div>
 </div>
 <p>Write <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> with the recipient. Refuses if the file already exists.</p>
 </section>
 <section id="hook">
-<h3><a class="toc-backref" href="#id24" role="doc-backlink">2.17 hook</a><a class="headerlink" href="#hook" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id25" role="doc-backlink">2.17 hook</a><a class="headerlink" href="#hook" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault hook [--vault DIR]
 </span></pre></div>
 </div>
-<p>Install a <code class="docutils literal notranslate"><span class="pre">pre-push</span></code> hook that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> and a <code class="docutils literal notranslate"><span class="pre">pre-commit</span></code> hook
-that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">scan</span></code>. Refuses to overwrite existing hooks.</p>
+<p>Install a <code class="docutils literal notranslate"><span class="pre">pre-commit</span></code> hook that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">scan</span> <span class="pre">--cached</span></code> and a
+<code class="docutils literal notranslate"><span class="pre">pre-push</span></code> hook that runs <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">scan</span> <span class="pre">--rev</span></code> on the commits being pushed,
+then <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code>. Pushing to a named remote scans only commits that
+remote’s tracking refs do not reach, so a new branch is not refused for
+history the remote already has. A push to a bare URL scans the whole range.
+When the remote holds commits this clone has not fetched, the hook refuses
+and says to run <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span></code>. Refuses to overwrite existing hooks. Hooks
+already installed keep their previous script until they are replaced by hand.</p>
 </section>
 <section id="doctor">
-<h3><a class="toc-backref" href="#id25" role="doc-backlink">2.18 doctor</a><a class="headerlink" href="#doctor" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id26" role="doc-backlink">2.18 doctor</a><a class="headerlink" href="#doctor" title="Link to this heading">¶</a></h3>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault doctor [--recipient KEY] [--vault DIR]
 </span></pre></div>
 </div>
@@ -568,7 +646,7 @@ non-zero when something will not work.</p>
 </section>
 </section>
 <section id="where-the-vault-lives">
-<h2><a class="toc-backref" href="#id26" role="doc-backlink">3 Where the vault lives</a><a class="headerlink" href="#where-the-vault-lives" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id27" role="doc-backlink">3 Where the vault lives</a><a class="headerlink" href="#where-the-vault-lives" title="Link to this heading">¶</a></h2>
 <p>Every command accepts <code class="docutils literal notranslate"><span class="pre">--vault</span> <span class="pre">DIR</span></code>. The vault repository need not be the one
 you are standing in, which is what lets <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> sit in a private repository
 while the dotfiles it protects stay public. Resolution order:</p>
@@ -581,7 +659,7 @@ while the dotfiles it protects stay public. Resolution order:</p>
 <p>See the <a class="reference external" href="../howto/private-vault-repo.rst">private vault repository how-to</a>.</p>
 </section>
 <section id="global-options">
-<h2><a class="toc-backref" href="#id27" role="doc-backlink">4 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id28" role="doc-backlink">4 Global options</a><a class="headerlink" href="#global-options" title="Link to this heading">¶</a></h2>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--recipient</span> <span class="pre">KEY</span></code></dt><dd><p>GPG recipient key ID. Overrides env var and config file.
 See <a class="reference external" href="config.rst">configuration</a> for the full resolution chain.</p>
@@ -593,7 +671,7 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 </dl>
 </section>
 <section id="exit-codes">
-<h2><a class="toc-backref" href="#id28" role="doc-backlink">5 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id29" role="doc-backlink">5 Exit codes</a><a class="headerlink" href="#exit-codes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper docutils container">
 <table class="docutils align-default">
 <thead>
@@ -613,27 +691,36 @@ See <a class="reference external" href="config.rst">configuration</a> for the fu
 </div>
 </section>
 <section id="security-model">
-<h2><a class="toc-backref" href="#id29" role="doc-backlink">6 Security model</a><a class="headerlink" href="#security-model" title="Link to this heading">¶</a></h2>
-<p>All encryption operations also GPG-sign the payload. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, signatures and
-blob hashes are verified before any plaintext is written to disk:</p>
+<h2><a class="toc-backref" href="#id30" role="doc-backlink">6 Security model</a><a class="headerlink" href="#security-model" title="Link to this heading">¶</a></h2>
+<p>Payload signatures depend on the format. Direct gpg blobs (v5) carry an in-band
+GPG signature. Age blobs and v6 enveloped blobs do not; for those, authenticity
+comes from the signed records plus the blob digest. On <code class="docutils literal notranslate"><span class="pre">unseal</span></code>:</p>
 <ol class="arabic simple">
-<li><p>Manifest signature is checked during decryption</p></li>
+<li><p>Record signatures must come from a key the config names (see
+<a class="reference external" href="config.rst">configuration</a>). With <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">ssh</span></code>, the age default,
+<code class="docutils literal notranslate"><span class="pre">ssh-keygen</span> <span class="pre">-Y</span> <span class="pre">verify</span></code> checks each record’s detached <code class="docutils literal notranslate"><span class="pre">.sig</span></code> before the
+record is decrypted. On the gpg backend, gpg checks the signature inside
+each record while decrypting it. <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">none</span></code> needs <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code></p></li>
 <li><p>Blob SHA-256 hashes are compared against the manifest</p></li>
 <li><p>Target paths are validated against directory traversal</p></li>
-<li><p>Blobs are decrypted to temporary files</p></li>
-<li><p>Signatures are verified on each blob that carries one in band. gpg blobs
-encrypted to a recipient do; age blobs and v6 enveloped blobs do not, and
-take the same guarantee from the signed manifest plus the digest checked at
-step 2</p></li>
-<li><p>Only after all checks pass are files moved to their final paths</p></li>
+<li><p>Signatures are verified on each blob that carries one in band, by
+decrypting it with the output discarded. gpg blobs encrypted to a recipient
+do; age blobs and v6 enveloped blobs do not, and take the same guarantee
+from the signed manifest plus the digest checked at step 2</p></li>
+<li><p>Each entry is decrypted to a temporary file beside its destination,
+checked again, and renamed into place before the next is staged</p></li>
 </ol>
-<p>This design prevents forgery, ciphertext swapping, path traversal, and release
-of unverified plaintext.</p>
+<p>No plaintext is written before steps 1 to 4 pass for every entry. A failure
+at step 5 stops the run and leaves the files already placed; a killed run
+leaves the staging file in flight for <code class="docutils literal notranslate"><span class="pre">gc</span></code>.</p>
+<p>This design prevents forgery and ciphertext swapping, and refuses escaped record
+paths. Commands that reopen plaintext paths by name still rely on the path check
+remaining true while the path is reopened.</p>
 <section id="known-limitations">
-<h3><a class="toc-backref" href="#id30" role="doc-backlink">6.1 Known limitations</a><a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id31" role="doc-backlink">6.1 Known limitations</a><a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h3>
 <p>These are inherent trade-offs of Git-backed OpenPGP vaults, not bugs.</p>
 <section id="metadata-leakage">
-<h4><a class="toc-backref" href="#id31" role="doc-backlink">6.1.1 Metadata leakage</a><a class="headerlink" href="#metadata-leakage" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id32" role="doc-backlink">6.1.1 Metadata leakage</a><a class="headerlink" href="#metadata-leakage" title="Link to this heading">¶</a></h4>
 <p>Because the tool encrypts files individually, an observer analyzing the Git
 history can track update frequency, ciphertext size variations, and file count
 over time. GPG ciphertext sizes correlate with plaintext sizes, so relative file
@@ -642,7 +729,7 @@ would conceal this metadata but sacrifice Git delta efficiency. For most persona
 vault use cases this trade-off is acceptable.</p>
 </section>
 <section id="no-forward-secrecy">
-<h4><a class="toc-backref" href="#id32" role="doc-backlink">6.1.2 No forward secrecy</a><a class="headerlink" href="#no-forward-secrecy" title="Link to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id33" role="doc-backlink">6.1.2 No forward secrecy</a><a class="headerlink" href="#no-forward-secrecy" title="Link to this heading">¶</a></h4>
 <p>An adversary who archives the public Git history today and obtains a key later
 can decrypt every historical version. Git keeps the old ciphertext whatever the
 current vault holds, so no operation on the working tree reaches it.</p>

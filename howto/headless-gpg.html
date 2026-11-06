@@ -212,8 +212,11 @@ data-aria-dark="Switch to auto color mode">
 </li>
 </ul>
 </nav>
-<p><code class="docutils literal notranslate"><span class="pre">status</span></code> and <code class="docutils literal notranslate"><span class="pre">check</span></code> do not need a key. <code class="docutils literal notranslate"><span class="pre">seal</span></code>, <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, <code class="docutils literal notranslate"><span class="pre">get</span></code> and
-<code class="docutils literal notranslate"><span class="pre">rotate</span></code> do. This page is how to unlock GPG when there is no pinentry.</p>
+<p>Every command that reads the vault needs the secret key that opens the
+records, because paths and blob digests live inside them. <code class="docutils literal notranslate"><span class="pre">status</span></code> and
+<code class="docutils literal notranslate"><span class="pre">check</span></code> decrypt only the records. <code class="docutils literal notranslate"><span class="pre">seal</span></code>, <code class="docutils literal notranslate"><span class="pre">unseal</span></code>, <code class="docutils literal notranslate"><span class="pre">get</span></code> and <code class="docutils literal notranslate"><span class="pre">rotate</span></code> also
+decrypt or encrypt payloads. This page is how to unlock GPG when there is no
+pinentry.</p>
 <p>The service-vault howto is a different problem: a dedicated empty-passphrase
 key for one machine. Do not unlock a personal passphrase-protected key in CI
 if a service vault can hold the secret instead.</p>

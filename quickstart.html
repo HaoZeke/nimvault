@@ -298,8 +298,10 @@ everything. The original filename (<code class="docutils literal notranslate"><s
 </span></pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">status</span></code> compares the plaintext on this machine against the manifest. To check
-the vault itself is intact – every blob still matching the digest recorded for
-it – use <code class="docutils literal notranslate"><span class="pre">check</span></code>, which decrypts nothing and needs no key:</p>
+the vault itself is intact, use <code class="docutils literal notranslate"><span class="pre">check</span></code>. It compares payload blobs to the
+digests in records this identity can open, reports how many records it could
+not open, and does not decrypt the payloads. The digests are stored in the
+encrypted records:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault<span class="w"> </span>check
 </span><span data-line="2"><span class="c1"># 1 entries consistent with the manifest.</span>
 </span></pre></div>

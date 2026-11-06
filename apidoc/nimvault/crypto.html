@@ -80,17 +80,27 @@
 
 </ul>
 <ul class="simple nested-toc-section">decryptManyToString
-  <li><a class="reference" href="#decryptManyToString%2CGpgConfig%2Cseq%5Bstring%5D" title="decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false): seq[
-    Decrypted]">decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false): seq[
-    Decrypted]</a></li>
+  <li><a class="reference" href="#decryptManyToString%2CGpgConfig%2Cseq%5Bstring%5D" title="decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false;
+                    checkPresent = false): seq[Decrypted]">decryptManyToString(cfg: GpgConfig; paths: seq[string]; verifySig = false;
+                    checkPresent = false): seq[Decrypted]</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">decryptProcess
   <li><a class="reference" href="#decryptProcess%2CGpgConfig%2Cstring%2Cstring" title="decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process">decryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">decryptStream
+  <li><a class="reference" href="#decryptStream%2CGpgConfig%2Cstring" title="decryptStream(cfg: GpgConfig; inPath: string): Process">decryptStream(cfg: GpgConfig; inPath: string): Process</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">decryptToString
-  <li><a class="reference" href="#decryptToString%2CGpgConfig%2Cstring" title="decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string">decryptToString(cfg: GpgConfig; inPath: string; verifySig = false): string</a></li>
+  <li><a class="reference" href="#decryptToString%2CGpgConfig%2Cstring" title="decryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                checkPresent = false): string">decryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                checkPresent = false): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">discardPrivate
+  <li><a class="reference" href="#discardPrivate%2Cstring" title="discardPrivate(dir: string)">discardPrivate(dir: string)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">effectiveSigner
@@ -109,6 +119,10 @@
 </ul>
 <ul class="simple nested-toc-section">encryptProcess
   <li><a class="reference" href="#encryptProcess%2CGpgConfig%2Cstring%2Cstring" title="encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process">encryptProcess(cfg: GpgConfig; inPath, outPath: string): Process</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">ensureOwnerDir
+  <li><a class="reference" href="#ensureOwnerDir%2Cstring" title="ensureOwnerDir(dir: string)">ensureOwnerDir(dir: string)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">ensureVaultDir
@@ -131,6 +145,26 @@
   <li><a class="reference" href="#privateWorkDir" title="privateWorkDir(): string">privateWorkDir(): string</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">publishPending
+  <li><a class="reference" href="#publishPending%2Cstring%2Cstring" title="publishPending(src, dest: string)">publishPending(src, dest: string)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">publishSigned
+  <li><a class="reference" href="#publishSigned%2CGpgConfig%2Cstring%2Cstring" title="publishSigned(cfg: GpgConfig; tmp, dest: string)">publishSigned(cfg: GpgConfig; tmp, dest: string)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">renameOver
+  <li><a class="reference" href="#renameOver%2Cstring%2Cstring" title="renameOver(src, dest: string)">renameOver(src, dest: string)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">resolveBlob
+  <li><a class="reference" href="#resolveBlob%2Cstring%2CGpgConfig%2Cstring%2Cstring" title="resolveBlob(repo: string; cfg: GpgConfig; id, expectedHash: string): string">resolveBlob(repo: string; cfg: GpgConfig; id, expectedHash: string): string</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">shredFile
+  <li><a class="reference" href="#shredFile%2Cstring" title="shredFile(path: string)">shredFile(path: string)</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">signaturesInBand
   <li><a class="reference" href="#signaturesInBand%2CGpgConfig" title="signaturesInBand(cfg: GpgConfig): bool">signaturesInBand(cfg: GpgConfig): bool</a></li>
 
@@ -151,8 +185,16 @@
   <li><a class="reference" href="#usesAge%2CGpgConfig" title="usesAge(cfg: GpgConfig): bool">usesAge(cfg: GpgConfig): bool</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">verifyAndDecryptToString
+  <li><a class="reference" href="#verifyAndDecryptToString%2CGpgConfig%2Cstring" title="verifyAndDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                         checkPresent = false): string">verifyAndDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;
+                         checkPresent = false): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">verifyManifest
-  <li><a class="reference" href="#verifyManifest%2CGpgConfig%2Cstring%2Cbool" title="verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)">verifyManifest(cfg: GpgConfig; path: string; requireSig: bool)</a></li>
+  <li><a class="reference" href="#verifyManifest%2CGpgConfig%2Cstring%2Cbool" title="verifyManifest(cfg: GpgConfig; path: string; requireSig: bool;
+               checkPresent = false)">verifyManifest(cfg: GpgConfig; path: string; requireSig: bool;
+               checkPresent = false)</a></li>
 
 </ul>
 
@@ -185,7 +227,7 @@
     <div class="section" id="6">
   <h1><a class="toc-backref" href="#6">Imports</a></h1>
   <dl class="item">
-    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="age.html">age</a>
+    <a class="reference external" href="gpg.html">gpg</a>, <a class="reference external" href="age.html">age</a>, <a class="reference external" href="fsat.html">fsat</a>
   </dl>
 </div>
 <div class="section" id="7">
@@ -244,10 +286,11 @@
 </div>
 <div id="decryptManyToString-procs-all">
   <div id="decryptManyToString,GpgConfig,seq[string]">
-  <dt><pre><span class="Keyword">proc</span> <a href="#decryptManyToString%2CGpgConfig%2Cseq%5Bstring%5D"><span class="Identifier">decryptManyToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">paths</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span>
-    <a href="crypto.html#Decrypted"><span class="Identifier">Decrypted</span></a><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
-    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#decryptManyToString%2CGpgConfig%2Cseq%5Bstring%5D"><span class="Identifier">decryptManyToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">paths</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+                         <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="crypto.html#Decrypted"><span class="Identifier">Decrypted</span></a><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     <tt class="docutils literal"><span class="pre"><span class="Identifier">decryptToString</span></span></tt> over many small files, in the same order, with no raise: each failure comes back as its message. gpg runs <tt class="docutils literal"><span class="pre"><span class="Identifier">gpgParallelism</span><span class="Punctuation">(</span><span class="Punctuation">)</span></span></tt> processes at a time; a vault of a few hundred split records otherwise pays one process start and one agent round trip per record, in series, on every command that loads the manifest. age stays sequential, since its decrypt is in-process fast.
@@ -269,15 +312,41 @@
 </div>
 
 </div>
+<div id="decryptStream-procs-all">
+  <div id="decryptStream,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#decryptStream%2CGpgConfig%2Cstring"><span class="Identifier">decryptStream</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Process</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Spawn a decryption of <tt class="docutils literal"><span class="pre"><span class="Identifier">inPath</span></span></tt> that writes the plaintext to stdout and, for gpg, its status lines to stderr. Where the bytes land is the caller's choice, so no path is handed to the backend.
+    
+  </dd>
+</div>
+
+</div>
 <div id="decryptToString-procs-all">
   <div id="decryptToString,GpgConfig,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#decryptToString%2CGpgConfig%2Cstring"><span class="Identifier">decryptToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+  <dt><pre><span class="Keyword">proc</span> <a href="#decryptToString%2CGpgConfig%2Cstring"><span class="Identifier">decryptToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+                     <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
-    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+    <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="discardPrivate-procs-all">
+  <div id="discardPrivate,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#discardPrivate%2Cstring"><span class="Identifier">discardPrivate</span></a><span class="Other">(</span><span class="Identifier">dir</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Shred files under a work directory this process created, then remove it.
     
   </dd>
 </div>
@@ -328,11 +397,24 @@
 <div id="encryptProcess-procs-all">
   <div id="encryptProcess,GpgConfig,string,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#encryptProcess%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">encryptProcess</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">,</span> <span class="Identifier">outPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Process</span> {.
-    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
-    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="ensureOwnerDir-procs-all">
+  <div id="ensureOwnerDir,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#ensureOwnerDir%2Cstring"><span class="Identifier">ensureOwnerDir</span></a><span class="Other">(</span><span class="Identifier">dir</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span>
+                                   <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Create <tt class="docutils literal"><span class="pre"><span class="Identifier">dir</span></span></tt> mode 0700, or tighten a directory this user already owns. A symlink or another uid's directory is refused: plaintext and data keys are written underneath it.
     
   </dd>
 </div>
@@ -389,11 +471,74 @@
 </div>
 <div id="privateWorkDir-procs-all">
   <div id="privateWorkDir">
-  <dt><pre><span class="Keyword">proc</span> <a href="#privateWorkDir"><span class="Identifier">privateWorkDir</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+  <dt><pre><span class="Keyword">proc</span> <a href="#privateWorkDir"><span class="Identifier">privateWorkDir</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Owner-only directory for plaintext and data keys that must not land in <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span></span></tt> or under a shared <tt class="docutils literal"><span class="pre"><span class="Operator">/</span><span class="Identifier">tmp</span></span></tt> name. Prefer <tt class="docutils literal"><span class="pre"><span class="Operator">$</span><span class="Identifier">XDG_RUNTIME_DIR</span></span></tt> so the bytes die with the login; fall back to a 0700 directory named by uid under the process temp area.
+    
+  </dd>
+</div>
+
+</div>
+<div id="publishPending-procs-all">
+  <div id="publishPending,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#publishPending%2Cstring%2Cstring"><span class="Identifier">publishPending</span></a><span class="Other">(</span><span class="Identifier">src</span><span class="Other">,</span> <span class="Identifier">dest</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Replace <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> with <tt class="docutils literal"><span class="pre"><span class="Identifier">src</span></span></tt>. A failed rename leaves <tt class="docutils literal"><span class="pre"><span class="Identifier">src</span></span></tt> where it is: the record may already name those bytes, and deleting them would leave the record pointing at ciphertext that is no longer on disk.
+    
+  </dd>
+</div>
+
+</div>
+<div id="publishSigned-procs-all">
+  <div id="publishSigned,GpgConfig,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#publishSigned%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">publishSigned</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">tmp</span><span class="Other">,</span> <span class="Identifier">dest</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Move freshly encrypted <tt class="docutils literal"><span class="pre"><span class="Identifier">tmp</span></span></tt> over <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> along with its detached signature. The signature is made over <tt class="docutils literal"><span class="pre"><span class="Identifier">tmp</span></span></tt> first, so a signer that fails leaves <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> and the signature that covers it untouched; signing <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> after the rename put new ciphertext under the old signature, or under none once ssh-keygen had removed it. The two renames are not one step: a crash between them leaves the new signature at <tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Identifier">dest</span><span class="Operator">&gt;.</span><span class="Identifier">sig</span></span></tt> and the record it covers at <tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Identifier">dest</span><span class="Operator">&gt;.</span><span class="Identifier">tmp</span></span></tt>; moving that file over <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> finishes the write.
+    
+  </dd>
+</div>
+
+</div>
+<div id="renameOver-procs-all">
+  <div id="renameOver,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#renameOver%2Cstring%2Cstring"><span class="Identifier">renameOver</span></a><span class="Other">(</span><span class="Identifier">src</span><span class="Other">,</span> <span class="Identifier">dest</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <tt class="docutils literal"><span class="pre"><span class="Identifier">rename</span></span></tt> replaces <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> even when <tt class="docutils literal"><span class="pre"><span class="Identifier">dest</span></span></tt> is a symlink, and does not follow it. The copy fallback in <tt class="docutils literal"><span class="pre"><span class="Identifier">moveFile</span></span></tt> does follow, which writes plaintext through a symlink when the two paths are on different devices.
+    
+  </dd>
+</div>
+
+</div>
+<div id="resolveBlob-procs-all">
+  <div id="resolveBlob,string,GpgConfig,string,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#resolveBlob%2Cstring%2CGpgConfig%2Cstring%2Cstring"><span class="Identifier">resolveBlob</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">id</span><span class="Other">,</span> <span class="Identifier">expectedHash</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    The live blob when it matches <tt class="docutils literal"><span class="pre"><span class="Identifier">expectedHash</span></span></tt>. A <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">pending</span></span></tt> sibling is the ciphertext a seal wrote before it could rename it into place; if that sibling is the one the record names, promote it.
+    
+  </dd>
+</div>
+
+</div>
+<div id="shredFile-procs-all">
+  <div id="shredFile,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#shredFile%2Cstring"><span class="Identifier">shredFile</span></a><span class="Other">(</span><span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Overwrite a regular file, then unlink it. A symlink is unlinked and not followed. Best effort: a filesystem that keeps old blocks can still recover them.
     
   </dd>
 </div>
@@ -461,15 +606,31 @@
 </div>
 
 </div>
+<div id="verifyAndDecryptToString-procs-all">
+  <div id="verifyAndDecryptToString,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#verifyAndDecryptToString%2CGpgConfig%2Cstring"><span class="Identifier">verifyAndDecryptToString</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">inPath</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">verifySig</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
+                              <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Verify and decrypt one ciphertext while reading it only once where detached signatures are used.
+    
+  </dd>
+</div>
+
+</div>
 <div id="verifyManifest-procs-all">
   <div id="verifyManifest,GpgConfig,string,bool">
-  <dt><pre><span class="Keyword">proc</span> <a href="#verifyManifest%2CGpgConfig%2Cstring%2Cbool"><span class="Identifier">verifyManifest</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">requireSig</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">)</span> {.
+  <dt><pre><span class="Keyword">proc</span> <a href="#verifyManifest%2CGpgConfig%2Cstring%2Cbool"><span class="Identifier">verifyManifest</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">requireSig</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">;</span>
+                    <span class="Identifier">checkPresent</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span>
     <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
     <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    
+    <tt class="docutils literal"><span class="pre"><span class="Identifier">checkPresent</span></span></tt> (<tt class="docutils literal"><span class="pre"><span class="Operator">--</span><span class="Identifier">allow</span><span class="Operator">-</span><span class="Identifier">unsigned</span></span></tt>) lets a missing detached signature pass and still verifies one that is there.
     
   </dd>
 </div>
@@ -502,7 +663,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-09-27 00:02:27 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-06 14:52:51 UTC</small>
       </div>
     </div>
   </div>

@@ -4,7 +4,10 @@ nim	ageKeygenBinary	nimvault/age.html#ageKeygenBinary	proc ageKeygenBinary(): st
 nim	ageRecipientForIdentity	nimvault/age.html#ageRecipientForIdentity,string	proc ageRecipientForIdentity(identity: string): string		42
 nim	ageIdentityPath	nimvault/age.html#ageIdentityPath,GpgConfig	proc ageIdentityPath(cfg: GpgConfig): string		64
 nim	ageEncrypt	nimvault/age.html#ageEncrypt,GpgConfig,string,string	proc ageEncrypt(cfg: GpgConfig; inPath, outPath: string)		74
-nim	ageDecrypt	nimvault/age.html#ageDecrypt,GpgConfig,string,string	proc ageDecrypt(cfg: GpgConfig; inPath, outPath: string)		88
-nim	ageDecryptToString	nimvault/age.html#ageDecryptToString,GpgConfig,string	proc ageDecryptToString(cfg: GpgConfig; inPath: string): string		99
-nim	sshSign	nimvault/age.html#sshSign,GpgConfig,string	proc sshSign(cfg: GpgConfig; path: string)		113
-nim	sshVerify	nimvault/age.html#sshVerify,GpgConfig,string	proc sshVerify(cfg: GpgConfig; path: string)		150
+nim	ageDecrypt	nimvault/age.html#ageDecrypt,GpgConfig,string,string	proc ageDecrypt(cfg: GpgConfig; inPath, outPath: string)		91
+nim	ageDecryptBytesToString	nimvault/age.html#ageDecryptBytesToString,GpgConfig,string	proc ageDecryptBytesToString(cfg: GpgConfig; cipher: string): string		102
+nim	ageDecryptToString	nimvault/age.html#ageDecryptToString,GpgConfig,string	proc ageDecryptToString(cfg: GpgConfig; inPath: string): string		117
+nim	sshSign	nimvault/age.html#sshSign,GpgConfig,string	proc sshSign(cfg: GpgConfig; path: string)		122
+nim	sshVerify	nimvault/age.html#sshVerify,GpgConfig,string,string	proc sshVerify(cfg: GpgConfig; path, payload: string)		187
+nim	sshVerify	nimvault/age.html#sshVerify,GpgConfig,string	proc sshVerify(cfg: GpgConfig; path: string)		190
+nimgrp	sshverify	nimvault/age.html#sshVerify-procs-all	proc		187

@@ -1,2 +1,2 @@
 nimTitle	cli	nimvault/cli.html	module nimvault/cli		0
-nim	main	nimvault/cli.html#main,seq[string]	proc main(args: seq[string] = commandLineParams())		158
+nim	main	nimvault/cli.html#main,seq[string]	proc main(args: seq[string] = commandLineParams())		170

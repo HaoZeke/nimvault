@@ -1,0 +1,14 @@
+nimTitle	fsat	nimvault/fsat.html	module nimvault/fsat		0
+nim	ONoFollow	nimvault/fsat.html#ONoFollow	var ONoFollow		13
+nim	ODirectory	nimvault/fsat.html#ODirectory	var ODirectory		15
+nim	AtSymlinkNoFollow	nimvault/fsat.html#AtSymlinkNoFollow	var AtSymlinkNoFollow		16
+nim	openAt	nimvault/fsat.html#openAt,cint,cstring,cint	proc openAt(dirFd: cint; path: cstring; flags: cint): cint		18
+nim	mkdirAt	nimvault/fsat.html#mkdirAt,cint,cstring,Mode	proc mkdirAt(dirFd: cint; path: cstring; mode: Mode): cint		21
+nim	renameAt	nimvault/fsat.html#renameAt,cint,cstring,cint,cstring	proc renameAt(oldDirFd: cint; oldPath: cstring; newDirFd: cint; newPath: cstring): cint		23
+nim	unlinkAt	nimvault/fsat.html#unlinkAt,cint,cstring,cint	proc unlinkAt(dirFd: cint; path: cstring; flags: cint): cint		26
+nim	fstatAt	nimvault/fsat.html#fstatAt,cint,cstring,Stat,cint	proc fstatAt(dirFd: cint; path: cstring; st: var Stat; flags: cint): cint		28
+nim	sameFile	nimvault/fsat.html#sameFile,Stat,Stat	proc sameFile(a, b: Stat): bool		31
+nim	writeAll	nimvault/fsat.html#writeAll,cint,pointer,int	proc writeAll(fd: cint; data: pointer; len: int): cint		34
+nim	overwriteFd	nimvault/fsat.html#overwriteFd,cint	proc overwriteFd(fd: cint)		48
+nim	Drain	nimvault/fsat.html#Drain	object Drain		67
+nim	drain	nimvault/fsat.html#drain,openArray[Drain]	proc drain(jobs: var openArray[Drain])		77

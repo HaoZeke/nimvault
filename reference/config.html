@@ -108,7 +108,10 @@ data-aria-dark="Switch to auto color mode">
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#recipient-resolution">1 Recipient resolution</a></li>
-<li><a class="reference internal" href="#config-file-format">2 Config file format</a></li>
+<li><a class="reference internal" href="#config-file-format">2 Config file format</a><ul>
+<li><a class="reference internal" href="#the-config-is-trusted-as-written">2.1 The config is trusted as written</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#per-path-recipients">3 Per-path recipients</a><ul>
 <li><a class="reference internal" href="#how-it-works">3.1 How it works</a></li>
 <li><a class="reference internal" href="#changing-the-rules">3.2 Changing the rules</a></li>
@@ -117,7 +120,8 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li><a class="reference internal" href="#gpg-key-id">4 GPG key ID</a><ul>
-<li><a class="reference internal" href="#finding-your-key-id">4.1 Finding your key ID</a></li>
+<li><a class="reference internal" href="#who-may-sign">4.1 Who may sign</a></li>
+<li><a class="reference internal" href="#finding-your-key-id">4.2 Finding your key ID</a></li>
 </ul>
 </li>
 </ul>
@@ -216,18 +220,23 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#configuration" id="id1">Configuration</a></p>
 <ul>
 <li><p><a class="reference internal" href="#recipient-resolution" id="id2">1 Recipient resolution</a></p></li>
-<li><p><a class="reference internal" href="#config-file-format" id="id3">2 Config file format</a></p></li>
-<li><p><a class="reference internal" href="#per-path-recipients" id="id4">3 Per-path recipients</a></p>
+<li><p><a class="reference internal" href="#config-file-format" id="id3">2 Config file format</a></p>
 <ul>
-<li><p><a class="reference internal" href="#how-it-works" id="id5">3.1 How it works</a></p></li>
-<li><p><a class="reference internal" href="#changing-the-rules" id="id6">3.2 Changing the rules</a></p></li>
-<li><p><a class="reference internal" href="#a-prerequisite-worth-stating" id="id7">3.3 A prerequisite worth stating</a></p></li>
-<li><p><a class="reference internal" href="#break-glass-recovery" id="id8">3.4 Break-glass recovery</a></p></li>
+<li><p><a class="reference internal" href="#the-config-is-trusted-as-written" id="id4">2.1 The config is trusted as written</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#gpg-key-id" id="id9">4 GPG key ID</a></p>
+<li><p><a class="reference internal" href="#per-path-recipients" id="id5">3 Per-path recipients</a></p>
 <ul>
-<li><p><a class="reference internal" href="#finding-your-key-id" id="id10">4.1 Finding your key ID</a></p></li>
+<li><p><a class="reference internal" href="#how-it-works" id="id6">3.1 How it works</a></p></li>
+<li><p><a class="reference internal" href="#changing-the-rules" id="id7">3.2 Changing the rules</a></p></li>
+<li><p><a class="reference internal" href="#a-prerequisite-worth-stating" id="id8">3.3 A prerequisite worth stating</a></p></li>
+<li><p><a class="reference internal" href="#break-glass-recovery" id="id9">3.4 Break-glass recovery</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#gpg-key-id" id="id10">4 GPG key ID</a></p>
+<ul>
+<li><p><a class="reference internal" href="#who-may-sign" id="id11">4.1 Who may sign</a></p></li>
+<li><p><a class="reference internal" href="#finding-your-key-id" id="id12">4.2 Finding your key ID</a></p></li>
 </ul>
 </li>
 </ul>
@@ -266,12 +275,15 @@ portability.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">wrap</span></code></dt><dd><p>Repeatable. <code class="docutils literal notranslate"><span class="pre">&lt;glob&gt;:&lt;recipient&gt;[,&lt;recipient&gt;...]</span></code> – which
 recipients may open the entries matching a path pattern. See below.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">backend</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">gpg</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">age</span></code>. Also <code class="docutils literal notranslate"><span class="pre">NIMVAULT_BACKEND</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">backend</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">gpg</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">age</span></code>. Also <code class="docutils literal notranslate"><span class="pre">NIMVAULT_BACKEND</span></code>. Any other
+value is refused.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">identity</span></code></dt><dd><p>Age identity file. Also <code class="docutils literal notranslate"><span class="pre">NIMVAULT_AGE_IDENTITY</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">signer</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">gpg</span></code> (default for the GPG backend), <code class="docutils literal notranslate"><span class="pre">ssh</span></code> (default for age),
-or <code class="docutils literal notranslate"><span class="pre">none</span></code>.</p>
+or <code class="docutils literal notranslate"><span class="pre">none</span></code>. Any other value is refused, and so is <code class="docutils literal notranslate"><span class="pre">gpg</span></code> with <code class="docutils literal notranslate"><span class="pre">backend</span> <span class="pre">=</span> <span class="pre">age</span></code>:
+gpg signs only what it encrypts, so it would sign and verify nothing. With
+<code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">unseal</span></code> and <code class="docutils literal notranslate"><span class="pre">get</span></code> need <code class="docutils literal notranslate"><span class="pre">--allow-unsigned</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">sign_key</span></code></dt><dd><p>SSH private key used to sign the manifest when <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">ssh</span></code>.</p>
 </dd>
@@ -280,51 +292,61 @@ or <code class="docutils literal notranslate"><span class="pre">none</span></cod
 <dt><code class="docutils literal notranslate"><span class="pre">signer_identity</span></code></dt><dd><p>Principal to match inside <code class="docutils literal notranslate"><span class="pre">allowed_signers</span></code>.</p>
 </dd>
 </dl>
+<section id="the-config-is-trusted-as-written">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">2.1 The config is trusted as written</a><a class="headerlink" href="#the-config-is-trusted-as-written" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">.vault/config</span></code> is plaintext, committed and unsigned. The <code class="docutils literal notranslate"><span class="pre">recipient</span></code> and
+<code class="docutils literal notranslate"><span class="pre">wrap</span></code> lines decide who may sign records and who the next <code class="docutils literal notranslate"><span class="pre">seal</span></code> encrypts to;
+<code class="docutils literal notranslate"><span class="pre">allowed_signers</span></code> and <code class="docutils literal notranslate"><span class="pre">signer_identity</span></code> decide whose ssh signature verifies.
+Whoever can change the file can change who may sign and who can read. Review
+a diff to it as you would review code, before the next <code class="docutils literal notranslate"><span class="pre">unseal</span></code> or <code class="docutils literal notranslate"><span class="pre">seal</span></code>.
+See the <a class="reference external" href="../explanation/threat-model.rst">threat model</a>.</p>
+</section>
 </section>
 <section id="per-path-recipients">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">3 Per-path recipients</a><a class="headerlink" href="#per-path-recipients" title="Link to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">3 Per-path recipients</a><a class="headerlink" href="#per-path-recipients" title="Link to this heading">¶</a></h2>
 <p>Not every machine should read every secret. A <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule maps a path pattern
 to the recipients allowed to open those entries:</p>
-<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="na">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">LAPTOPKEY</span>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="na">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">laptop@example.com</span>
 </span><span data-line="2">
 </span><span data-line="3"><span class="c1"># Specific rules first: the first match decides.</span>
-</span><span data-line="4"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.ssh/**:LAPTOPKEY</span>
-</span><span data-line="5"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.gnupg/**:LAPTOPKEY</span>
-</span><span data-line="6"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">**:LAPTOPKEY,BUILDBOXKEY</span>
+</span><span data-line="4"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.ssh/**:laptop@example.com</span>
+</span><span data-line="5"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">~/.gnupg/**:laptop@example.com</span>
+</span><span data-line="6"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">**:laptop@example.com,buildbox@example.com</span>
 </span></pre></div>
 </div>
 <p>Order in the file is precedence, so the narrow rules go above the general one.
 An entry matching no rule uses <code class="docutils literal notranslate"><span class="pre">recipient</span></code>, which is why a config with no
 <code class="docutils literal notranslate"><span class="pre">wrap</span></code> lines behaves exactly as it did before rules existed.</p>
 <section id="how-it-works">
-<h3><a class="toc-backref" href="#id5" role="doc-backlink">3.1 How it works</a><a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">3.1 How it works</a><a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h3>
 <p>Each entry’s payload is encrypted under its own data key (see the manifest
 reference). The data keys are grouped by recipient set, and each group is
 written to its own <code class="docutils literal notranslate"><span class="pre">.vault/keys.&lt;group&gt;.gpg</span></code> encrypted to that group alone. A
 machine decrypts the group files its key opens and no others, so it can read
 exactly the entries meant for it.</p>
-<p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> on such a machine restores what it can read. <code class="docutils literal notranslate"><span class="pre">check</span></code> needs no key at
-all, so vault integrity is verifiable from anywhere.</p>
+<p><code class="docutils literal notranslate"><span class="pre">unseal</span></code> on such a machine restores what it can read. <code class="docutils literal notranslate"><span class="pre">check</span></code> compares
+payload blobs with the recorded digests and does not decrypt the payloads.
+The digests are stored in the encrypted records.</p>
 <p>Patterns: <code class="docutils literal notranslate"><span class="pre">\*</span></code> matches within one path segment, <code class="docutils literal notranslate"><span class="pre">\*\*</span></code> spans separators, and a
 pattern ending in <code class="docutils literal notranslate"><span class="pre">/</span></code> covers everything beneath it. Patterns are anchored at
 both ends, so <code class="docutils literal notranslate"><span class="pre">~/x/*</span></code> does not match <code class="docutils literal notranslate"><span class="pre">~/x/deep/one</span></code>.</p>
 </section>
 <section id="changing-the-rules">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">3.2 Changing the rules</a><a class="headerlink" href="#changing-the-rules" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">3.2 Changing the rules</a><a class="headerlink" href="#changing-the-rules" title="Link to this heading">¶</a></h3>
 <p>Editing <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rules does not move anything by itself. Run <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">rotate</span></code>:
 it recomputes each entry’s group and rewrites the key files, leaving payloads
 untouched. An entry that moved group has its key written to the new group’s
 file and dropped from the old one.</p>
 </section>
 <section id="a-prerequisite-worth-stating">
-<h3><a class="toc-backref" href="#id7" role="doc-backlink">3.3 A prerequisite worth stating</a><a class="headerlink" href="#a-prerequisite-worth-stating" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">3.3 A prerequisite worth stating</a><a class="headerlink" href="#a-prerequisite-worth-stating" title="Link to this heading">¶</a></h3>
 <p>Groups are only worth anything when the machines hold <strong>different</strong> keys. If
 every machine shares one private key, every machine can open every group and
 the split is decoration. Give each machine its own key and exchange public
 keys before relying on this.</p>
 </section>
 <section id="break-glass-recovery">
-<h3><a class="toc-backref" href="#id8" role="doc-backlink">3.4 Break-glass recovery</a><a class="headerlink" href="#break-glass-recovery" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">3.4 Break-glass recovery</a><a class="headerlink" href="#break-glass-recovery" title="Link to this heading">¶</a></h3>
 <p>Because a group takes several recipients, an offline key – generated once,
 printed or kept on removable media, never on any machine – can be added to
 the general rule. It then opens the vault if every machine is lost, without a
@@ -332,16 +354,44 @@ threshold scheme or any additional machinery.</p>
 </section>
 </section>
 <section id="gpg-key-id">
-<h2><a class="toc-backref" href="#id9" role="doc-backlink">4 GPG key ID</a><a class="headerlink" href="#gpg-key-id" title="Link to this heading">¶</a></h2>
-<p>The recipient value is any string GPG accepts as a recipient identifier:</p>
+<h2><a class="toc-backref" href="#id10" role="doc-backlink">4 GPG key ID</a><a class="headerlink" href="#gpg-key-id" title="Link to this heading">¶</a></h2>
+<p>The recipient, and each recipient in a <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule, must name a key
+exactly:</p>
 <ul class="simple">
 <li><p>Long key ID: <code class="docutils literal notranslate"><span class="pre">9CCCE36402CB49A6</span></code></p></li>
 <li><p>Fingerprint: <code class="docutils literal notranslate"><span class="pre">ABCD1234...</span></code></p></li>
-<li><p>Email: <code class="docutils literal notranslate"><span class="pre">user&#64;example.com</span></code></p></li>
+<li><p>Email: <code class="docutils literal notranslate"><span class="pre">user&#64;example.com</span></code> or <code class="docutils literal notranslate"><span class="pre">&lt;user&#64;example.com&gt;</span></code></p></li>
+<li><p>Subkey ID or fingerprint, optionally with gpg’s trailing <code class="docutils literal notranslate"><span class="pre">!</span></code>. The key it
+belongs to is the one allowed to sign.</p></li>
+<li><p>8-hex short key IDs are refused.</p></li>
 </ul>
-<p>Long key IDs are recommended for unambiguous matching.</p>
+<p>Any other string, such as a name, is refused when the config loads, whether
+it comes from <code class="docutils literal notranslate"><span class="pre">.vault/config</span></code>, <code class="docutils literal notranslate"><span class="pre">--recipient</span></code> or <code class="docutils literal notranslate"><span class="pre">NIMVAULT_GPG_RECIPIENT</span></code>. gpg
+matches such a string anywhere in a user ID, so <code class="docutils literal notranslate"><span class="pre">Alice</span></code> also names
+<code class="docutils literal notranslate"><span class="pre">Malice</span> <span class="pre">&lt;malice&#64;example.com&gt;</span></code>, and that key could then sign records.</p>
+<p>Use a 16-hex key ID or a full fingerprint when naming keys by hex.</p>
+<section id="who-may-sign">
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">4.1 Who may sign</a><a class="headerlink" href="#who-may-sign" title="Link to this heading">¶</a></h3>
+<p>With <code class="docutils literal notranslate"><span class="pre">signer</span> <span class="pre">=</span> <span class="pre">gpg</span></code>, a record or blob verifies only when gpg reports a good
+signature whose primary key is one the config names: <code class="docutils literal notranslate"><span class="pre">recipient</span></code> or a
+recipient in a <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule. A good signature from any other key in the
+keyring is refused. <code class="docutils literal notranslate"><span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">seal</span></code> sign with an allowed key explicitly
+(<code class="docutils literal notranslate"><span class="pre">--local-user</span></code>). If this machine has no allowed secret key, they fail.</p>
+<p>This signer set is vault-wide. Any configured recipient (base <code class="docutils literal notranslate"><span class="pre">recipient</span></code> or a
+recipient listed in any <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule) can sign records for any path in the
+vault. <code class="docutils literal notranslate"><span class="pre">wrap</span></code> controls <strong>decryption scope</strong> only; it does not scope who may sign
+which path. Per-glob signer scoping is a known limit.</p>
+<p>So a key named only in a <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule can write every path. In the example
+above, the build box can sign a record for <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code> or
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/authorized_keys</span></code>, and the laptop writes it on the next <code class="docutils literal notranslate"><span class="pre">unseal</span></code>. Name
+a machine in a <code class="docutils literal notranslate"><span class="pre">wrap</span></code> rule only if you would let it write those files.</p>
+<p>An email spec is matched as an exact address (<code class="docutils literal notranslate"><span class="pre">&lt;user&#64;example.com&gt;</span></code>), and
+matches every key in the keyring that carries that exact email. Use a
+fingerprint or long key ID when another key with the same email could be
+imported.</p>
+</section>
 <section id="finding-your-key-id">
-<h3><a class="toc-backref" href="#id10" role="doc-backlink">4.1 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id12" role="doc-backlink">4.2 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">gpg<span class="w"> </span>--list-keys<span class="w"> </span>--keyid-format<span class="w"> </span>long
 </span><span data-line="2"><span class="c1"># pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]</span>
 </span><span data-line="3"><span class="c1">#                ^^^^^^^^^^^^^^^^ this is the key ID</span>
