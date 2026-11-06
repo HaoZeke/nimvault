@@ -1,0 +1,1 @@
+A missing `allowed_signers`, `signer_identity` or `ssh-keygen` now fails `unseal`, `get` and `check` with the reason. A record whose signature could not be checked for one of those reasons was skipped and not counted, so `unseal` printed "vault is empty" and exited 0, and `check` asked for a secret key.

@@ -1,0 +1,1 @@
+`gc` shreds `.nimvault-<id>.tmp` plaintext that an interrupted `unseal` staged beside an entry, removes `<id>.gpg.tmp` and `<id>.gpg.pending.tmp` payloads a killed `add` or `seal` was writing, and keeps a pending blob whose record this machine cannot open instead of deleting another wrap group's ciphertext.

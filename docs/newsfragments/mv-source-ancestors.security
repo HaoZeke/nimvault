@@ -1,0 +1,1 @@
+`mv` refuses a source reached through a directory symlink that leaves `$HOME` or the configured `root`. `rename` followed that symlink, so `mv` moved a file from outside the boundary to the new path.

@@ -16,7 +16,7 @@ requires "checksums >= 0.2.0"
 task test, "Run test suite":
   for f in listFiles("tests"):
     if f.endsWith(".nim"):
-      exec "nim c -r --hints:off -p:src " & f
+      exec "nim c -r --hints:off -d:nimvaultTest -p:src " & f
 
 task buildLib, "Build libnimvault shared library for FFI":
   exec "mkdir -p lib"

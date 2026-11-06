@@ -38,10 +38,15 @@ Everything is re-encrypted regardless when the seal key changes, which covers th
 backend, recipient, identity and signer: unchanged plaintext still owes a fresh
 blob under a new key.
 
-Blobs and the manifest are flushed in crash-safe order -- payloads first, then
-the manifest that records their digests.
+New ciphertext is written to ~<id>.gpg.pending~ (or ~.age.pending~). The record
+is updated to name that file, and only then is it renamed over the live blob.
+A crash before the record is durable leaves the previous blob in place. A
+crash after the record is written leaves ~.pending~, which the next read
+promotes when its hash matches.
 
-Exits non-zero if any plaintext file is missing.
+Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+directory symlink above it, resolves outside ~$HOME~ or ~root~. ~rotate
+--rekey~ seals, so it refuses the same paths.
 
 *** ~--force~
 
@@ -57,30 +62,59 @@ With no path this restores the whole vault. Naming paths restores only
 those entries, and a directory restores everything beneath it. A selector
 that matches nothing is an error.
 
-Before decryption, verifies:
-- Manifest GPG signature
-- Blob SHA-256 hashes against manifest
+Before decrypting a payload, verifies:
+- Record signatures: gpg checks the one inside each record while decrypting
+  it, ~ssh-keygen -Y verify~ checks the detached =.sig= with ~signer = ssh~
+- Blob SHA-256 hashes against the records
 - Path safety (no directory traversal)
 
-Decryption writes to temporary files first. Only after all signatures and hashes
-pass does the tool move files to their final paths. This atomic approach prevents
-release of unverified plaintext.
+Every signature and hash is checked before any plaintext is written. A
+direct gpg blob carries its signature inside the ciphertext, so ~unseal~
+first decrypts each of those with the output discarded. Each entry is then
+decrypted to a temporary file beside its destination, checked again, and
+renamed into place before the next is staged; direct gpg blobs go eight at a
+time. A decryption that fails, or a full disk, stops the run there. The files
+already placed stay, and each had passed every check.
+
+The temporary file is =.nimvault-<id>.tmp= in the destination's directory,
+mode 0600. ~unseal~ creates it through a descriptor for that directory and
+copies the plaintext in from gpg's or age's standard output; neither tool is
+given a path to write. The rename goes through the same descriptor. It sits
+beside the destination so the final step is a ~rename~ on one filesystem,
+which replaces a symlink at the destination instead of writing through it.
+The cost: plaintext sits in that directory while its entry is decrypted, and
+a kill before the rename leaves it behind. ~nimvault gc~ shreds such files.
+Any other failure shreds it before ~unseal~ exits.
 
 Creates parent directories as needed. Sets file permissions to 600 (owner
 read/write only).
 
+A record encrypted only to keys whose secret part is not on this machine
+belongs to a wrap group the machine is not in. ~unseal~ skips it and prints
+how many records it could not open. A record that names a key this machine
+holds and still does not decrypt is corrupt or forged, and is fatal.
+
 Exits non-zero if:
+- No record opens with the secret keys on this machine
+- A record for a key this machine holds does not decrypt
+- A record opens but holds no entry this version can read
 - Any blob file is missing
 - Any blob hash does not match the manifest
-- Any signature is invalid or missing (unless ~--allow-unsigned~)
+- Any signature does not verify, or comes from a key the config does not name
+- Any signature is missing (unless ~--allow-unsigned~)
 - Any target path escapes the expected boundary
 
 *** ~--allow-unsigned~
 
-Accept unsigned v1 vaults. Skips signature and hash verification. Bad signatures
-(~BADSIG~) are still fatal even with this flag. Use this only for migrating
-legacy vaults created before v0.2.0. Run ~nimvault seal~ afterwards to upgrade
-the vault to signed v2 format.
+Accept a record, manifest or blob that carries no signature. A signature that
+is present is still checked: one that does not verify, and a good one from a
+key the config does not name, are fatal. Blob-hash and path-safety checks
+still run.
+
+The flag authenticates nothing it lets through. Anyone who can write to the
+vault repository and holds the recipient's public key can add an unsigned
+record, and with the flag ~unseal~ writes it. Use it only to migrate a vault
+created before v0.2.0, then run ~nimvault seal~ to sign every record.
 
 ** add-dir
 
@@ -119,8 +153,10 @@ hash, and appends to the manifest.
 Checks ~git ls-files~ to verify the file is not already tracked by git. If the
 file is tracked, exits with an error instructing the user to untrack it first.
 
-Appends the file path to ~.gitignore~ unless ~--no-gitignore~ is passed or the
-path is already gitignored.
+Appends one ~.gitignore~ line for that path. The line is anchored at the
+repository root and ~#~, ~*~ and ~?~ are escaped, so the line matches the
+file and not a comment or a glob. ~--no-gitignore~ skips the line. A path
+that is already ignored is left alone.
 
 Exits non-zero if:
 - The file does not exist
@@ -146,6 +182,13 @@ Move/rename a vault entry's target path. If the file exists at the old path, it
 is physically moved. The encrypted blob is unchanged; only the manifest entry is
 updated.
 
+A symlink at either path is refused, and so is a directory symlink above
+either path that resolves outside ~$HOME~ or ~root~. Across filesystems the
+file is copied beside the new path, owner-only, given the source's mode, and
+renamed into place. The source is then overwritten and removed, as ~lock~
+does. The checks run before the move, which then uses both paths by name; see
+the [[file:../explanation/threat-model.org][threat model]].
+
 ** get
 
 #+begin_src text
@@ -153,9 +196,10 @@ nimvault get <path> [--allow-unsigned]
 #+end_src
 
 Print one entry's plaintext on stdout without unsealing the vault or writing
-anything to disk. Applies the same path-safety and blob-integrity checks
-~unseal~ does. Deliberately quiet, so nothing decorative shares the stream with
-a secret.
+the plaintext to disk, including the runtime directory. Applies the same
+path-safety and blob-integrity checks ~unseal~ does, and ~--allow-unsigned~
+means the same as it does there. Deliberately quiet, so nothing decorative
+shares the stream with a secret.
 
 ** check
 
@@ -163,9 +207,13 @@ a secret.
 nimvault check [--recipient KEY]
 #+end_src
 
-Verify every blob against the hash the manifest records for it. Decrypts
-nothing and needs no key material, so it is cheap enough for a pre-push hook or
-a continuous-integration job. Exits non-zero when anything is inconsistent.
+Verify the blob of each record this machine can open against the hash that
+record holds. The hashes are stored in the encrypted manifest and the
+per-entry records, so ~check~ decrypts the records and does not decrypt the
+payload blobs. A record encrypted only to keys this machine lacks is not
+checked; ~check~ reports how many it could not open. Exits non-zero when a blob differs, when a
+record for a key this machine holds does not decrypt, when a record opens but
+holds no entry, or when no record opens at all.
 
 This answers a different question from ~status~. ~status~ compares the
 *plaintext* on this machine against the manifest, so it says nothing about
@@ -187,6 +235,14 @@ remove the case. An orphan is not only clutter: it is a readable copy of a
 secret that nothing tracks, so nothing will ever rotate or remove it.
 
 Never touches the manifest, the data-key files, or any blob a live entry names.
+A ~.pending~ file whose hash a record names is kept, and so is one whose record
+this machine cannot open. A ~.pending~ file is also kept while an in-flight
+record write exists at =~.vault/e/<id>.<ext>.tmp=. Any other ~.pending~ file is
+removed, as are =<id>.gpg.tmp= and =<id>.gpg.pending.tmp= payloads a killed
+~add~ or ~seal~ was still writing.
+
+~gc~ also shreds =.nimvault-<id>.tmp= files beside the entries this machine
+can open. Those are plaintext an interrupted ~unseal~ staged; see ~unseal~.
 
 *** ~--dry-run~
 
@@ -215,10 +271,27 @@ does. Churn is the intent, so it bypasses the incremental skip.
 ** scan
 
 #+begin_src text
-nimvault scan [PATH...] [--vault DIR]
+nimvault scan [PATH] [--cached | --rev REV [--remote NAME]] [--vault DIR]
 #+end_src
 
-Look for plaintext secrets that are not in the vault.
+Look for plaintext secrets that are not in the vault. With no flag, walk
+~PATH~ (default: the current directory). A directory named ~tmp~ or ~log~ in
+the repository is scanned. The same names under ~.claude~ or ~.codex~ are not.
+
+~--cached~ reads the git index. ~--rev REV~ reads blobs introduced by a
+commit (that commit and its ancestors) or by an ~A..B~ range, including a
+secret added and then removed before the tip. A vaulted path in the index or
+in those commits is reported even when its bytes match no pattern: it is the
+plaintext entering git history. Its bytes are matched against the patterns
+too. The worktree walk skips vaulted paths, since unsealed plaintext belongs
+on disk. Vaulted paths come from verified records and match by absolute path.
+~.vault/~ itself is not scanned. ~--remote NAME~ leaves out commits that
+~NAME~'s remote-tracking refs already reach. A commit in ~REV~ that this clone
+does not have is an error that says to fetch first.
+
+The pattern list skips binaries, files over 2MB, lines over 2000 characters,
+and dependency directories on a worktree walk. It does not print the matching
+line.
 
 ** list
 
@@ -257,11 +330,18 @@ Print which wrap-rule recipients can open each entry.
 ** lock
 
 #+begin_src text
-nimvault lock [--recipient KEY] [--vault DIR]
+nimvault lock [--recipient KEY] [--allow-unsigned] [--vault DIR]
 #+end_src
 
 Remove in-sync plaintext. Vault entries stay; ~unseal~ restores them. A
-modified file is refused.
+modified file is refused. A missing or mismatched blob is refused too: lock
+does not delete the only remaining copy. The file is overwritten before it
+is unlinked. Editor backups beside it (=name~=, =#name#=, =.name.swp=) are
+removed the same way, and only when the file itself is present and in sync.
+A symlink is unlinked and not followed. Records are verified as ~unseal~
+verifies them. With ~signer = none~, lock refuses unless
+~--allow-unsigned~ is passed. A record path that fails the traversal check is
+refused.
 
 ** init
 
@@ -277,8 +357,14 @@ Write ~.vault/config~ with the recipient. Refuses if the file already exists.
 nimvault hook [--vault DIR]
 #+end_src
 
-Install a ~pre-push~ hook that runs ~nimvault check~ and a ~pre-commit~ hook
-that runs ~nimvault scan~. Refuses to overwrite existing hooks.
+Install a ~pre-commit~ hook that runs ~nimvault scan --cached~ and a
+~pre-push~ hook that runs ~nimvault scan --rev~ on the commits being pushed,
+then ~nimvault check~. Pushing to a named remote scans only commits that
+remote's tracking refs do not reach, so a new branch is not refused for
+history the remote already has. A push to a bare URL scans the whole range.
+When the remote holds commits this clone has not fetched, the hook refuses
+and says to run ~git fetch~. Refuses to overwrite existing hooks. Hooks
+already installed keep their previous script until they are replaced by hand.
 
 ** doctor
 
@@ -318,21 +404,31 @@ See the [[file:../howto/private-vault-repo.org][private vault repository how-to]
 
 * Security model
 
-All encryption operations also GPG-sign the payload. On ~unseal~, signatures and
-blob hashes are verified before any plaintext is written to disk:
+Payload signatures depend on the format. Direct gpg blobs (v5) carry an in-band
+GPG signature. Age blobs and v6 enveloped blobs do not; for those, authenticity
+comes from the signed records plus the blob digest. On ~unseal~:
 
-1. Manifest signature is checked during decryption
+1. Record signatures must come from a key the config names (see
+   [[file:config.org][configuration]]). With ~signer = ssh~, the age default,
+   ~ssh-keygen -Y verify~ checks each record's detached =.sig= before the
+   record is decrypted. On the gpg backend, gpg checks the signature inside
+   each record while decrypting it. ~signer = none~ needs ~--allow-unsigned~
 2. Blob SHA-256 hashes are compared against the manifest
 3. Target paths are validated against directory traversal
-4. Blobs are decrypted to temporary files
-5. Signatures are verified on each blob that carries one in band. gpg blobs
-   encrypted to a recipient do; age blobs and v6 enveloped blobs do not, and
-   take the same guarantee from the signed manifest plus the digest checked at
-   step 2
-6. Only after all checks pass are files moved to their final paths
+4. Signatures are verified on each blob that carries one in band, by
+   decrypting it with the output discarded. gpg blobs encrypted to a recipient
+   do; age blobs and v6 enveloped blobs do not, and take the same guarantee
+   from the signed manifest plus the digest checked at step 2
+5. Each entry is decrypted to a temporary file beside its destination,
+   checked again, and renamed into place before the next is staged
 
-This design prevents forgery, ciphertext swapping, path traversal, and release
-of unverified plaintext.
+No plaintext is written before steps 1 to 4 pass for every entry. A failure
+at step 5 stops the run and leaves the files already placed; a killed run
+leaves the staging file in flight for ~gc~.
+
+This design prevents forgery and ciphertext swapping, and refuses escaped record
+paths. Commands that reopen plaintext paths by name still rely on the path check
+remaining true while the path is reopened.
 
 ** Known limitations
 

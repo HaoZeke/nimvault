@@ -1,0 +1,1 @@
+The manifest reference no longer calls every data key hex. A gpg data key is 64 hex digits; an age data key is an `AGE-SECRET-KEY-1...` identity.

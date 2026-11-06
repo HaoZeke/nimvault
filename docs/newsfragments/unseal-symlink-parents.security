@@ -1,0 +1,1 @@
+unseal refuses a directory symlink above the destination that resolves outside `$HOME` or the configured `root`, and replaces a symlink at the destination instead of copying through it.

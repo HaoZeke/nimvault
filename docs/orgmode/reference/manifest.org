@@ -3,8 +3,12 @@
 
 * Overview
 
-The manifest maps opaque blob IDs to target file paths. It is stored encrypted
-and GPG-signed at ~.vault/manifest.gpg~ and decrypted on every operation.
+The current manifest is split per-entry records under ~.vault/e/~. Each record
+maps one opaque blob ID to its target path and recorded hashes. Records are
+encrypted, signed, and decrypted on every operation.
+
+An optional combined ~.vault/manifest.gpg~ (or ~.age~) remains as a
+compatibility stub for shared metadata such as the seal key.
 
 #+begin_src dot :file ../images/manifest_flow.svg :exports results
 digraph G {
@@ -13,7 +17,7 @@ digraph G {
     edge [fontname="Jost", fontsize=11, color="#004D40"];
     graph [fontname="Jost"];
 
-    manifest_gpg [label="manifest.gpg\n(signed + encrypted)"];
+    manifest_gpg [label="split records in e/\n(signed + encrypted)"];
     gpg [label="GPG decrypt\n+ verify sig", fillcolor="#FF655D", fontcolor="white"];
     tsv [label="Plaintext TSV\n(in memory)"];
     entries [label="seq[VaultEntry]\nid + path + hash"];
@@ -26,7 +30,23 @@ digraph G {
 
 * Format
 
-** v5 (current)
+** v7 split records (current)
+
+Each entry record at ~.vault/e/<id>.gpg~ (or ~.age~) decrypts to:
+
+#+begin_src text
+# vault-entry-v7
+<id>	<path>	<blob-sha256>	<kind>	<plaintext-sha256>	<dek>
+#+end_src
+
+- First line: record version header
+- Entry line: one row per file entry
+- ~dek~: per-entry data key: 64 lower-case hex digits for gpg, an
+  ~AGE-SECRET-KEY-1...~ identity for age, empty for pre-v6 entries
+- A record that opens but holds no entry line is counted, not dropped:
+  ~check~ reports it and ~unseal~ refuses to run
+
+** v5 combined manifest (compatibility stub)
 
 #+begin_src text
 # vault-manifest-v5
@@ -47,7 +67,7 @@ under a new key. Any change to the recorded key re-encrypts everything, and a
 manifest with no recorded key (v4 and earlier) seals in full once to establish
 one.
 
-** Earlier versions
+** Earlier combined-manifest versions
 
 | Version | Line shape | Added |
 | v1 | ~id\tpath~ | unsigned, no hashes |
@@ -71,13 +91,15 @@ blob hashes; pass ~--allow-unsigned~, then ~seal~ to upgrade.
   ~unseal~, ~get~ and ~check~.
 - ~kind~ :: (v3+) ~file~ or ~dir~.
 - ~contentHash~ :: (v4+) SHA-256 of the *plaintext*. Lets ~status~ and the
-  incremental ~seal~ decide what changed without decrypting anything.
+  incremental ~seal~ decide what changed without decrypting the payloads.
 
 * Blob files
 
 Each manifest entry has a corresponding ~.vault/<id>.gpg~ (or ~.age~) file
 holding the encrypted contents. ~--set-filename ""~ keeps the original filename
-out of GPG metadata.
+out of GPG metadata. ~seal~ writes ~<id>.gpg.pending~ first. The pending file
+is the blob the record names until it is renamed over the live path. A read
+promotes a pending file whose hash matches the record.
 
 ** Envelope keys (v6)
 
@@ -105,17 +127,19 @@ the age backend has always used.
 
 * Integrity model
 
-The signed manifest is the integrity anchor. On ~unseal~:
+The signed records are the integrity anchor. On ~unseal~:
 
-1. The manifest is decrypted and its GPG signature is verified
-2. Each blob's SHA-256 hash is compared against the manifest
+1. The entry records are decrypted and their signatures are verified
+2. Each blob's SHA-256 hash is compared against the record
 3. Blobs are decrypted to temporary files
 4. Each blob's GPG signature is verified, where one exists in band: v5 gpg
    blobs carry one, age blobs and v6 enveloped blobs do not
 5. Only after all checks pass are files moved to their final paths
 
-~nimvault check~ runs step 2 on its own, over every entry, without decrypting
-and without key material.
+~nimvault check~ decrypts the manifest metadata and the per-entry records this
+identity can open, reads their digests, and compares each payload blob to its
+digest. Records this identity cannot open are counted and reported. It does
+not decrypt the payloads. A public key alone cannot open the records.
 
 This prevents forgery (attacker encrypts a malicious blob to your public key),
 ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
@@ -126,10 +150,13 @@ substitutes a v1 unsigned manifest).
 #+begin_src text
 .vault/
   config            # recipient configuration (plaintext)
-  manifest.gpg      # signed + encrypted manifest
+  e/                # split per-entry records (v7)
+    a1b2c3d4e5f67890.gpg
+    fedcba9876543210.gpg
+  manifest.gpg      # optional combined metadata stub (v5)
   keys.gpg          # per-file data keys, encrypted to the recipients (v6)
-  a1b2c3d4e5f67890.gpg  # signed + encrypted blob
-  fedcba9876543210.gpg  # signed + encrypted blob
+  a1b2c3d4e5f67890.gpg  # encrypted blob payload
+  fedcba9876543210.gpg  # encrypted blob payload
 #+end_src
 
 Only ~.vault/~ is committed to git. The plaintext files live at their target

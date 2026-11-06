@@ -1,0 +1,1 @@
+`scan --cached` and `scan --rev` no longer skip a staged or committed file whose name starts with `-` or contains a newline. The name reaches git as `<rev>:<name>` after `--`, so neither is an option.

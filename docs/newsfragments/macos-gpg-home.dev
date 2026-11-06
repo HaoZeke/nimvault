@@ -1,0 +1,1 @@
+Each audit test keyring lives in a short temp directory. gpg-agent puts its sockets there, and on macOS a name such as `nimvault_audit_<id>_unsignedstub` under the 49-byte temp dir made `S.gpg-agent.browser` longer than the 103-byte socket path limit, so the agent did not start and key generation failed.

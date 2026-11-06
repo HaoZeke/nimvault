@@ -1,32 +1,36 @@
 ## Cross-process lock over one vault.
 ##
-## Every mutating command rewrites `.vault/manifest.gpg` from a copy it read
-## moments earlier. Two of them at once is a lost update: both read the same
-## entries, both write, and whichever finishes last silently drops the other's
-## work, leaving that blob orphaned on disk with no entry pointing at it. That
-## is not hypothetical on a machine running several agents and editors that can
-## each shell out to nimvault.
+## Every mutating command rewrites the trust root from a copy it read moments
+## earlier. Two of them at once is a lost update: both read the same entries,
+## both write, and whichever finishes last silently drops the other's work.
 ##
-## The lock is an `fcntl` write lock. The kernel drops it when the process
-## exits, including on a crash or a kill, so there is no stale lock to reason
-## about and nothing to clean up by hand.
+## The lock is an `fcntl` write lock plus a process-wide mutex. `fcntl` keeps
+## other processes out. The mutex keeps other threads in this process out:
+## POSIX locks are owned by the process, so a second thread's `F_SETLK` would
+## succeed while the first still holds the file. The kernel drops the `fcntl`
+## lock when the process exits, including on a crash or a kill.
 ##
 ## It lives under the runtime directory rather than in `.vault`, so a vault
 ## checkout never gains an untracked file and a read-only checkout can still be
 ## locked. Runtime state is per-user and cleared on logout, which is exactly the
 ## lifetime a lock wants.
 ##
-## Scope: `fcntl` records are held per process, so this excludes other nimvault
-## *processes*, which is what the CLI and the MCP server are. It does not make
-## two threads inside one process mutually exclusive; an in-process caller that
-## needs that has to serialise itself.
+## Closing any descriptor of the lock file drops every lock this process holds
+## on it, so the descriptor stays open until the mutex is about to be released,
+## and a moved-from lock must not close descriptor 0.
 
 import std/[os, posix, strformat]
+import std/locks as thrlocks
 import ./gpg
+import ./crypto
 
 type VaultLock* = object
   fd: cint
   path: string
+  owns: bool
+
+var threadGate: thrlocks.Lock
+initLock(threadGate)
 
 proc lockDir(): string =
   let xdg = getEnv("XDG_RUNTIME_DIR")
@@ -41,22 +45,41 @@ proc lockPath*(repo: string): string =
   let key = sha256sumBytes(expandFilename(repo))
   lockDir() / (key & ".lock")
 
-proc release*(l: var VaultLock) =
-  ## Drop the lock. Safe to call twice; the kernel would release on exit anyway.
+proc dropOwned(l: var VaultLock) =
+  if not l.owns:
+    l.fd = -1
+    return
   if l.fd >= 0:
     discard close(l.fd)
     l.fd = -1
+  l.owns = false
+  thrlocks.release(threadGate)
+
+proc release*(l: var VaultLock) =
+  ## Drop the lock. Safe to call twice; the kernel would release on exit anyway.
+  dropOwned(l)
 
 proc `=destroy`(l: VaultLock) =
   ## Releasing on scope exit is what lets a command take the lock in one line
   ## without a wrapper block, and it still holds when the body raises.
+  ## A moved-from lock has `owns` false, so this does not close descriptor 0.
+  ## The descriptor is closed before the mutex: closing it drops every fcntl
+  ## lock this process holds on the file.
+  if not l.owns:
+    return
   if l.fd >= 0:
     discard close(l.fd)
+  thrlocks.release(threadGate)
+
+proc `=wasMoved`(l: var VaultLock) =
+  ## A bitwise reset would leave `fd` at 0 and the destructor would close stdin.
+  l.fd = -1
+  l.owns = false
 
 proc `=copy`(dst: var VaultLock, src: VaultLock) {.error:
   "VaultLock owns a file descriptor; move it or take a new one".}
 
-proc tryAcquire(fd: cint): bool =
+proc tryFlock(fd: cint): bool =
   var fl: Tflock
   fl.l_type = F_WRLCK.cshort
   fl.l_whence = SEEK_SET.cshort
@@ -64,34 +87,51 @@ proc tryAcquire(fd: cint): bool =
   fl.l_len = 0        # whole file
   fcntl(fd, F_SETLK, addr fl) != -1
 
+proc takeGate(timeoutMs: int) =
+  const stepMs = 50
+  var waited = 0
+  while not thrlocks.tryAcquire(threadGate):
+    if waited >= timeoutMs:
+      nvRaise(&"FATAL: vault is locked by another nimvault call " &
+              &"(waited {timeoutMs} ms)")
+    sleep(stepMs)
+    waited += stepMs
+
 proc acquire*(repo: string, timeoutMs = 30_000): VaultLock =
   ## Take the vault lock, waiting up to `timeoutMs` for a holder to finish.
   ##
   ## Waiting rather than failing at once is deliberate: the common contention is
   ## two short commands overlapping, and failing there would push a pointless
   ## retry onto the caller.
-  let dir = lockDir()
-  if not dirExists(dir):
-    createDir(dir)
-  let path = lockPath(repo)
-  let fd = open(path.cstring, O_RDWR or O_CREAT or O_CLOEXEC, 0o600.Mode)
-  if fd < 0:
-    nvRaise(&"FATAL: cannot open vault lock: {path}")
+  takeGate(timeoutMs)
+  var handed = false
+  try:
+    let dir = lockDir()
+    ensureOwnerDir(dir)
+    let path = lockPath(repo)
+    let fd = open(path.cstring, O_RDWR or O_CREAT or O_CLOEXEC, 0o600.Mode)
+    if fd < 0:
+      nvRaise(&"FATAL: cannot open vault lock: {path}")
 
-  result = VaultLock(fd: fd, path: path)
-  const stepMs = 50
-  var waited = 0
-  while not tryAcquire(fd):
-    if waited >= timeoutMs:
-      discard close(fd)
-      result.fd = -1
-      nvRaise(&"FATAL: vault is locked by another nimvault process " &
-              &"(waited {timeoutMs} ms)")
-    sleep(stepMs)
-    waited += stepMs
+    result = VaultLock(fd: fd, path: path, owns: false)
+    const stepMs = 50
+    var waited = 0
+    while not tryFlock(fd):
+      if waited >= timeoutMs:
+        discard close(fd)
+        result.fd = -1
+        nvRaise(&"FATAL: vault is locked by another nimvault call " &
+                &"(waited {timeoutMs} ms)")
+      sleep(stepMs)
+      waited += stepMs
+    result.owns = true
+    handed = true
+  finally:
+    if not handed:
+      thrlocks.release(threadGate)
 
 template withVaultLock*(repo: string, body: untyped) =
-  ## Run `body` as the only process mutating this vault.
+  ## Run `body` as the only call mutating this vault.
   var lk = acquire(repo)
   try:
     body

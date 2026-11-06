@@ -1,0 +1,1 @@
+With `root = repo`, the CLI compared the vault repository with git's top level as strings. git prints the top level with symlinks resolved, so a vault named through a symlinked path, as anything under the macOS temp dir is, was refused as living in another repository. The two are now compared as directories.

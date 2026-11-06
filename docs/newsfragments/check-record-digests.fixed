@@ -1,0 +1,1 @@
+check reads blob digests from the encrypted records. A public key alone cannot open those records, so it does not compare the blobs.

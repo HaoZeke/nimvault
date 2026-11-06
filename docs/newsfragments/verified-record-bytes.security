@@ -1,0 +1,4 @@
+`unseal`, `get` and `rotate` now take data keys from the same verified split
+record read that produced the entry list, instead of re-reading `.vault/e/*`
+records without signature checks. Blob integrity is rechecked on the bytes used
+for decrypt, and placement revalidates the live blob before writing plaintext.

@@ -1,0 +1,1 @@
+seal writes new ciphertext to a pending blob and renames it over the live blob only after the record names it.

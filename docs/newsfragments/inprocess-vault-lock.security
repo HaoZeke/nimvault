@@ -1,0 +1,1 @@
+The vault lock excludes other threads in the same process, and moving the lock does not close standard input.

@@ -1,0 +1,3 @@
+The threat model now states explicitly that `lock` and cross-device `mv`
+overwrite the source inode before unlinking it, so other hard links to that
+inode lose the plaintext too.

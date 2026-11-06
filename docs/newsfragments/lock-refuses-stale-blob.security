@@ -1,0 +1,1 @@
+lock refuses to delete plaintext unless the blob matches the record, and shreds editor backups of an in-sync file.

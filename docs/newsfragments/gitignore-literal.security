@@ -1,0 +1,1 @@
+gitignore lines written for a vault path are anchored and escaped, so a leading hash or a glob character matches that path only.

@@ -1,0 +1,1 @@
+The README, threat model, headless GPG guide and `checkVault` docstring no longer call `check` keyless: it decrypts the records to read the blob digests. When no record opens, `check` says to import the secret key instead of suggesting a seal or a missing blob.

@@ -1,0 +1,1 @@
+The unseal reference and threat model describe where `unseal` stages plaintext, why it stages beside the destination, and that `gc` shreds what a killed run leaves.

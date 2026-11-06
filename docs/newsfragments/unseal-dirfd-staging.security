@@ -1,0 +1,1 @@
+`unseal` opens each destination's parent by walking from `/` without following a symlink, then creates, writes, renames and shreds its staging file through that directory descriptor (`openat`/`renameat`/`unlinkat`). A parent swapped after the checks cannot redirect the plaintext.
