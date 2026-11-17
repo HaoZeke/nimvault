@@ -4,7 +4,7 @@
 ## add -> list -> seal -> status -> unseal -> rm
 ## Also tests blob hash integrity and path safety.
 
-import std/[os, osproc, strutils, strformat, tempfiles, posix, tables, json]
+import std/[os, osproc, strutils, strformat, tempfiles, posix, tables, json, streams]
 import nimvault/[gpg, manifest, commands, lock, crypto, dek, vaultrepo]
 
 proc setupTestGpgHome(): string =
@@ -55,6 +55,19 @@ proc gitCommit(repo, msg: string) =
   let (output, code) = execCmdEx(
     &"git add -A && git commit -m {msg.quoteShell}", workingDir = repo)
   doAssert code == 0, output
+
+proc execDeadline(command: string, args: openArray[string],
+                  timeoutMs: int): tuple[output: string, exitCode: int] =
+  ## GNU `timeout` is coreutils. macOS CI has no such binary, so the
+  ## shell exits 127 and gpg never starts. `waitForExit` is the deadline:
+  ## it kills the child, and the output is read after the child is gone.
+  let p = startProcess(command, args = args,
+                       options = {poStdErrToStdOut, poUsePath})
+  result.exitCode = p.waitForExit(timeoutMs)
+  result.output = p.outputStream.readAll()
+  p.close()
+  if result.exitCode == 128 + cint(SIGKILL):
+    result.output.add("killed after " & $timeoutMs & " ms\n")
 
 proc setupTestRepo(): string =
   result = createTempDir("nimvault_repo_", "_test")
@@ -1646,8 +1659,8 @@ Expire-Date: 0
 Passphrase: hunter2
 %commit
 """)
-    let (genOut, genCode) = execCmdEx(
-      &"timeout 30 gpg --batch --pinentry-mode loopback --gen-key {script.quoteShell}")
+    let (genOut, genCode) = execDeadline("gpg", [
+      "--batch", "--pinentry-mode", "loopback", "--gen-key", script], 30_000)
     doAssert genCode == 0, genOut
     let (listOut, listCode) = execCmdEx(
       "gpg --list-secret-keys --keyid-format long --with-colons locked@nimvault.local")
