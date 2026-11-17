@@ -1752,8 +1752,9 @@ block corruptRecordFailsCheckAndUnseal:
   echo "PASS: corrupt decryptable records fail check and unseal"
 
 block checkWithoutSecretKey:
-  ## The blob digests are inside the encrypted records. A public key can
-  ## verify a signature; it cannot read those digests.
+  ## A public key does not open the records. It compares payload ids to the
+  ## blob-index the keyed seal wrote, and a tampered blob is a changed id
+  ## without the plaintext appearing in the report.
   let r = setupRepo()
   let c = GpgConfig(recipient: keyId, root: r)
   let f = r / "secret.txt"
@@ -1779,26 +1780,36 @@ block checkWithoutSecretKey:
     let (secs, _) = execCmdEx("gpg --list-secret-keys --with-colons")
     doAssert "sec:" notin secs and "ssb:" notin secs, secs
     let looked = checkVault(r, c)
-    doAssert looked.problems == @[
-      "no records this identity can open; unread wrap groups remain"],
-      "check without a secret key returned: " & $looked.problems
+    doAssert looked.keyless, "a public key must take the blob-index path"
+    doAssert looked.problems.len == 0,
+      "a just-sealed vault matches its blob-index: " & $looked.problems
+    let blobs = payloadBlobHashes(r)
+    doAssert blobs.len == 1, $blobs
+    var blobPath = ""
+    for id in blobs.keys:
+      blobPath = findBlob(r, c, id)
+    doAssert blobPath.len > 0 and fileExists(blobPath)
+    let fh = open(blobPath, fmAppend)
+    fh.write("tamper")
+    fh.close()
+    let tampered = checkVault(r, c)
+    doAssert tampered.changed.len == 1, $tampered
+    doAssert tampered.problems.len > 0
+    for p in tampered.problems:
+      doAssert "check-needs-the-secret" notin p, p
+      doAssert "decrypt" notin p, p
     var raised = false
     try:
       check(r, c)
     except CatchableError as e:
       raised = true
-      doAssert "check-needs-the-secret" notin e.msg
-      doAssert "entries consistent with the manifest" notin e.msg
-      doAssert "restore the missing blob" notin e.msg,
-        "a vault this key cannot open has no missing blob to restore: " & e.msg
-      doAssert "secret key" in e.msg,
-        "check must say the records need the secret key: " & e.msg
-    doAssert raised, "check must not succeed without the secret key"
+      doAssert "check-needs-the-secret" notin e.msg, e.msg
+    doAssert raised, "a changed blob must fail check without a secret key"
   finally:
     putEnv("GNUPGHOME", home)
     removeDir(pubHome)
   removeDir(r)
-  echo "PASS: check cannot read the digests without the secret key"
+  echo "PASS: check without a secret key uses the blob-index"
 
 block checkReportsUnreadRecords:
   ## A record this machine cannot open with any secret key is skippable, but

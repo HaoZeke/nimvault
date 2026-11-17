@@ -1,0 +1,1 @@
+A wrap rule that matches a path and names no recipient fails before any ciphertext is written.
