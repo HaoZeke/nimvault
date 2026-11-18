@@ -115,6 +115,10 @@
   <li><a class="reference" href="#initVault%2Cstring%2Cstring" title="initVault(repo, recipient: string)">initVault(repo, recipient: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">installedHooksInactive
+  <li><a class="reference" href="#installedHooksInactive%2Cstring" title="installedHooksInactive(repo: string): string">installedHooksInactive(repo: string): string</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">installHooks
   <li><a class="reference" href="#installHooks%2Cstring" title="installHooks(repo: string)">installHooks(repo: string)</a></li>
 
@@ -141,6 +145,10 @@
 </ul>
 <ul class="simple nested-toc-section">orphans
   <li><a class="reference" href="#orphans%2Cstring%2CGpgConfig" title="orphans(repo: string; cfg: GpgConfig): seq[string]">orphans(repo: string; cfg: GpgConfig): seq[string]</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">redirectedHooksDir
+  <li><a class="reference" href="#redirectedHooksDir%2Cstring" title="redirectedHooksDir(repo: string): string">redirectedHooksDir(repo: string): string</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">remove
@@ -425,13 +433,29 @@
 </div>
 
 </div>
-<div id="installHooks-procs-all">
-  <div id="installHooks,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#installHooks%2Cstring"><span class="Identifier">installHooks</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
-    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+<div id="installedHooksInactive-procs-all">
+  <div id="installedHooksInactive,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#installedHooksInactive%2Cstring"><span class="Identifier">installedHooksInactive</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Install a pre-commit hook that scans the index and a pre-push hook that scans the commits being pushed, then runs <tt class="docutils literal"><span class="pre"><span class="Identifier">nimvault</span> <span class="Identifier">check</span></span></tt>. Refuse to overwrite an existing hook. A worktree scan misses a staged secret and a secret that was committed and then deleted from the worktree.
+    Non-empty when nimvault's hooks sit in <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">git</span><span class="Operator">/</span><span class="Identifier">hooks</span></span></tt> but git runs another directory: names that directory, so <tt class="docutils literal"><span class="pre"><span class="Identifier">doctor</span></span></tt> can say why nothing ran.
+    
+  </dd>
+</div>
+
+</div>
+<div id="installHooks-procs-all">
+  <div id="installHooks,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#installHooks%2Cstring"><span class="Identifier">installHooks</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+    <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Install a pre-commit hook that scans the index and a pre-push hook that scans the commits being pushed, then runs <tt class="docutils literal"><span class="pre"><span class="Identifier">nimvault</span> <span class="Identifier">check</span></span></tt>. Refuse to overwrite an existing hook. A worktree scan misses a staged secret and a secret that was committed and then deleted from the worktree.</p>
+<p>Refuse as well when <tt class="docutils literal"><span class="pre"><span class="Identifier">core</span><span class="Operator">.</span><span class="Identifier">hooksPath</span></span></tt> points git elsewhere: reporting &quot;installed&quot; for hooks git will never run is the reassuring kind of failure. A blob replaced outside nimvault, with its record left behind, then reaches the remote unchecked and fails on another machine's unseal.</p>
+
     
   </dd>
 </div>
@@ -521,6 +545,19 @@
 <p>Reachable when a mutation is interrupted between writing a blob and writing the manifest that names it, which the lock makes rarer but does not remove. An orphan is not merely clutter: it is a readable copy of a secret that nothing tracks, so nothing will ever rotate or remove it.</p>
 <p>A <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">pending</span></span></tt> sibling whose hash a record names is the durable ciphertext of a seal that has not renamed it yet. Removing it would strand the record. One whose record this identity cannot open is left alone: its hash is unknown here. <tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Identifier">id</span><span class="Operator">&gt;.</span><span class="Identifier">gpg</span><span class="Operator">.</span><span class="Identifier">tmp</span></span></tt> and <tt class="docutils literal"><span class="pre"><span class="Operator">&lt;</span><span class="Identifier">id</span><span class="Operator">&gt;.</span><span class="Identifier">gpg</span><span class="Operator">.</span><span class="Identifier">pending</span><span class="Operator">.</span><span class="Identifier">tmp</span></span></tt> are payloads a killed <tt class="docutils literal"><span class="pre"><span class="Identifier">add</span></span></tt> or <tt class="docutils literal"><span class="pre"><span class="Identifier">seal</span></span></tt> was still writing; no record names them.</p>
 
+    
+  </dd>
+</div>
+
+</div>
+<div id="redirectedHooksDir-procs-all">
+  <div id="redirectedHooksDir,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#redirectedHooksDir%2Cstring"><span class="Identifier">redirectedHooksDir</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    The directory git runs hooks from when <tt class="docutils literal"><span class="pre"><span class="Identifier">core</span><span class="Operator">.</span><span class="Identifier">hooksPath</span></span></tt> sends it away from <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">git</span><span class="Operator">/</span><span class="Identifier">hooks</span></span></tt>, or &quot;&quot; when <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">git</span><span class="Operator">/</span><span class="Identifier">hooks</span></span></tt> is the one that runs. With a global hooksPath, git never looks in <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">git</span><span class="Operator">/</span><span class="Identifier">hooks</span></span></tt>: hooks written there are inert, and <tt class="docutils literal"><span class="pre"><span class="Identifier">nimvault</span> <span class="Identifier">check</span></span></tt> on push silently stops guarding the vault.
     
   </dd>
 </div>
@@ -775,7 +812,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-06 14:52:51 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-18 23:02:38 UTC</small>
       </div>
     </div>
   </div>
