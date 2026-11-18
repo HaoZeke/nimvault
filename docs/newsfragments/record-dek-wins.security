@@ -1,1 +1,0 @@
-The data key in the signed per-entry record wins over an unsigned keys file, and seal writes that key back.

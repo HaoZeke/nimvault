@@ -4,6 +4,115 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.5.4 (2026-11-18)
+===========================
+
+Security
+--------
+
+- add refuses a symlink and a path containing a tab, newline or NUL, which the record format cannot store. (add-path-checks)
+- `backend = age` with `signer = gpg` is refused when the config loads, and `seal`, `unseal` and `check` refuse it on a config built in code. gpg signs only what it encrypts, so that pair signed and verified nothing: changing one config line let an unsigned record, built from the public recipient alone, through a plain `unseal`. An unknown `backend` or `signer` value is refused too, instead of falling back to gpg or skipping the check under `--allow-unsigned`. (age-gpg-signer)
+- A record or stub manifest is signed while it is still a temporary file, and the signature and the file are then renamed into place. A signing failure used to leave the new ciphertext under the old signature, or under none, so the vault no longer verified. (age-sign-before-rename)
+- Age-backed record and manifest loads now verify and decrypt the same ciphertext
+  bytes in memory. `unseal`, `get` and `check` no longer verify one on-disk read
+  and decrypt another for ssh-signed age records. (age-verify-decrypt-one-read)
+- `unseal --allow-unsigned` and `get --allow-unsigned` accept only a missing signature. A record or v5 blob with a good GPG signature from a key the config does not name is refused, as is an ssh-signed record whose detached signature does not verify against `allowed_signers`. Before, the flag turned off the signer check, so a record signed by any key in the keyring was written, though the CLI reference said such a signature stayed fatal. (allow-unsigned-signer)
+- A record whose session-key packet names a key this machine holds and still fails to decrypt now fails `check` and `unseal`. gpg reports such a packet as `NO_SECKEY`, so one flipped byte made the record read as belonging to another wrap group, and `unseal` restored the rest of the vault without it. A record is skipped only when every `pkdecrypt_failed` code is 17 or the keyring holds none of the keys it names. `unseal` now prints how many records it could not open, and fails when it can open none instead of reporting an empty vault. (corrupt-session-key)
+- `gc` shreds `.nimvault-<id>.tmp` plaintext that an interrupted `unseal` staged beside an entry, removes `<id>.gpg.tmp` and `<id>.gpg.pending.tmp` payloads a killed `add` or `seal` was writing, and keeps a pending blob whose record this machine cannot open instead of deleting another wrap group's ciphertext. (gc-leftovers)
+- get decrypts a v6 payload in memory and does not write the plaintext under the runtime directory. (get-plaintext-memory)
+- gitignore lines written for a vault path are anchored and escaped, so a leading hash or a glob character matches that path only. (gitignore-literal)
+- gpg and age receive -- before the input path, so a path that looks like an option is not treated as one. (gpg-end-of-options)
+- GPG signature checks bind to the configured keys. A record, stub manifest or blob verifies only when the primary key on its `VALIDSIG` line is the recipient or a wrap-rule recipient. A good signature from any other key in the keyring is refused by `unseal`, `get` and every command that loads records. (gpg-pin-signer)
+- The pre-commit hook scans the index, and the pre-push hook scans the commits being pushed before check. (hooks-scan-index)
+- The vault lock excludes other threads in the same process, and moving the lock does not close standard input. (inprocess-vault-lock)
+- `lock` now enforces record signatures by default the same way `unseal` does.
+  On a `signer = none` vault it refuses with "signature required" unless
+  `--allow-unsigned` is passed; with that flag, present signatures still must
+  verify. (lock-allow-unsigned)
+- lock refuses to delete plaintext unless the blob matches the record, and shreds editor backups of an in-sync file. (lock-refuses-stale-blob)
+- `lock` verifies record signatures with the configured signer, refuses a record path that fails the traversal check, and shreds editor backups only beside an entry that is present and matches its recorded hash. An unsigned record could name any `name~` file, including one outside `$HOME`, for shredding. (lock-verifies-records)
+- A cross-filesystem `mv` keeps the source's mode. The copy fallback created the new file with the process umask, so a 0600 secret arrived 0644 and readable by other local users. (mv-copy-mode)
+- A cross-filesystem `mv` overwrites the source before removing it, as `lock` does. It unlinked the source, which left the plaintext in its blocks and readable through any other link or open descriptor. (mv-shred-source)
+- `mv` refuses a source reached through a directory symlink that leaves `$HOME` or the configured `root`. `rename` followed that symlink, so `mv` moved a file from outside the boundary to the new path. (mv-source-ancestors)
+- Without a `root`, a record path containing a `..` component is refused, so `../../outside` and `/tmp/../etc/passwd` no longer pass the path check. (no-root-traversal)
+- `check`, `status` and `get` take the vault lock. Each may rename a pending blob over the live one, and without the lock that rename could race a `seal` publishing the same blob. (promote-under-lock)
+- A GPG recipient, in `.vault/config`, a `wrap` rule, `--recipient` or `NIMVAULT_GPG_RECIPIENT`, must be an email address, a key ID or a fingerprint; any other string is refused when the config loads. Such a spec went to gpg as a substring, so `recipient = Alice` made `Malice <malice@example.com>` an allowed signer and a record she signed was restored by a plain `unseal`. The signer lookup no longer matches a name at all. (recipient-names-refused)
+- The data key in the signed per-entry record wins over an unsigned keys file, and seal writes that key back. (record-dek-wins)
+- `rotate` now takes the vault lock before reading records, so a concurrent remove or move cannot be replayed by a stale force rewrite. (rotate-lock-order)
+- The runtime directory is created mode 0700, tightened when it already exists, and refused when it is a symlink. (runtime-dir-owner)
+- `scan --cached` and `scan --rev` no longer skip a staged or committed file whose name starts with `-` or contains a newline. The name reaches git as `<rev>:<name>` after `--`, so neither is an option. (scan-odd-names)
+- `scan --cached` and `scan --rev` report a vaulted path in the index or in a commit, and match its bytes against the patterns, so a force-added vaulted file fails the pre-commit and pre-push hooks. Vaulted paths come from verified records and match by absolute path: an unsigned record no longer hides a file from the worktree walk, and a file in another repository that shares a stored relative name is not reported. (scan-reports-vaulted-plaintext)
+- scan no longer skips every directory named tmp; that skip applies under .claude and .codex only. (scan-tmp-dir)
+- seal writes new ciphertext to a pending blob and renames it over the live blob only after the record names it. (seal-keeps-old-blob)
+- `seal` and `rotate --rekey` refuse to read plaintext whose path, or a directory symlink above it, resolves outside `$HOME` or the configured `root`. With an entry's directory swapped for such a symlink, `seal` encrypted the outside file into the blob and replaced the sealed copy. (seal-read-ancestors)
+- With `--allow-unsigned`, split-vault commands now still verify a present combined-manifest stub signature and reject one from a non-configured signer. (split-stub-signature-check)
+- `list` and `status` now verify record signatures before trusting record metadata, so they do not promote `.pending` blobs from unverified records. (status-list-verify-records)
+- `unseal` opens each destination's parent by walking from `/` without following a symlink, then creates, writes, renames and shreds its staging file through that directory descriptor (`openat`/`renameat`/`unlinkat`). A parent swapped after the checks cannot redirect the plaintext. (unseal-dirfd-staging)
+- With no `root`, `unseal` now re-walks each destination parent from the `$HOME`
+  boundary path both before and after `renameat`. If the parent moved or now
+  resolves outside the boundary after placement, the plaintext is overwritten
+  through its descriptor and unlinked, and that entry fails. (unseal-home-boundary)
+- `unseal` works on macOS, on Linux arm64, and on Linux without `/proc`. It handed gpg a `/proc/self/fd/<n>/` path to write, and opened directories with the x86-64 Linux values of `O_NOFOLLOW` and `O_DIRECTORY`; on arm64 those numbers are `O_LARGEFILE` and `O_DIRECT`, so the walk followed a directory symlink. The flags now come from `<fcntl.h>`. gpg and age write the plaintext to a pipe, and `unseal` copies it into a staging file it created with `O_CREAT|O_EXCL|O_NOFOLLOW`, mode 0600. CI runs the suite on Linux arm64 and macOS. (unseal-pipe-staging)
+- unseal refuses a directory symlink above the destination that resolves outside `$HOME` or the configured `root`, and replaces a symlink at the destination instead of copying through it. (unseal-symlink-parents)
+- `unseal`, `get` and `rotate` now take data keys from the same verified split
+  record read that produced the entry list, instead of re-reading `.vault/e/*`
+  records without signature checks. Blob integrity is rechecked on the bytes used
+  for decrypt, and placement revalidates the live blob before writing plaintext. (verified-record-bytes)
+- Path writes and plaintext shredding now reject ancestor symlink escapes from `$HOME` or a configured `root`, including `~/` spellings whose real path leaves that boundary. `mv` now refuses destination symlinks and uses a cross-filesystem fallback that cannot copy through them.
+
+  Split-record loading now skips only genuine no-secret-key records; corrupt decryptable records fail `check` and `unseal` loudly. `check` reports how many records this machine could not open. `gc` also keeps `.pending` blobs named by in-flight `e/<id>.<ext>.tmp` records.
+
+  GPG signer resolution is exact: email specs match the exact `<addr>`, key IDs/fingerprints match exactly, and signing selects an allowed signer explicitly with `--local-user`. `add`/`seal` now fail with a clear error when no allowed secret key is present. (round3-record-and-path-hardening)
+
+
+Developer
+---------
+
+- The test workflow sets a git user name and email before the suite runs. Scratch repositories can commit, so the clone and hook tests see a history. (ci-git-identity)
+- The `drain` comment says a child waiting to write to a full pipe never exits. (drain-comment)
+- The `loadDeks` comments state that a key file also fills a record whose data-key field is empty, and that the records it reads are verified by its callers. (loaddeks-comment)
+- Each audit test keyring lives in a short temp directory. gpg-agent puts its sockets there, and on macOS a name such as `nimvault_audit_<id>_unsignedstub` under the 49-byte temp dir made `S.gpg-agent.browser` longer than the 103-byte socket path limit, so the agent did not start and key generation failed. (macos-gpg-home)
+- The test that `rotate` reads records under the vault lock now holds the lock from a separate Python process, runs the CLI `rotate` against it, removes a record while `rotate` waits, and checks both exit statuses and that the record stays removed. The forked child it used inherited the in-process lock gate in its held state, so it timed out after 30 s without running `rotate`, and its exit status was never checked. (rotate-lock-test)
+- The test that `unseal` reports the records it could not open runs the CLI from inside the vault repository. Run from another git checkout, as in CI, the CLI refuses `root = repo` before it reaches the count. (unseal-count-test-cwd)
+
+
+Changed
+-------
+
+- The `pre-push` hook passes `--remote` to `scan --rev`, so it scans only commits the remote's tracking refs do not reach. A new branch is no longer refused for a secret that is already in the remote's history. A remote commit this clone lacks gives an error that says to fetch, instead of a bare `git rev-list` failure. Hooks installed earlier keep their old script until reinstalled. (pre-push-new-commits)
+
+
+Fixed
+-----
+
+- The README, threat model, headless GPG guide and `checkVault` docstring no longer call `check` keyless: it decrypts the records to read the blob digests. When no record opens, `check` says to import the secret key instead of suggesting a seal or a missing blob. (check-needs-record-key)
+- check reads blob digests from the encrypted records. A public key alone cannot open those records, so it does not compare the blobs. (check-record-digests)
+- A pre-v6 entry no longer vanishes when the vault moves to per-entry records. Its record ends in an empty data-key field, which the parser stripped and then rejected, so after an `add` the older entry left `list`, `unseal` and `check`, and `check` still called the vault consistent. A record that opens but holds no entry line is now counted: `check` reports it and fails, and `unseal` refuses to restore part of the vault. (empty-dek-record)
+- ``nimvault hook`` refuses when ``core.hooksPath`` sends git to another hooks directory, since git would never run hooks written to ``.git/hooks``; ``nimvault doctor`` reports installed hooks that git no longer runs. Before this, a global hooks path left the pre-push ``nimvault check`` inert, and a blob replaced without its record reached the remote unchecked. (hooks-under-hookspath)
+- With `root = repo`, the CLI compared the vault repository with git's top level as strings. git prints the top level with symlinks resolved, so a vault named through a symlinked path, as anything under the macOS temp dir is, was refused as living in another repository. The two are now compared as directories. (root-repo-resolved-path)
+- Config load now refuses 8-hex short GPG key IDs and asks for a 16-hex key ID or a full fingerprint. (short-gpg-key-id)
+- add and seal leave an unchanged per-entry record on disk. Two machines that each add a different file no longer rewrite a shared stem, so git can merge them. (split-record-stable)
+- A missing `allowed_signers`, `signer_identity` or `ssh-keygen` now fails `unseal`, `get` and `check` with the reason. A record whose signature could not be checked for one of those reasons was skipped and not counted, so `unseal` printed "vault is empty" and exited 0, and `check` asked for a secret key. (ssh-signer-settings)
+- A recipient that names an encryption subkey, by ID or fingerprint and with or without gpg's trailing `!`, works again. The signer lookup matched only primary keys, so such a vault could not find a key to sign with, and a record signed by the vault's own key was refused as signed by an unconfigured one. (subkey-recipient)
+- A `$HOME` or vault root reached through a symlink no longer refuses every path under it. The path checks resolved the path but compared it with the base as spelled, so `add` refused each file with "outside the vault root", a vault opened through a symlinked `--vault` path with `root = repo` failed the same way, and `unseal` refused entries under a directory symlink that stays inside `$HOME`. The base is now resolved too. (symlinked-base)
+- `unseal` restores a vault larger than the open-file limit. It kept one directory descriptor per entry open for the whole run, so 80 entries failed under `ulimit -n 64`. Each entry is now staged, decrypted, checked and renamed into place before the next is staged, direct gpg blobs eight at a time. In-band gpg signatures are all checked first by a decryption whose output is discarded, so no plaintext is written before every signature has passed. Any failure shreds each staging file not yet placed, through its own descriptor. A direct (v5) entry is staged once instead of twice. (unseal-entry-at-a-time)
+
+
+Miscellaneous
+-------------
+
+- The `check` reference no longer opens with "Verify every blob". It verifies the blob of each record this machine can open, and counts the records it could not. (check-scope-doc)
+- The threat model and the configuration reference now say that `.vault/config` is plaintext, committed and unsigned, and that it names who may sign records and who the next `seal` encrypts to, so a change to it is a change to the trust root and should be reviewed like code. They also spell out that a key named only in a `wrap` rule can sign a record for any path, such as `~/.bashrc`, and every machine that unseals writes it. (config-trust)
+- The manifest reference no longer calls every data key hex. A gpg data key is 64 hex digits; an age data key is an `AGE-SECRET-KEY-1...` identity. (dek-field-doc)
+- The threat model now states explicitly that `lock` and cross-device `mv`
+  overwrite the source inode before unlinking it, so other hard links to that
+  inode lose the plaintext too. (hardlink-shred-note)
+- The cross-process vault lock test waits on a pipe handshake instead of a fixed sleep, so a slow child cannot lose the race. (lock-test-handshake)
+- The threat model lists the commands that still check a path and then use it by name: `mv` creates, renames and copies by name, `lock` and `gc` overwrite and unlink by name, and `seal` reads by name. The CLI reference no longer says every record signature is checked during decryption; that holds for gpg, while an ssh signer's detached signature is checked before the record is decrypted. (residual-race-docs)
+- The unseal reference and threat model describe where `unseal` stages plaintext, why it stages beside the destination, and that `gc` shreds what a killed run leaves. (unseal-staging)
+- The docs now consistently say that `check` verifies blobs for records this identity can open, and reports how many records it could not open. (check-scope-round5)
+
+
 nimvault 0.5.3 (2026-09-13)
 ===========================
 

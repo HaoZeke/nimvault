@@ -1,1 +1,0 @@
-The `drain` comment says a child waiting to write to a full pipe never exits.

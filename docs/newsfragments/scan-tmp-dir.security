@@ -1,1 +1,0 @@
-scan no longer skips every directory named tmp; that skip applies under .claude and .codex only.

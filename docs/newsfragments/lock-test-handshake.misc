@@ -1,1 +1,0 @@
-The cross-process vault lock test waits on a pipe handshake instead of a fixed sleep, so a slow child cannot lose the race.

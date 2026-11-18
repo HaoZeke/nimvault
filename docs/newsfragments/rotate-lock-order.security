@@ -1,1 +1,0 @@
-`rotate` now takes the vault lock before reading records, so a concurrent remove or move cannot be replayed by a stale force rewrite.

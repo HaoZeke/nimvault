@@ -1,1 +1,0 @@
-The `check` reference no longer opens with "Verify every blob". It verifies the blob of each record this machine can open, and counts the records it could not.

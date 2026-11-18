@@ -1,1 +1,0 @@
-`list` and `status` now verify record signatures before trusting record metadata, so they do not promote `.pending` blobs from unverified records.
