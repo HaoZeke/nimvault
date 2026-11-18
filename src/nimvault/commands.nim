@@ -2024,14 +2024,57 @@ proc initVault*(repo, recipient: string) =
   setFilePermissions(cfgPath, {fpUserRead, fpUserWrite})
   nvEcho(&"initialised {cfgPath}")
 
+proc redirectedHooksDir*(repo: string): string =
+  ## The directory git runs hooks from when `core.hooksPath` sends it away from
+  ## `.git/hooks`, or "" when `.git/hooks` is the one that runs. With a global
+  ## hooksPath, git never looks in `.git/hooks`: hooks written there are inert,
+  ## and `nimvault check` on push silently stops guarding the vault.
+  let (outp, code) = execCmdEx(
+    "git -C " & repo.quoteShell & " config --get core.hooksPath")
+  let raw = outp.strip()
+  if code != 0 or raw.len == 0:
+    return ""
+  var dir = expandHome(raw)
+  if not dir.isAbsolute:
+    dir = repo / dir
+  let own = repo / ".git" / "hooks"
+  if dir.normalizedPath == own.normalizedPath:
+    return ""
+  if dirExists(dir) and dirExists(own) and sameFile(dir, own):
+    return ""
+  dir
+
+proc installedHooksInactive*(repo: string): string =
+  ## Non-empty when nimvault's hooks sit in `.git/hooks` but git runs another
+  ## directory: names that directory, so `doctor` can say why nothing ran.
+  let own = repo / ".git" / "hooks" / "pre-push"
+  if not fileExists(own) or "nimvault" notin readFile(own):
+    return ""
+  redirectedHooksDir(repo)
+
 proc installHooks*(repo: string) =
   ## Install a pre-commit hook that scans the index and a pre-push hook that
   ## scans the commits being pushed, then runs `nimvault check`. Refuse to
   ## overwrite an existing hook. A worktree scan misses a staged secret and
   ## a secret that was committed and then deleted from the worktree.
+  ##
+  ## Refuse as well when `core.hooksPath` points git elsewhere: reporting
+  ## "installed" for hooks git will never run is the reassuring kind of
+  ## failure. A blob replaced outside nimvault, with its record left behind,
+  ## then reaches the remote unchecked and fails on another machine's unseal.
   let hooks = repo / ".git" / "hooks"
   if not dirExists(hooks):
     nvRaise("FATAL: not a git repository (no .git/hooks)")
+  let elsewhere = redirectedHooksDir(repo)
+  if elsewhere.len > 0:
+    nvRaise(&"FATAL: core.hooksPath is {elsewhere}; git runs hooks from " &
+            "there and never from .git/hooks, so hooks installed here would " &
+            "not run.\n" &
+            &"  Run `nimvault scan --cached` from {elsewhere}/pre-commit and " &
+            &"`nimvault check` from {elsewhere}/pre-push for this repository,\n" &
+            "  or have those hooks run .git/hooks/<name> when it exists, " &
+            "or set `git config core.hooksPath .git/hooks` in this repository " &
+            "and run `nimvault hook` again.")
   let prePush = hooks / "pre-push"
   let preCommit = hooks / "pre-commit"
   if fileExists(prePush):
@@ -2107,6 +2150,9 @@ proc doctorReport*(repo: string, cfg: GpgConfig): string =
         problems.add(p)
   else:
     result.add "manifest:  (none)\n"
+  let inactive = installedHooksInactive(repo)
+  if inactive.len > 0:
+    problems.add(&"hooks in .git/hooks never run: core.hooksPath is {inactive}")
   if problems.len > 0:
     result.add "problems:\n"
     for p in problems:

@@ -1,0 +1,1 @@
+``nimvault hook`` refuses when ``core.hooksPath`` sends git to another hooks directory, since git would never run hooks written to ``.git/hooks``; ``nimvault doctor`` reports installed hooks that git no longer runs. Before this, a global hooks path left the pre-push ``nimvault check`` inert, and a blob replaced without its record reached the remote unchecked.

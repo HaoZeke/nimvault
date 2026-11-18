@@ -41,6 +41,10 @@ Expire-Date: 0
 proc setupRepo(): string =
   result = createTempDir("nimvault_audit_", "_repo")
   doAssert execCmdEx("git init -q", workingDir = result).exitCode == 0
+  # Hooks under test live in .git/hooks; a developer's global core.hooksPath
+  # would otherwise make `nimvault hook` refuse them.
+  doAssert execCmdEx("git config core.hooksPath .git/hooks",
+                     workingDir = result).exitCode == 0
   writeFile(result / ".gitkeep", "")
   doAssert execCmdEx("git add . && git commit -q -m init",
                      workingDir = result).exitCode == 0

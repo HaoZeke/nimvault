@@ -1192,6 +1192,8 @@ block initWritesConfig:
 
 block hookInstallsCheckAndScan:
   let r = setupTestRepo()
+  # A developer's global core.hooksPath must not decide this test.
+  discard execCmdEx("git config core.hooksPath .git/hooks", workingDir = r)
   installHooks(r)
   doAssert fileExists(r / ".git" / "hooks" / "pre-push")
   doAssert "nimvault check" in readFile(r / ".git" / "hooks" / "pre-push")
@@ -1202,8 +1204,37 @@ block hookInstallsCheckAndScan:
   except CatchableError:
     raised = true
   doAssert raised, "hook must not overwrite"
+  doAssert installedHooksInactive(r) == ""
   removeDir(r)
   echo "PASS: hook install writes check and scan hooks"
+
+block hookRefusesWhenHooksPathRedirects:
+  ## A global core.hooksPath means git never runs .git/hooks. Installing there
+  ## and printing "installed" would leave the vault unguarded on push.
+  let r = setupTestRepo()
+  let elsewhere = createTempDir("nimvault_hooks_", "_test")
+  discard execCmdEx("git config core.hooksPath " & elsewhere.quoteShell,
+                    workingDir = r)
+  var raised = false
+  try:
+    installHooks(r)
+  except CatchableError as e:
+    raised = true
+    doAssert "core.hooksPath" in e.msg, e.msg
+  doAssert raised, "hook must refuse a redirected hooks directory"
+  doAssert not fileExists(r / ".git" / "hooks" / "pre-push"),
+    "nothing may be written when the hooks would not run"
+  # Pointing hooksPath back at .git/hooks makes them run, so install works.
+  discard execCmdEx("git config core.hooksPath .git/hooks", workingDir = r)
+  installHooks(r)
+  doAssert installedHooksInactive(r) == ""
+  # Redirect again: the installed hooks are now reported inactive.
+  discard execCmdEx("git config core.hooksPath " & elsewhere.quoteShell,
+                    workingDir = r)
+  doAssert installedHooksInactive(r) == elsewhere
+  removeDir(r)
+  removeDir(elsewhere)
+  echo "PASS: hook install refuses a redirected hooks directory"
 
 block twoAddsMergeWithoutManifestClash:
   ## Two machines that add different files must not depend on a single
