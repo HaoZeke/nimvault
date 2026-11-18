@@ -1,0 +1,4 @@
+The CLI now sets SIGPIPE ignore via `sigignore(SIGPIPE)`, which keeps
+fail-closed pipe writes while avoiding Nim 2.0/2.2 compile failures from the
+typeless `signal` binding. The DEK module docs table now has a valid delimiter
+row, so `nim doc` no longer fails while parsing it.

@@ -1,6 +1,6 @@
 ## CLI dispatch for nimvault using cligen.
 
-import std/[os, strutils]
+import std/[os, strutils, posix]
 import cligen
 
 from ./gpg import GpgConfig, initGpgConfig, NimvaultError
@@ -11,6 +11,10 @@ export Version
 
 template cliRun(body: untyped) =
   try:
+    # cligen installs a SIGPIPE handler that exits 0. Ignore SIGPIPE so writes
+    # fail with EPIPE instead, and a closed pipe is reported as a command
+    # failure rather than a silent success.
+    discard sigignore(SIGPIPE)
     body
   except NimvaultError as e:
     stderr.writeLine e.msg

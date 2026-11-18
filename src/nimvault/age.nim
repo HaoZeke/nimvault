@@ -19,6 +19,7 @@
 
 import std/[os, osproc, streams, strformat, strutils]
 from ./gpg import GpgConfig, nvRaise
+from ./fsat import runWithInput
 
 const
   ageBins = ["age", "rage"]        ## rage is a drop-in; prefer whichever exists
@@ -105,14 +106,17 @@ proc ageDecryptBytesToString*(cfg: GpgConfig, cipher: string): string =
   let p = startProcess(ageBinary(),
     args = @["-d", "-i", ident, "--", "-"],
     options = {poUsePath})
-  p.inputStream.write(cipher)
-  p.inputStream.close()
-  result = p.outputStream.readAll()
-  let err = p.errorStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
-    nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+  let io = runWithInput(p, cipher)
+  if io.writeErr != 0:
+    var msg = "FATAL: age decrypt failed while writing ciphertext: " &
+              osErrorMsg(OSErrorCode(io.writeErr))
+    let detail = io.err.strip()
+    if detail.len > 0:
+      msg.add("\n" & detail)
+    nvRaise(msg)
+  if io.code != 0:
+    nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
+  result = io.outp
 
 proc ageDecryptToString*(cfg: GpgConfig, inPath: string): string =
   ageDecryptBytesToString(cfg, readFile(inPath))
@@ -156,7 +160,7 @@ proc sshSign*(cfg: GpgConfig, path: string) =
   if not fileExists(sigPath):
     nvRaise(&"FATAL: ssh-keygen reported success but wrote no signature at {sigPath}")
 
-proc sshVerifyPayload(cfg: GpgConfig, path, payload: string) =
+proc sshVerifyBytes*(cfg: GpgConfig, path, payload: string) =
   ## Verify `<path>.sig` against the allowed-signers file. A missing signature
   ## is a failure, not a skip: an unsigned manifest is exactly what an attacker
   ## who replaced it would produce.
@@ -175,17 +179,18 @@ proc sshVerifyPayload(cfg: GpgConfig, path, payload: string) =
   let p = startProcess(sshKeygenBin,
     args = @["-Y", "verify", "-f", allowed, "-I", cfg.signerIdentity,
              "-n", "nimvault", "-s", sig],
-    options = {poUsePath, poStdErrToStdOut})
-  p.inputStream.write(payload)
-  p.inputStream.close()
-  let output = p.outputStream.readAll()
-  let code = p.waitForExit()
-  p.close()
-  if code != 0:
+    options = {poUsePath})
+  let io = runWithInput(p, payload)
+  let output = (io.outp & io.err).strip()
+  if io.writeErr != 0:
+    var msg = &"FATAL: signature verification failed for {path}:\n" &
+              "  ssh-keygen closed stdin before verification finished: " &
+              osErrorMsg(OSErrorCode(io.writeErr))
+    if output.len > 0:
+      msg.add("\n" & output)
+    nvRaise(msg)
+  if io.code != 0:
     nvRaise(&"FATAL: signature verification failed for {path}:\n{output}")
 
-proc sshVerify*(cfg: GpgConfig, path, payload: string) =
-  sshVerifyPayload(cfg, path, payload)
-
 proc sshVerify*(cfg: GpgConfig, path: string) =
-  sshVerifyPayload(cfg, path, readFile(path))
+  sshVerifyBytes(cfg, path, readFile(path))

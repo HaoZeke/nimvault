@@ -5,11 +5,12 @@
 
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
-                  gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
+                  gpgDecryptBytesToString,
+                  gpgStatusHas, sha256sum, vaultSigners,
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
-                  sshVerify, ageBinary, ageIdentityPath
-from ./fsat import ONoFollow
+                  sshVerify, sshVerifyBytes, ageBinary, ageIdentityPath
+from ./fsat import ONoFollow, writeAll
 
 proc ensureOwnerDir*(dir: string) =
   ## Create `dir` mode 0700, or tighten a directory this user already owns.
@@ -91,6 +92,89 @@ proc discardPrivate*(dir: string) =
 proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
   ## `rename(2)`. Replaces `dest` when it is a symlink and does not follow it.
   ## Nim's posix module does not wrap this call.
+
+proc syncParentDir*(path: string)
+
+proc copyPathToFd(src: string, fd: cint) =
+  var f: File
+  if not open(f, src, fmRead):
+    nvRaise(&"FATAL: cannot read staged ciphertext: {src}")
+  defer:
+    f.close()
+  var buf = newString(1024 * 1024)
+  while true:
+    let n = f.readBuffer(addr buf[0], buf.len)
+    if n <= 0:
+      break
+    let err = writeAll(fd, addr buf[0], n)
+    if err != 0:
+      nvRaise("FATAL: cannot write staged ciphertext: " &
+              osErrorMsg(OSErrorCode(err)))
+
+proc openVaultRegularReadFd(path: string): cint =
+  ## Open `path` without following a final symlink and require a regular file.
+  let fd = posix.open(path.cstring, O_RDONLY or ONoFollow or O_NONBLOCK or
+                      O_CLOEXEC)
+  if fd < 0:
+    if errno == ELOOP:
+      nvRaise(&"FATAL: refusing symlinked vault file: {path}")
+    nvRaise(&"FATAL: could not open vault file: {path}")
+  var st: Stat
+  if fstat(fd, st) != 0:
+    discard posix.close(fd)
+    nvRaise(&"FATAL: could not stat vault file: {path}")
+  if not S_ISREG(st.st_mode):
+    discard posix.close(fd)
+    nvRaise(&"FATAL: refusing non-regular vault file: {path}")
+  fd
+
+proc assertVaultRegularFile*(path: string) =
+  ## Fail unless `path` is a regular file reached without symlink following.
+  let fd = openVaultRegularReadFd(path)
+  discard posix.close(fd)
+
+proc readVaultRegularFile*(path: string): string =
+  ## Read one vault file through one nofollow descriptor.
+  let fd = openVaultRegularReadFd(path)
+  defer:
+    discard posix.close(fd)
+  var buf: array[65536, char]
+  while true:
+    let n = posix.read(fd, addr buf[0], buf.len)
+    if n < 0:
+      if errno == EINTR or errno == EAGAIN:
+        continue
+      nvRaise(&"FATAL: could not read vault file: {path}")
+    if n == 0:
+      break
+    let at = result.len
+    result.setLen(at + n)
+    copyMem(addr result[at], addr buf[0], n)
+
+proc publishFileNofollow*(src, dest: string) =
+  ## Copy `src` into `dest.tmp` opened O_EXCL|O_NOFOLLOW, then rename.
+  ## A planted symlink at that temp name is refused instead of followed.
+  let tmp = dest & ".tmp"
+  let fd = posix.open(tmp.cstring,
+                      posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                      ONoFollow or O_CLOEXEC,
+                      0o600.Mode)
+  if fd < 0:
+    nvRaise(&"FATAL: could not open publish temp for {dest}")
+  var wrote = false
+  try:
+    copyPathToFd(src, fd)
+    discard posix.fsync(fd)
+    wrote = true
+  finally:
+    discard posix.close(fd)
+    if not wrote:
+      try: removeFile(tmp) except CatchableError: discard
+  if renameAt(tmp.cstring, dest.cstring) != 0:
+    try: removeFile(tmp) except CatchableError: discard
+    nvRaise(&"FATAL: could not publish ciphertext at {dest}")
+  syncParentDir(dest)
+  try: removeFile(src) except CatchableError: discard
 
 proc publishPending*(src, dest: string) =
   ## Replace `dest` with `src`. A failed rename leaves `src` where it is:
@@ -231,42 +315,10 @@ proc decryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
   if cfg.usesAge: ageDecryptToString(cfg, inPath)
   else: gpgDecryptToString(cfg, inPath, verifySig, checkPresent)
 
-type Decrypted* = tuple[plain, err: string]
-  ## One file's plaintext, or the message `decryptToString` would have raised.
-
-proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
-                          verifySig = false, checkPresent = false): seq[Decrypted] =
-  ## `decryptToString` over many small files, in the same order, with no
-  ## raise: each failure comes back as its message. gpg runs
-  ## `gpgParallelism()` processes at a time; a vault of a few hundred split
-  ## records otherwise pays one process start and one agent round trip per
-  ## record, in series, on every command that loads the manifest. age stays
-  ## sequential, since its decrypt is in-process fast.
-  result = newSeq[Decrypted](paths.len)
-  if cfg.usesAge:
-    for i, path in paths:
-      try:
-        result[i] = (ageDecryptToString(cfg, path), "")
-      except CatchableError as err:
-        result[i] = ("", err.msg)
-    return
-  let batch = gpgParallelism()
-  let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
-  for start in countup(0, paths.high, batch):
-    let stop = min(start + batch - 1, paths.high)
-    var procs: seq[(int, Process)] = @[]
-    for i in start .. stop:
-      procs.add((i, startProcess("gpg",
-        args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", paths[i]],
-        options = {poUsePath})))
-    for (i, p) in procs:
-      let plain = p.outputStream.readAll()
-      let status = p.errorStream.readAll()
-      let code = p.waitForExit()
-      p.close()
-      let problem = gpgVerdict(status, paths[i], code, verifySig, allowed,
-                               checkPresent)
-      result[i] = if problem.len > 0: ("", problem) else: (plain, "")
+proc decryptBytesToString*(cfg: GpgConfig, cipher, label: string,
+                           verifySig = false, checkPresent = false): string =
+  if cfg.usesAge: ageDecryptBytesToString(cfg, cipher)
+  else: gpgDecryptBytesToString(cfg, cipher, label, verifySig, checkPresent)
 
 proc effectiveSigner*(cfg: GpgConfig): string =
   ## An empty signer means the config was built without going through
@@ -307,9 +359,8 @@ proc publishSigned*(cfg: GpgConfig, tmp, dest: string) =
   syncPath(tmp)
   if fileExists(tmpSig):
     syncPath(tmpSig)
-    moveFile(tmpSig, dest & ".sig")
-  moveFile(tmp, dest)
-  syncParentDir(dest)
+    publishFileNofollow(tmpSig, dest & ".sig")
+  publishFileNofollow(tmp, dest)
 
 proc verifyManifest*(cfg: GpgConfig, path: string, requireSig: bool,
                      checkPresent = false) =
@@ -334,14 +385,11 @@ proc verifyAndDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false
                                checkPresent = false): string =
   ## Verify and decrypt one ciphertext while reading it only once where
   ## detached signatures are used.
-  let signer =
-    if cfg.signer.len > 0: cfg.signer
-    elif cfg.usesAge: "ssh"
-    else: "gpg"
+  let signer = cfg.effectiveSigner
   if cfg.usesAge and signer == "ssh":
     let cipher = readFile(inPath)
     if verifySig or (checkPresent and fileExists(inPath & ".sig")):
-      sshVerify(cfg, inPath, cipher)
+      sshVerifyBytes(cfg, inPath, cipher)
     return ageDecryptBytesToString(cfg, cipher)
   if verifySig or checkPresent:
     verifyManifest(cfg, inPath, verifySig, checkPresent)

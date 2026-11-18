@@ -1,0 +1,2 @@
+`runWithInput` now closes a child stdin stream through one code path so
+`Process.close()` no longer closes the same stdin descriptor twice.

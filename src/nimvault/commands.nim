@@ -336,18 +336,6 @@ proc placeStaged(sp: StagedPath, job: Drain) =
     nvRaise(&"FATAL: destination parent changed while unsealing: {dest}")
   sp.placed = true
 
-proc startAll(n: int, start: proc (i: int): Drain {.closure.}): seq[Drain] =
-  ## Start `n` decryptions. When one cannot start, those already running are
-  ## killed and reaped before the error goes on.
-  try:
-    for i in 0 ..< n:
-      result.add(start(i))
-  except CatchableError:
-    for j in result.mitems:
-      j.p.kill()
-    drain(result)
-    raise
-
 proc decryptFailure(e: VaultEntry, job: Drain): string =
   ## Why one entry's decryption is refused, or "".
   if job.code != 0:
@@ -355,22 +343,6 @@ proc decryptFailure(e: VaultEntry, job: Drain): string =
   if job.writeErr != 0:
     return &"FATAL: failed to unseal {e.path}\n  cannot write the staging " &
            "file: " & osErrorMsg(OSErrorCode(job.writeErr))
-  ""
-
-proc inBandProblem(e: VaultEntry, status: string, requireSig: bool,
-                   signers: seq[string]): string =
-  ## Why the signature inside a direct gpg blob is refused, or "". A bad
-  ## signature is fatal with --allow-unsigned as without it, and so is a
-  ## good one from a key the config does not name.
-  if gpgStatusHas(status, "BADSIG") or gpgStatusHas(status, "ERRSIG"):
-    return &"FATAL: bad signature on blob for {e.path}\n" &
-           "  The vault may have been tampered with."
-  if requireSig and not gpgStatusHas(status, "GOODSIG"):
-    return &"FATAL: missing signature on blob for {e.path}\n" &
-           "  Pass --allow-unsigned to accept unsigned vaults."
-  if requireSig or gpgStatusHas(status, "GOODSIG") or
-     validSigners(status).len > 0:
-    return gpgSignerProblem(status, e.path, signers)
   ""
 
 proc gitignorePattern(rel: string): string =
@@ -415,20 +387,35 @@ proc selectEntries(cfg: GpgConfig, entries: seq[VaultEntry],
       nvRaise(&"Not in vault: {sel}")
 
 proc persistDeks(repo: string, cfg: GpgConfig, deks: DekTable,
-                 entries: seq[VaultEntry]) =
+                 entries: seq[VaultEntry],
+                 startRecordDeks: DekTable = initTable[string, string]()) =
   ## Write the live data keys, grouped the way the current wrap rules say.
   ## Callers pass the entry list they are about to persist so a removed id
   ## is not written back into the default group.
+  ##
+  ## A command may decrypt records more than once. Reject a persist when an id
+  ## that already had a signed record key at command start now carries another
+  ## key in memory: that would adopt a mid-command swap into keys.*.
+  discard loadSplitEntries(repo, cfg,
+                           verifySig = recordsNeedSig(cfg),
+                           checkPresent = true)
   var live: DekTable
+  var pathOf = initTable[string, string]()
   var groupOf = initTable[string, string]()
   var recipsOf = initTable[string, seq[string]]()
   for e in entries:
+    pathOf[e.id] = e.path
     if deks.hasKey(e.id):
       live[e.id] = deks[e.id]
     let recips = recipientsFor(cfg, e.path)
     let gid = groupId(recips)
     groupOf[e.id] = gid
     recipsOf[gid] = recips
+  for id, key in live:
+    if startRecordDeks.hasKey(id) and startRecordDeks[id] != key:
+      let path = pathOf.getOrDefault(id, id)
+      nvRaise("FATAL: refusing to persist a data key that changed " &
+              "mid-command for " & path)
   if live.len == 0:
     # Only drop key files this identity can open. Unread wrap-group
     # files belong to another machine.
@@ -491,21 +478,16 @@ proc addOneFile(repo, absPath: string, cfg: GpgConfig, noGitignore: bool,
   let id = genId()
   let outPath = crypto.blobPath(repo, cfg, id)
   let key = newDek(cfg)
-  encryptWithDek(cfg, key, absPath, outPath)
+  let cipherHash = encryptWithDek(cfg, key, absPath, outPath)
   deks[id] = key
-  entries.add((id, storedPath, sha256sum(outPath), ekFile, sha256sum(absPath)))
+  entries.add((id, storedPath, cipherHash, ekFile, sha256sum(absPath)))
   nvEcho(&"  {storedPath}")
 
 type BlobSnapshot = object
-  path: string
-  work: string
+  cipher: string
 
 proc discardSnapshot(snap: var BlobSnapshot) =
-  if snap.work.len == 0:
-    return
-  discardPrivate(snap.work)
-  snap.work = ""
-  snap.path = ""
+  snap.cipher.setLen(0)
 
 proc assertBlobMatches(repo: string, cfg: GpgConfig, e: VaultEntry,
                        requireSig: bool) =
@@ -530,17 +512,13 @@ proc assertBlobMatches(repo: string, cfg: GpgConfig, e: VaultEntry,
 
 proc snapshotBlob(repo: string, cfg: GpgConfig, e: VaultEntry,
                   requireSig: bool): BlobSnapshot =
-  ## Hash and decrypt the same bytes by decrypting a private snapshot.
+  ## Hash and decrypt the same bytes by decrypting the in-memory ciphertext.
   assertBlobMatches(repo, cfg, e, requireSig)
   let inPath = resolveBlob(repo, cfg, e.id, e.hash)
-  let cipher = readFile(inPath)
-  if e.hash.len > 0 and sha256sumBytes(cipher) != e.hash:
+  result.cipher = readFile(inPath)
+  if e.hash.len > 0 and sha256sumBytes(result.cipher) != e.hash:
     stderr.writeLine &"FATAL: integrity check failed for {e.path}"
     nvRaise("  The vault blob may have been tampered with.")
-  result.work = privateWorkDir()
-  result.path = result.work / (e.id & cfg.blobExt)
-  writeFile(result.path, cipher)
-  setFilePermissions(result.path, {fpUserRead, fpUserWrite})
 
 proc deksForEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
                     verified: DekTable): DekTable =
@@ -557,6 +535,22 @@ proc deksForEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
   for e in entries:
     if e.id notin result and e.id in fromKeys:
       result[e.id] = fromKeys[e.id]
+
+proc keyFileOnlyDekEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
+                           verified: DekTable): seq[VaultEntry] =
+  ## Entries whose DEK is available only from unsigned keys.* files.
+  let fromKeys = loadDeksFromKeys(repo, cfg)
+  for e in entries:
+    if e.id notin verified and e.id in fromKeys:
+      result.add(e)
+
+proc refuseUnsignedDekResign(entries: seq[VaultEntry], action: string) =
+  var paths: seq[string] = @[]
+  for e in entries:
+    paths.add(e.path)
+  nvRaise("FATAL: refusing to " & action & " with record DEKs loaded only " &
+          "from unsigned keys.*:\n  " & paths.join("\n  ") & "\n" &
+          "  Run 'nimvault seal --force' to mint signed record DEKs first.")
 
 proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
              only: seq[string] = @[]) =
@@ -611,9 +605,8 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   # path. moveFile's copy fallback follows that symlink when the runtime
   # directory is a different device, which is the usual split between
   # XDG_RUNTIME_DIR and $HOME.
-  # The staging file is created 0600 here and gpg or age only writes to a
-  # pipe. umask 077 keeps a missing parent directory owner-only as well.
-  let batchSize = gpgParallelism()
+  # The staging file is created 0600. umask 077 keeps a missing parent
+  # directory owner-only as well.
 
   # A vault may hold both formats while a migration drains: an entry with a
   # data key is v6, one without is encrypted straight to the recipient. The
@@ -624,95 +617,71 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   for e in entries:
     if deks.hasKey(e.id): enveloped.add(e) else: direct.add(e)
 
-  # A direct gpg blob signs its plaintext inside the ciphertext, so reading
-  # the signature means decrypting. Do that first with the output discarded:
-  # nothing is written until every signature has passed. age blobs and v6
-  # enveloped blobs carry none; the signed record and the digest checked
-  # above vouch for them.
-  let inBand = cfg.signaturesInBand and direct.len > 0
-  let signers = if inBand: vaultSigners(cfg) else: @[]
-  if inBand:
-    for first in countup(0, direct.high, batchSize):
-      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
-      var snaps: seq[BlobSnapshot] = @[]
+  let inBandChecked = cfg.signaturesInBand and direct.len > 0
+  if inBandChecked:
+    # Direct gpg blobs prove authenticity in-band while decrypting. Verify all
+    # of them before placing any plaintext, so a later bad signature cannot
+    # leave earlier files restored.
+    for e in direct:
+      var snap: BlobSnapshot
       try:
-        var jobs = startAll(batch.len, proc (i: int): Drain =
-          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
-          snaps.add(snap)
-          Drain(p: decryptStream(cfg, snap.path), outFd: -1))
-        drain(jobs)
-        for k, e in batch:
-          var problem = decryptFailure(e, jobs[k])
-          if problem.len == 0:
-            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
-          if problem.len > 0:
-            nvRaise(problem)
+        snap = snapshotBlob(repo, cfg, e, requireSig)
+        discard decryptBytesToString(cfg, snap.cipher, e.path,
+                                     verifySig = requireSig,
+                                     checkPresent = true)
       finally:
-        for snap in snaps.mitems:
-          discardSnapshot(snap)
+        discardSnapshot(snap)
 
-  # Then each entry is staged, decrypted, checked and placed before the next
-  # is staged (direct blobs a batch at a time), so the descriptors held do not
-  # grow with the vault. A failure here stops the run; what was already
-  # placed passed every check above.
+  # Each entry is staged, decrypted from the exact bytes hashed in
+  # `snapshotBlob`, and placed before the next starts. A failure stops the run;
+  # what was already placed passed every check above.
   var placed = 0
   template refuse(problem: string) =
     nvRaise(if placed == 0: problem
             else: problem & &"\n  {placed} of {entries.len} file(s) were " &
                   "restored before this one.")
+  proc stagedWrite(plain: string, sp: StagedPath): Drain =
+    if plain.len > 0:
+      result.writeErr = writeAll(sp.fd, unsafeAddr plain[0], plain.len)
+      let keep = min(2, plain.len)
+      result.head = plain[0 ..< keep]
 
   withPrivateUmask:
     for e in enveloped:
       let sp = stageBeside(resolvePath(cfg, e.path), cfg)
-      var work = ""
       var snap: BlobSnapshot
       try:
         snap = snapshotBlob(repo, cfg, e, requireSig)
-        var jobs = @[Drain(p: decryptWithDekStream(cfg, deks[e.id], snap.path, work),
-                           outFd: sp.fd)]
-        drain(jobs)
-        let problem = decryptFailure(e, jobs[0])
+        let plain = decryptWithDekBytesToString(cfg, deks[e.id], snap.cipher)
+        let staged = stagedWrite(plain, sp)
+        let problem = decryptFailure(e, staged)
         if problem.len > 0:
           refuse(problem)
-        assertBlobMatches(repo, cfg, e, requireSig)
-        placeStaged(sp, jobs[0])
+        placeStaged(sp, staged)
       finally:
         discardStaged(sp)
         discardSnapshot(snap)
-        discardPrivate(work)
       inc placed
       nvEcho(&"  {e.path}")
 
-    for first in countup(0, direct.high, batchSize):
-      let batch = direct[first .. min(first + batchSize - 1, direct.high)]
-      var sps: seq[StagedPath] = @[]
-      var snaps: seq[BlobSnapshot] = @[]
+    for e in direct:
+      let sp = stageBeside(resolvePath(cfg, e.path), cfg)
+      var snap: BlobSnapshot
       try:
-        for e in batch:
-          sps.add(stageBeside(resolvePath(cfg, e.path), cfg))
-        var jobs = startAll(batch.len, proc (i: int): Drain =
-          var snap = snapshotBlob(repo, cfg, batch[i], requireSig)
-          snaps.add(snap)
-          Drain(p: decryptStream(cfg, snap.path),
-                outFd: sps[i].fd))
-        drain(jobs)
-        for k, e in batch:
-          var problem = decryptFailure(e, jobs[k])
-          if problem.len == 0 and inBand:
-            problem = inBandProblem(e, jobs[k].err, requireSig, signers)
-          if problem.len > 0:
-            refuse(problem)
-        for e in batch:
-          assertBlobMatches(repo, cfg, e, requireSig)
-        for k, e in batch:
-          placeStaged(sps[k], jobs[k])
-          inc placed
-          nvEcho(&"  {e.path}")
+        snap = snapshotBlob(repo, cfg, e, requireSig)
+        let plain = decryptBytesToString(cfg, snap.cipher, e.path,
+          verifySig = (if inBandChecked: false else: requireSig),
+          checkPresent = (if inBandChecked: false else: true))
+        let staged = stagedWrite(plain, sp)
+        let problem = decryptFailure(e, staged)
+        if problem.len > 0:
+          refuse(problem)
+        placeStaged(sp, staged)
       finally:
-        for sp in sps:
-          discardStaged(sp)
-        for snap in snaps.mitems:
-          discardSnapshot(snap)
+        discardStaged(sp)
+        discardSnapshot(snap)
+      inc placed
+      nvEcho(&"  {e.path}")
 
   nvEcho(&"\nUnsealed {entries.len} file(s).")
 
@@ -818,7 +787,8 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # A fresh key per re-encryption rather than a reused one: the key file is
   # small, and a key that never outlives the bytes it protects is the cheaper
   # thing to reason about.
-  var deks = loadDeks(repo, cfg)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
+  var recordDeks = meta.deks
   # Which recipients may open each entry. With no `wrap` rules every entry
   # lands in one group holding the configured recipient, which is byte for
   # byte the behaviour before groups existed.
@@ -843,10 +813,11 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       let inPath = resolvePath(cfg, e.path)
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
       let key = newDek(cfg)
-      encryptWithDek(cfg, key, inPath, pend)
+      let cipherHash = encryptWithDek(cfg, key, inPath, pend)
       pendingPaths.add(pend)
-      pendingHash[e.id] = sha256sum(pend)
+      pendingHash[e.id] = cipherHash
       deks[e.id] = key
+      recordDeks[e.id] = key
       syncPath(pend)
       nvEcho(&"  {e.path}")
 
@@ -886,7 +857,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       return
 
     saveManifest(repo, hashedEntries, cfg, currentKey, envelope = true,
-                 knownDeks = deks, haveDeks = true)
+                 knownDeks = recordDeks, haveDeks = true)
     recordsCommitted = true
     for e in todo:
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
@@ -931,11 +902,20 @@ proc add*(repo, path: string, cfg: GpgConfig, noGitignore = false) =
 
   banner(&"Adding {storePath(cfg, absPath, repo)} to vault ...")
   ensureVaultDir(repo)
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  var deks = loadDeks(repo, cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
+  var existing = initHashSet[string]()
+  for e in entries:
+    existing.incl(e.id)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   addOneFile(repo, absPath, cfg, noGitignore, entries, deks)
-  persistDeks(repo, cfg, deks, entries)
-  saveManifestKeep(repo, entries, cfg, envelope = true)
+  var recordDeks = meta.deks
+  for e in entries:
+    if e.id notin existing and e.id in deks:
+      recordDeks[e.id] = deks[e.id]
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
+  saveManifestKeep(repo, entries, cfg, envelope = true,
+                   knownDeks = recordDeks, haveDeks = true)
   let last = entries[^1]
   nvEcho(&"  id:   {last.id}")
   nvEcho(&"  path: {last.path}")
@@ -979,13 +959,22 @@ proc addDir*(repo, dirPath: string, cfg: GpgConfig, noGitignore = false) =
   banner(&"Adding directory {dirPath} ({filesToAdd.len} files) to vault ...")
   ensureVaultDir(repo)
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  var deks = loadDeks(repo, cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
+  var existing = initHashSet[string]()
+  for e in entries:
+    existing.incl(e.id)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   for filePath in filesToAdd:
     addOneFile(repo, filePath, cfg, noGitignore, entries, deks)
 
-  persistDeks(repo, cfg, deks, entries)
-  saveManifestKeep(repo, entries, cfg, envelope = true)
+  var recordDeks = meta.deks
+  for e in entries:
+    if e.id notin existing and e.id in deks:
+      recordDeks[e.id] = deks[e.id]
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
+  saveManifestKeep(repo, entries, cfg, envelope = true,
+                   knownDeks = recordDeks, haveDeks = true)
   nvEcho(&"\nAdded {filesToAdd.len} file(s) from directory.")
 
 proc remove*(repo, path: string, cfg: GpgConfig) =
@@ -1001,10 +990,11 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   else:
     expandHome(path)
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
   var found = false
   var newEntries: seq[VaultEntry] = @[]
-  var deks = loadDeks(repo, cfg)
+  var deks = deksForEntries(repo, cfg, entries, meta.deks)
   var droppedId = ""
   for e in entries:
     if resolvePath(cfg, e.path) == absPath:
@@ -1025,9 +1015,13 @@ proc remove*(repo, path: string, cfg: GpgConfig) =
   if not found:
     nvRaise(&"Not in vault: {path}")
 
-  persistDeks(repo, cfg, deks, newEntries)
-  saveManifestKeep(repo, newEntries, cfg)
+  var recordDeks = meta.deks
+  if droppedId in recordDeks:
+    recordDeks.del(droppedId)
+  persistDeks(repo, cfg, deks, newEntries, startRecordDeks = meta.deks)
   dropEntryRecord(repo, cfg, droppedId)
+  saveManifest(repo, newEntries, cfg, meta.sealKey, meta.envelope,
+               knownDeks = recordDeks, haveDeks = true)
   nvEcho("  (local plaintext file NOT deleted)")
 
 proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
@@ -1081,12 +1075,11 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
         # came from the signed manifest and the digest checked in snapshotBlob.
         # Decrypt to memory. A file under the runtime directory is plaintext
         # another uid can read for as long as the process is decrypting.
-        let plain = decryptWithDekToString(cfg, deks[e.id], snap.path)
-        assertBlobMatches(repo, cfg, e, requireSig)
+        let plain = decryptWithDekBytesToString(cfg, deks[e.id], snap.cipher)
         return plain
-      let plain = decryptToString(cfg, snap.path, verifySig = requireSig,
-                                  checkPresent = true)
-      assertBlobMatches(repo, cfg, e, requireSig)
+      let plain = decryptBytesToString(cfg, snap.cipher, e.path,
+                                       verifySig = requireSig,
+                                       checkPresent = true)
       return plain
     finally:
       discardSnapshot(snap)
@@ -1153,26 +1146,31 @@ proc move*(repo, oldPath, newPath: string, cfg: GpgConfig) =
   if symlinkExists(newAbs):
     nvRaise(&"FATAL: refusing destination symlink: {newAbs}")
 
-  var entries = loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
-  var found = false
-  for e in entries.mitems:
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  var entries = meta.entries
+  var idx = -1
+  for i, e in entries:
     if resolvePath(cfg, e.path) == oldAbs:
-      found = true
-      if fileExists(oldAbs) or symlinkExists(oldAbs):
-        safeMovePath(oldAbs, newAbs)
-        nvEcho(&"  Moved {e.path} -> {newStored}")
-      elif fileExists(newAbs):
-        nvEcho(&"  File already at {newStored}")
-      else:
-        nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
-      e.path = newStored
+      idx = i
       break
-
-  if not found:
+  if idx < 0:
     nvRaise(&"Not in vault: {oldPath}")
 
-  persistDeks(repo, cfg, loadDeks(repo, cfg), entries)
-  saveManifestKeep(repo, entries, cfg)
+  let keyOnly = keyFileOnlyDekEntries(repo, cfg, @[entries[idx]], meta.deks)
+  if keyOnly.len > 0:
+    refuseUnsignedDekResign(keyOnly, "move")
+  if fileExists(oldAbs) or symlinkExists(oldAbs):
+    safeMovePath(oldAbs, newAbs)
+    nvEcho(&"  Moved {entries[idx].path} -> {newStored}")
+  elif fileExists(newAbs):
+    nvEcho(&"  File already at {newStored}")
+  else:
+    nvRaise(&"FATAL: file not found at {oldAbs} or {newAbs}")
+  entries[idx].path = newStored
+  persistDeks(repo, cfg, deksForEntries(repo, cfg, entries, meta.deks), entries,
+              startRecordDeks = meta.deks)
+  saveManifestKeep(repo, entries, cfg,
+                   knownDeks = meta.deks, haveDeks = true)
   nvEcho(&"  Updated manifest (blob unchanged)")
 
 proc listReport*(repo: string, cfg: GpgConfig): string =
@@ -1649,12 +1647,17 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
               "  Refusing to treat the vault as empty (unread wrap groups stay).")
     nvEcho("vault is empty")
     return
+  let keyOnly = keyFileOnlyDekEntries(repo, cfg, entries, meta.deks)
+  if keyOnly.len > 0:
+    refuseUnsignedDekResign(keyOnly, "rotate")
   let deks = deksForEntries(repo, cfg, entries, meta.deks)
   if deks.len == 0:
     nvRaise("FATAL: no data keys to rewrap; this vault predates v6.\n" &
             "  Run 'nimvault seal --force' once to move it to v6.")
-  persistDeks(repo, cfg, deks, entries)
-  saveSplitEntries(repo, cfg, entries, deks, force = true)
+  persistDeks(repo, cfg, deks, entries, startRecordDeks = meta.deks)
+  saveSplitEntries(repo, cfg, entries, meta.deks, force = true)
+  saveManifest(repo, entries, cfg, meta.sealKey, envelope = true,
+               knownDeks = meta.deks, haveDeks = true)
 
   var enveloped = 0
   for e in entries:

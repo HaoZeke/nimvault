@@ -25,6 +25,7 @@
 ## Per backend the "data key" is whatever opens a payload non-interactively:
 ##
 ## | Backend | Data key | Payload |
+## | --- | --- | --- |
 ## | gpg | 256-bit passphrase, hex | `gpg --symmetric` |
 ## | age | x25519 identity | `age -r <recipient>` |
 ##
@@ -36,6 +37,7 @@ import std/[os, osproc, streams, strutils, strformat, sysrand, tables,
 import ./gpg
 from ./age import ageKeygenBinary, ageRecipientForIdentity, ageBinary
 import ./crypto
+from ./fsat import runWithInput
 
 const
   KeysFileStem* = "keys"
@@ -131,15 +133,26 @@ proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
 proc groupKeysPath*(repo: string, cfg: GpgConfig, gid: string): string =
   repo / ".vault" / (KeysFileStem & "." & gid & cfg.blobExt)
 
+proc isKeyFileName(name: string): bool =
+  (name.startsWith(KeysFileStem & ".") and
+   (name.endsWith(".gpg") or name.endsWith(".age"))) or
+  name == KeysFileStem & ".gpg" or name == KeysFileStem & ".age"
+
 proc keyFiles*(repo: string, cfg: GpgConfig): seq[string] =
   ## Every data-key file present, grouped or legacy flat, either backend.
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
   for kind, path in walkDir(dir):
-    if kind != pcFile:
-      continue
     let name = path.extractFilename
+    let keyNode = isKeyFileName(name)
+    if kind == pcLinkToFile and keyNode:
+      nvRaise(&"FATAL: refusing symlinked key file: {path}")
+    if not keyNode:
+      continue
+    if kind != pcFile:
+      nvRaise(&"FATAL: refusing non-regular key file: {path}")
+    assertVaultRegularFile(path)
     if name.startsWith(KeysFileStem & ".") and
        (name.endsWith(".gpg") or name.endsWith(".age")):
       result.add(path)
@@ -151,11 +164,17 @@ proc keysPath*(repo: string, cfg: GpgConfig): string =
 proc findKeysFile*(repo: string, cfg: GpgConfig): string =
   ## Read whichever backend wrote it, so a vault mid-migration still opens.
   let mine = keysPath(repo, cfg)
+  if symlinkExists(mine):
+    nvRaise(&"FATAL: refusing symlinked key file: {mine}")
   if fileExists(mine):
+    assertVaultRegularFile(mine)
     return mine
   let other = repo / ".vault" / (KeysFileStem &
               (if cfg.usesAge: ".gpg" else: ".age"))
+  if symlinkExists(other):
+    nvRaise(&"FATAL: refusing symlinked key file: {other}")
   if fileExists(other):
+    assertVaultRegularFile(other)
     return other
   return ""
 
@@ -189,16 +208,20 @@ proc loadDeksFromKeys*(repo: string, cfg: GpgConfig): DekTable =
     return
   var candidates: seq[string] = @[]
   for kind, path in walkDir(dir):
-    if kind != pcFile:
-      continue
     let name = path.extractFilename
-    if name.startsWith(KeysFileStem & ".") or
-       name == KeysFileStem & ".gpg" or name == KeysFileStem & ".age":
-      candidates.add(path)
+    let keyNode = isKeyFileName(name)
+    if kind == pcLinkToFile and keyNode:
+      nvRaise(&"FATAL: refusing symlinked key file: {path}")
+    if not keyNode:
+      continue
+    if kind != pcFile:
+      nvRaise(&"FATAL: refusing non-regular key file: {path}")
+    assertVaultRegularFile(path)
+    candidates.add(path)
   for path in candidates:
     var plain = ""
     try:
-      plain = decryptToString(cfg, path, false)
+      plain = decryptBytesToString(cfg, readVaultRegularFile(path), path, false)
     except CatchableError:
       continue
     for line in plain.splitLines:
@@ -219,19 +242,58 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
   let dir = repo / ".vault"
   if not dirExists(dir):
     return
+  let requireSig = cfg.effectiveSigner != "none"
+  template sigFailure(msg: string): bool =
+    requireSig and ("signature verification failed" in msg or
+                    "missing signature" in msg or
+                    "signature required" in msg)
+  proc noSecretKey(msg: string): bool =
+    if cfg.usesAge:
+      let low = msg.toLowerAscii()
+      ("no identity matched" in low) or ("no identities matched" in low)
+    else:
+      gpgNoSecretKey(msg)
   let edir = dir / "e"
   if dirExists(edir):
+    let work = privateWorkDir()
+    defer:
+      discardPrivate(work)
+    var snapN = 0
     for kind, path in walkDir(edir):
-      if kind != pcFile:
-        continue
       let name = path.extractFilename
-      if not (name.endsWith(".gpg") or name.endsWith(".age")):
+      let recordNode = name.endsWith(".gpg") or name.endsWith(".age") or
+                       name.endsWith(".sig")
+      if kind == pcLinkToFile and recordNode:
+        nvRaise(&"FATAL: refusing symlinked record file: {path}")
+      if not recordNode:
         continue
+      if kind != pcFile:
+        nvRaise(&"FATAL: refusing non-regular record file: {path}")
+      assertVaultRegularFile(path)
+      if name.endsWith(".sig"):
+        continue
+      let ext = if name.endsWith(".age"): ".age" else: ".gpg"
+      let snap = work / ("record-" & $snapN & ext)
+      inc snapN
+      writeFile(snap, readVaultRegularFile(path))
+      let sig = path & ".sig"
+      if fileExists(sig):
+        writeFile(snap & ".sig", readVaultRegularFile(sig))
       var plain = ""
       try:
-        plain = decryptToString(cfg, path, false)
-      except CatchableError:
-        continue
+        plain = verifyAndDecryptToString(cfg, snap, verifySig = requireSig,
+                                         checkPresent = true)
+      except CatchableError as err:
+        var msg = err.msg
+        if snap in msg:
+          msg = msg.replace(snap, path)
+        if (snap & ".sig") in msg:
+          msg = msg.replace(snap & ".sig", path & ".sig")
+        if sigFailure(msg):
+          nvRaise(msg)
+        if noSecretKey(msg):
+          continue
+        nvRaise(msg)
       for line in plain.splitLines:
         let s = line.strip()
         if s.len == 0 or s.startsWith("#"):
@@ -265,20 +327,18 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
     let path = groupKeysPath(repo, cfg, gid)
     let work = privateWorkDir()
     let plainPath = work / "keys.plain"
+    let cipherPath = work / ("keys" & cfg.blobExt)
     var content = "# vault-keys-v6\n"
     for l in lines:
       content.add(l & "\n")
     writeFile(plainPath, content)
     setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
-    let tmp = path & ".tmp"
     try:
       encryptFileTo(cfg, recipsOf.getOrDefault(gid, @[cfg.recipient]),
-                    plainPath, tmp, sign = false)
+                    plainPath, cipherPath, sign = false)
+      publishFileNofollow(cipherPath, path)
     finally:
       discardPrivate(work)
-    syncPath(tmp)
-    moveFile(tmp, path)
-    syncParentDir(path)
 
   # Drop key files for groups that no longer have entries.
   for kind, path in walkDir(dir):
@@ -304,77 +364,49 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
       except CatchableError:
         discard
 
-proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string) =
+proc encryptWithDek*(cfg: GpgConfig, dek, inPath, outPath: string): string =
   ## Encrypt a payload under its data key. No recipient is involved, which is
-  ## the whole point. Write beside the live blob and rename so a crash
-  ## does not truncate the last sealed copy.
+  ## the whole point. Return the digest of the ciphertext this process wrote
+  ## before publishing it, so callers can keep metadata bound to those bytes.
   createDir(outPath.parentDir)
-  let tmp = outPath & ".tmp"
-  if cfg.usesAge:
-    let recip = ageRecipientForIdentity(dek)
-    let p = startProcess(ageBinary(),
-      args = @["-r", recip, "-o", tmp, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
-    let output = p.outputStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      if fileExists(tmp): removeFile(tmp)
-      nvRaise(&"FATAL: age encrypt failed (exit {code}):\n{output}")
-  else:
-    # Passphrase on a pipe, never argv: /proc/<pid>/cmdline is world readable.
-    let p = startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--symmetric",
-               "--cipher-algo", "AES256", "--passphrase-fd", "0",
-               "--pinentry-mode", "loopback",
-               "--set-filename", "", "-o", tmp, "--", inPath],
-      options = {poUsePath, poStdErrToStdOut})
-    p.inputStream.write(dek & "\n")
-    p.inputStream.close()
-    let output = p.outputStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      if fileExists(tmp): removeFile(tmp)
-      nvRaise(&"FATAL: gpg symmetric encrypt failed (exit {code}):\n{output}")
-  syncPath(tmp)
-  moveFile(tmp, outPath)
-  syncParentDir(outPath)
+  let work = privateWorkDir()
+  let tmp = work / ("cipher" & cfg.blobExt)
+  try:
+    if cfg.usesAge:
+      let recip = ageRecipientForIdentity(dek)
+      let p = startProcess(ageBinary(),
+        args = @["-r", recip, "-o", tmp, "--", inPath],
+        options = {poUsePath, poStdErrToStdOut})
+      let output = p.outputStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      if code != 0:
+        if fileExists(tmp): removeFile(tmp)
+        nvRaise(&"FATAL: age encrypt failed (exit {code}):\n{output}")
+    else:
+      # Passphrase on a pipe, never argv: /proc/<pid>/cmdline is world readable.
+      let p = startProcess("gpg",
+        args = @["--batch", "--yes", "--quiet", "--symmetric",
+                 "--cipher-algo", "AES256", "--passphrase-fd", "0",
+                 "--pinentry-mode", "loopback",
+                 "--set-filename", "", "-o", tmp, "--", inPath],
+        options = {poUsePath, poStdErrToStdOut})
+      p.inputStream.write(dek & "\n")
+      p.inputStream.close()
+      let output = p.outputStream.readAll()
+      let code = p.waitForExit()
+      p.close()
+      if code != 0:
+        if fileExists(tmp): removeFile(tmp)
+        nvRaise(&"FATAL: gpg symmetric encrypt failed (exit {code}):\n{output}")
+    result = sha256sum(tmp)
+    syncPath(tmp)
+    publishFileNofollow(tmp, outPath)
+  finally:
+    discardPrivate(work)
 
-proc decryptWithDekStream*(cfg: GpgConfig, dek, inPath: string,
-                           work: var string): Process =
-  ## Spawn a decryption of a v6 payload that writes the plaintext to stdout.
-  ## For age the data key is an identity file in `work`, a private directory
-  ## the caller discards once the process has exited.
-  work = ""
-  if cfg.usesAge:
-    work = privateWorkDir()
-    let identFile = work / "identity"
-    writeFile(identFile, dek & "\n")
-    setFilePermissions(identFile, {fpUserRead, fpUserWrite})
-    result = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "--", inPath],
-      options = {poUsePath})
-  else:
-    result = startProcess("gpg",
-      args = @["--batch", "--yes", "--quiet", "--decrypt",
-               "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "--", inPath],
-      options = {poUsePath})
-    # A gpg that exits before reading the key fails on its own; the caller
-    # still has to reap it, so a closed pipe is not raised from here.
-    try:
-      result.inputStream.write(dek & "\n")
-    except IOError, OSError:
-      discard
-    try:
-      result.inputStream.close()
-    except IOError, OSError:
-      discard
-
-proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
-  ## Plaintext in memory. The data key for age still needs an identity file;
-  ## the plaintext itself is not written.
+proc decryptWithDekBytesToString*(cfg: GpgConfig, dek, cipher: string): string =
+  ## Plaintext in memory from ciphertext bytes already read by the caller.
   if cfg.usesAge:
     let work = privateWorkDir()
     let identFile = work / "identity"
@@ -383,25 +415,45 @@ proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
     defer:
       discardPrivate(work)
     let p = startProcess(ageBinary(),
-      args = @["-d", "-i", identFile, "--", inPath],
+      args = @["-d", "-i", identFile, "--", "-"],
       options = {poUsePath})
-    result = p.outputStream.readAll()
-    let err = p.errorStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: age decrypt failed (exit {code}):\n{err}")
+    let io = runWithInput(p, cipher)
+    if io.writeErr != 0:
+      var msg = "FATAL: age decrypt failed while writing ciphertext: " &
+                osErrorMsg(OSErrorCode(io.writeErr))
+      let detail = io.err.strip()
+      if detail.len > 0:
+        msg.add("\n" & detail)
+      nvRaise(msg)
+    if io.code != 0:
+      nvRaise(&"FATAL: age decrypt failed (exit {io.code}):\n{io.err}")
+    result = io.outp
   else:
+    let work = privateWorkDir()
+    defer:
+      discardPrivate(work)
+    let passFile = work / "passphrase"
+    writeFile(passFile, dek & "\n")
+    setFilePermissions(passFile, {fpUserRead, fpUserWrite})
     let p = startProcess("gpg",
       args = @["--batch", "--yes", "--quiet", "--decrypt",
-               "--passphrase-fd", "0", "--pinentry-mode", "loopback",
-               "--", inPath],
+               "--status-fd", "2",
+               "--passphrase-file", passFile, "--pinentry-mode", "loopback",
+               "--", "-"],
       options = {poUsePath})
-    p.inputStream.write(dek & "\n")
-    p.inputStream.close()
-    result = p.outputStream.readAll()
-    let err = p.errorStream.readAll()
-    let code = p.waitForExit()
-    p.close()
-    if code != 0:
-      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {code}):\n{err}")
+    let io = runWithInput(p, cipher)
+    if io.writeErr != 0 and io.code == 0:
+      nvRaise("FATAL: gpg symmetric decrypt failed while writing ciphertext: " &
+              osErrorMsg(OSErrorCode(io.writeErr)))
+    if io.code != 0:
+      nvRaise(&"FATAL: gpg symmetric decrypt failed (exit {io.code}):\n{io.err}")
+    if not gpgStatusHas(io.err, "NEED_PASSPHRASE_SYM") or
+       not gpgStatusHas(io.err, "DECRYPTION_OKAY"):
+      nvRaise("FATAL: payload decrypt did not use the entry's symmetric data " &
+              "key.\n" & io.err)
+    result = io.outp
+
+proc decryptWithDekToString*(cfg: GpgConfig, dek, inPath: string): string =
+  ## Plaintext in memory. The data key for age still needs an identity file;
+  ## the plaintext itself is not written.
+  decryptWithDekBytesToString(cfg, dek, readFile(inPath))

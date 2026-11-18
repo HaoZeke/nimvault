@@ -47,6 +47,7 @@ proc setupRepo(): string =
 
 proc genKey(home, name, email: string): string
 proc cliExe(): string
+proc runCli(dir: string, args: seq[string]): tuple[outp: string, code: int]
 
 proc gitCode(repo: string, args: seq[string]): int =
   let p = startProcess("git", args = @["-C", repo] & args,
@@ -147,6 +148,30 @@ block lockRequiresUnsignedFlagWhenSignerIsNone:
   removeDir(r)
   echo "PASS: lock requires --allow-unsigned when signer=none"
 
+proc rewriteStubFromDisk(r: string, c: GpgConfig, sign: bool) =
+  let work = createTempDir("nimvault_audit_", "_forge_stub")
+  var generation = 1
+  let seenPath = r / ".git" / "nimvault-generation"
+  if fileExists(seenPath):
+    let raw = readFile(seenPath).strip()
+    if raw.len > 0:
+      try:
+        generation = max(generation, parseInt(raw))
+      except ValueError:
+        discard
+  var content = "# vault-manifest-v5\n" &
+                "# vault-envelope 1\n" &
+                &"# vault-record-generation {generation}\n"
+  for kind, recPath in walkDir(entryDir(r)):
+    let name = recPath.extractFilename
+    if kind == pcFile and (name.endsWith(".gpg") or name.endsWith(".age")):
+      let recId = name.rsplit('.', maxsplit = 1)[0]
+      content.add(&"{recId}\t{sha256sum(recPath)}\t{generation}\n")
+  let stub = work / "manifest.plain"
+  writeFile(stub, content)
+  encryptFileTo(c, @[c.recipient], stub, manifestPath(r, c), sign = sign)
+  removeDir(work)
+
 proc forgeUnsignedRecord(r: string, c: GpgConfig, id, path: string) =
   ## What anyone with push access can commit: a junk blob and a record that
   ## names it, encrypted to the vault key and signed by nobody.
@@ -161,6 +186,7 @@ proc forgeUnsignedRecord(r: string, c: GpgConfig, id, path: string) =
   createDir(entryDir(r))
   encryptFileTo(c, @[c.recipient], plain, entryFile(r, c, id), sign = false)
   removeDir(work)
+  rewriteStubFromDisk(r, c, sign = false)
 
 block lockIgnoresForgedRecords:
   ## A forged record must not steer lock into shredding files it names.
@@ -195,6 +221,7 @@ block lockIgnoresForgedRecords:
     var unsigned = c
     unsigned.signer = "none"
     dropEntryRecord(r, c, "bbbbbbbbbbbbbbbb")
+    rewriteStubFromDisk(r, c, sign = false)
     lockPlaintext(r, unsigned, allowUnsigned = true)
     doAssert readFile(thesisBackup) == "thesis-draft",
       "lock must not shred backups of an entry that is not present"
@@ -626,13 +653,14 @@ sys.stdin.readline()
   let outp = rotating.outputStream.readAll()
   let code = rotating.waitForExit()
   rotating.close()
-  doAssert code == 0, "rotate must finish once the lock is free:\n" & outp
-  let left = loadManifest(r, verifySig = true, cfg = c)
-  doAssert left.len == 1 and left[0].path == "kept.txt",
-    "rotate must read records under the lock and not resurrect a removed record"
+  doAssert code != 0,
+    "rotate must fail when a signed record listed in the stub disappears:\n" & outp
+  doAssert "signed set lists record missing on disk" in outp or
+           "missing from signed set" in outp,
+    "rotate must report the signed-set mismatch:\n" & outp
   doAssert not fileExists(removed)
   removeDir(r)
-  echo "PASS: rotate reads records under the lock"
+  echo "PASS: rotate fails loudly when a listed record disappears under lock"
 
 proc payloadDecryptHook(realGpg: string): string =
   ## A gpg wrapper that runs $NIMVAULT_SWAP_CMD once, when gpg decrypts a
@@ -646,6 +674,10 @@ case " $* " in
   *" -d "*|*" --decrypt "*) decrypt=1 ;;
   *) decrypt="" ;;
 esac
+case " $* " in
+  *" --passphrase-file "*|*" --passphrase-fd "*) payload=1 ;;
+  *) payload="" ;;
+esac
 if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
    [ ! -e "${NIMVAULT_SWAP_MARKER:-}" ]; then
   base="${last##*/}"
@@ -654,8 +686,14 @@ if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
     *)
       case "$base" in
         [0-9a-f]*.gpg)
-          sh -c "$NIMVAULT_SWAP_CMD"
+          NIMVAULT_DECRYPT_TARGET="$last" sh -c "$NIMVAULT_SWAP_CMD"
           : >"$NIMVAULT_SWAP_MARKER"
+          ;;
+        *)
+          if [ -n "$payload" ] && [ -n "${NIMVAULT_SWAP_ON_STDIN:-}" ]; then
+            sh -c "$NIMVAULT_SWAP_CMD"
+            : >"$NIMVAULT_SWAP_MARKER"
+          fi
           ;;
       esac
       ;;
@@ -663,6 +701,107 @@ if [ -n "$decrypt" ] && [ -n "${NIMVAULT_SWAP_CMD:-}" ] &&
 fi
 exec """ & realGpg.quoteShell & """ "$@"
 """
+
+proc secondRecordDecryptSwapHook(realGpg, targetRecord, replacement,
+                                 marker, seen: string): string =
+  ## Swap one record right after a verified decrypt of that record path.
+  ## `add` and `add-dir` must not re-sign that swapped DEK on a later write.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "last=\"\"\n" &
+    "for arg in \"$@\"; do last=\"$arg\"; done\n" &
+    "case \" $* \" in\n" &
+    "  *\" -d \"*|*\" --decrypt \"*) decrypt=1 ;;\n" &
+    "  *) decrypt=\"\" ;;\n" &
+    "esac\n" &
+    "if [ -n \"$decrypt\" ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "  cat " & replacement.quoteShell & " > " & targetRecord.quoteShell & "\n" &
+    "  : >" & marker.quoteShell & "\n" &
+    "  : >" & seen.quoteShell & "\n" &
+    "fi\n" &
+    "exec " & realGpg.quoteShell & " \"$@\"\n"
+
+proc nthDecryptSwapHook(realGpg, targetRecord, replacement, marker,
+                        seen: string, swapOn: int): string =
+  ## Swap one live record while a decrypt call is in flight.
+  ## The review repro lands on decrypt #5 in a second `add`.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "last=\"\"\n" &
+    "for arg in \"$@\"; do last=\"$arg\"; done\n" &
+    "case \" $* \" in\n" &
+    "  *\" -d \"*|*\" --decrypt \"*) decrypt=1 ;;\n" &
+    "  *) decrypt=\"\" ;;\n" &
+    "esac\n" &
+    "if [ -n \"$decrypt\" ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "  n=0\n" &
+    "  if [ -f " & seen.quoteShell & " ]; then\n" &
+    "    n=$(wc -l < " & seen.quoteShell & ")\n" &
+    "  fi\n" &
+    "  n=$((n + 1))\n" &
+    "  printf '%s\\t%s\\n' \"$n\" \"$last\" >> " & seen.quoteShell & "\n" &
+    "  if [ \"$n\" -eq " & $swapOn & " ]; then\n" &
+    "    cat " & replacement.quoteShell & " > " & targetRecord.quoteShell & "\n" &
+    "    : >" & marker.quoteShell & "\n" &
+    "  fi\n" &
+    "fi\n" &
+    "exec " & realGpg.quoteShell & " \"$@\"\n"
+
+proc keyFileEncryptSwapHook(realBin, badDek, marker: string): string =
+  ## Replace each DEK line in keys.*.tmp before the backend encrypts it.
+  ## add/add-dir must still sign the in-memory DEK that encrypted the blob.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "out=\"\"\n" &
+    "last=\"\"\n" &
+    "prev=\"\"\n" &
+    "for arg in \"$@\"; do\n" &
+    "  if [ \"$prev\" = \"-o\" ]; then out=\"$arg\"; fi\n" &
+    "  prev=\"$arg\"\n" &
+    "  last=\"$arg\"\n" &
+    "done\n" &
+    "base=\"${out##*/}\"\n" &
+    "case \"$base\" in\n" &
+    "  keys.*.gpg.tmp|keys.*.age.tmp|keys.gpg.tmp|keys.age.tmp)\n" &
+    "    if [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "      tmp=\"$last.nimvault-swap\"\n" &
+    "      awk -F '\\t' -v bad=" & badDek.quoteShell &
+      " 'BEGIN{OFS=\"\\t\"} /^#/ {print; next} NF>=2 {$2=bad} {print}' " &
+      "\"$last\" > \"$tmp\"\n" &
+    "      cat \"$tmp\" > \"$last\"\n" &
+    "      rm -f \"$tmp\"\n" &
+    "      : >" & marker.quoteShell & "\n" &
+    "    fi\n" &
+    "    ;;\n" &
+    "esac\n" &
+    "exec " & realBin.quoteShell & " \"$@\"\n"
+
+proc pendingTmpCipherSwapHook(realBin, replacement, marker: string): string =
+  ## Swap `.pending.tmp` after gpg writes it and before nimvault hashes the
+  ## published pending path.
+  result = "#!/bin/sh\n" &
+    "set -eu\n" &
+    "out=\"\"\n" &
+    "prev=\"\"\n" &
+    "for arg in \"$@\"; do\n" &
+    "  if [ \"$prev\" = \"-o\" ]; then out=\"$arg\"; fi\n" &
+    "  prev=\"$arg\"\n" &
+    "done\n" &
+    "set +e\n" &
+    realBin.quoteShell & " \"$@\"\n" &
+    "code=$?\n" &
+    "set -e\n" &
+    "if [ \"$code\" -eq 0 ] && [ ! -e " & marker.quoteShell & " ]; then\n" &
+    "  case \"${out##*/}\" in\n" &
+    "    *.pending.tmp)\n" &
+    "      if [ -f \"$out\" ]; then\n" &
+    "        cat " & replacement.quoteShell & " > \"$out\"\n" &
+    "        : >" & marker.quoteShell & "\n" &
+    "      fi\n" &
+    "      ;;\n" &
+    "  esac\n" &
+    "fi\n" &
+    "exit \"$code\"\n"
 
 block unsealUsesDescriptorAnchoredStaging:
   ## A parent swapped after path checks must now fail before placement.
@@ -691,6 +830,7 @@ block unsealUsesDescriptorAnchoredStaging:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   var raised = false
   try:
     try:
@@ -701,6 +841,7 @@ block unsealUsesDescriptorAnchoredStaging:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(marker), "test wrapper did not swap the parent symlink"
   doAssert raised, "unseal must refuse a parent changed after path checks"
   doAssert not fileExists(inside / "secret.txt"),
@@ -721,46 +862,52 @@ block unsealRejectsParentSwapBetweenCheckAndRename:
     echo "SKIP: parent-swap seam needs -d:nimvaultTest"
   else:
     let r = setupRepo()
-    let c = GpgConfig(recipient: keyId, root: r)
-    let inside = r / "inside"
+    let oldHome = getEnv("HOME")
+    let base = createTempDir("nimvault_audit_", "_home")
+    let home = base / "home"
     let outside = createTempDir("nimvault_audit_", "_outside")
     let moved = outside / "inside-moved"
-    createDir(inside)
-    createSymlink(inside, r / "safe")
-    let f = r / "safe" / "secret.txt"
-    writeFile(f, "anchored-secret")
-    add(r, f, c)
-    seal(r, c)
-    removeFile(inside / "secret.txt")
-
-    var swapped = false
-    unsealBeforeRenameHook = proc(destPath: string) =
-      if swapped:
-        return
-      swapped = true
-      doAssert destPath == normalizedPath(f), destPath
-      moveDir(inside, moved)
-      createSymlink(moved, inside)
-
+    createDir(home)
+    putEnv("HOME", home)
     var raised = false
+    var swapped = false
     try:
-      unseal(r, c)
-    except CatchableError:
-      raised = true
+      let c = GpgConfig(recipient: keyId)
+      let inside = home / "inside"
+      createDir(inside)
+      createSymlink(inside, home / "safe")
+      let f = home / "safe" / "secret.txt"
+      writeFile(f, "anchored-secret")
+      add(r, "~/safe/secret.txt", c)
+      seal(r, c)
+      removeFile(inside / "secret.txt")
+      unsealBeforeRenameHook = proc(destPath: string) =
+        if swapped:
+          return
+        swapped = true
+        doAssert destPath == normalizedPath(f), destPath
+        moveDir(inside, moved)
+        createSymlink(moved, inside)
+      try:
+        unseal(r, c)
+      except CatchableError:
+        raised = true
+      doAssert not fileExists(moved / "secret.txt"),
+        "rollback must shred and unlink a misplaced plaintext"
+      doAssert not fileExists(f),
+        "a refused unseal must not restore plaintext at the tracked path"
+      if symlinkExists(home / "safe"):
+        removeFile(home / "safe")
+      if symlinkExists(inside):
+        removeFile(inside)
     finally:
       unsealBeforeRenameHook = nil
+      putEnv("HOME", oldHome)
 
     doAssert swapped, "test seam did not swap the destination parent"
     doAssert raised, "unseal must fail when the parent moves after the pre-check"
-    doAssert not fileExists(moved / "secret.txt"),
-      "rollback must shred and unlink a misplaced plaintext"
-    doAssert not fileExists(f),
-      "a refused unseal must not restore plaintext at the tracked path"
-    if symlinkExists(r / "safe"):
-      removeFile(r / "safe")
-    if symlinkExists(inside):
-      removeFile(inside)
     removeDir(r)
+    removeDir(base)
     removeDir(outside)
     echo "PASS: unseal rolls back if the parent moves between check and rename"
 
@@ -798,6 +945,7 @@ block unsealRefusedSwapLeavesNoStagingFile:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   var raised = false
   try:
     unseal(r, c)
@@ -807,6 +955,7 @@ block unsealRefusedSwapLeavesNoStagingFile:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
   doAssert raised, "unseal must refuse an entry whose directory now leaves the root"
   doAssert stagingFiles(r).len == 0,
@@ -848,6 +997,7 @@ block unsealWithoutRootStaysInHomeAfterASwap:
     putEnv("PATH", wrapBin & ":" & oldPath)
     putEnv("NIMVAULT_SWAP_CMD", swapCmd)
     putEnv("NIMVAULT_SWAP_MARKER", wrapBin / "swapped")
+    putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
     try:
       unseal(r, c)
     except CatchableError:
@@ -856,6 +1006,7 @@ block unsealWithoutRootStaysInHomeAfterASwap:
     putEnv("PATH", oldPath)
     delEnv("NIMVAULT_SWAP_CMD")
     delEnv("NIMVAULT_SWAP_MARKER")
+    delEnv("NIMVAULT_SWAP_ON_STDIN")
     putEnv("HOME", oldHome)
   doAssert fileExists(wrapBin / "swapped"), "test wrapper did not swap"
   doAssert raised, "unseal must fail after a parent rename out of HOME"
@@ -884,44 +1035,57 @@ block directEntryIsStagedOnce:
   saveManifest(r, @[(id, "old.txt", sha256sum(blob), ekFile, sha256sum(old))], c,
                sealKey(c))
   removeFile(old)
-  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
-  let log = wrapBin / "staged.log"
-  writeFile(wrapBin / "gpg", """#!/bin/sh
-last=""
-for arg in "$@"; do last="$arg"; done
-base="${last##*/}"
-case "$last" in
-  */.vault/e/*) ;;
-  *)
-    case "$base" in
-      [0-9a-f]*.gpg)
-        ls -A """ & r.quoteShell & """ | grep -c '^\.nimvault-' >>""" & log.quoteShell & """ || true
-        ;;
-    esac
-    ;;
-esac
-exec """ & findExe("gpg").quoteShell & """ "$@"
-""")
-  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
-  let oldPath = getEnv("PATH")
-  putEnv("PATH", wrapBin & ":" & oldPath)
+  var counts: seq[int] = @[]
+  unsealBeforeRenameHook = proc(destPath: string) =
+    doAssert destPath == normalizedPath(old), destPath
+    counts.add(stagingFiles(r).len)
   try:
     unseal(r, c)
   finally:
-    putEnv("PATH", oldPath)
+    unsealBeforeRenameHook = nil
   doAssert readFile(old) == "staged-once"
-  var counts: seq[string] = @[]
-  for line in readFile(log).splitLines:
-    if line.len > 0:
-      counts.add(line)
-  doAssert counts.len > 0, "the wrapper never saw the payload decrypt"
+  doAssert counts.len == 1, "one direct entry should be staged once"
   for n in counts:
-    doAssert parseInt(n) <= 1,
+    doAssert n <= 1,
       "a direct entry must have one staging file at most: " & $counts
   doAssert stagingFiles(r).len == 0
   removeDir(r)
-  removeDir(wrapBin)
   echo "PASS: a direct entry is staged once"
+
+block unsealVerifiesAllDirectSignaturesBeforePlacement:
+  ## For direct gpg blobs, every in-band signature must pass before any file
+  ## is restored.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let aPath = r / "a.txt"
+  let bPath = r / "b.txt"
+  writeFile(aPath, "first")
+  writeFile(bPath, "second")
+  createDir(r / ".vault")
+  let aId = "1111111111111111"
+  let bId = "2222222222222222"
+  let aBlob = crypto.blobPath(r, c, aId)
+  let bBlob = crypto.blobPath(r, c, bId)
+  encryptFile(c, aPath, aBlob)
+  encryptFileTo(c, @[c.recipient], bPath, bBlob, sign = false)
+  saveManifest(r, @[
+    (aId, "a.txt", sha256sum(aBlob), ekFile, sha256sum(aPath)),
+    (bId, "b.txt", sha256sum(bBlob), ekFile, sha256sum(bPath)),
+  ], c, sealKey(c))
+  removeFile(aPath)
+  removeFile(bPath)
+  var raised = false
+  try:
+    unseal(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "unseal must fail when one direct blob signature is missing"
+  doAssert not fileExists(aPath),
+    "unseal must not place any file when a later direct signature fails"
+  doAssert not fileExists(bPath),
+    "unseal must not place an entry whose signature fails"
+  removeDir(r)
+  echo "PASS: direct unseal verifies every signature before placement"
 
 block sealRefusesPlaintextUnderSymlinkedAncestorWithoutRoot:
   let oldHome = getEnv("HOME")
@@ -1153,6 +1317,7 @@ Expire-Date: 0
     repeat('0', 64) & "\n")
   encryptFileTo(c, @[foreignKey], recPlain, entryFile(r, c, foreign), sign = true)
   removeDir(recWork)
+  rewriteStubFromDisk(r, c, sign = true)
   gc(r, c, dryRun = true)
   doAssert fileExists(staged) and fileExists(pendTmp) and fileExists(foreignPend),
     "a dry run removes nothing"
@@ -1187,6 +1352,823 @@ block recordDekWinsOverKeyFile:
   removeDir(work)
   removeDir(r)
   echo "PASS: the signed record's data key wins over a key file"
+
+block loadDeksRefusesUnsignedRecordAfterUnverifiedRead:
+  ## A prior unverified read must not let loadDeks skip signature checks.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "unsigned-record-cache")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let forged = createTempDir("nimvault_audit_", "_unsigned_record")
+  let plain = forged / "record.plain"
+  let badDek = repeat('a', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  encryptFileTo(c, @[c.recipient], plain, entryFile(r, c, entry.id), sign = false)
+  rewriteStubFromDisk(r, c, sign = true)
+  discard loadManifest(r, cfg = c) # verifySig defaults to false
+  var raised = false
+  try:
+    discard loadDeks(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised,
+    "loadDeks must reject unsigned records after unverified reads"
+  removeDir(forged)
+  removeDir(r)
+  echo "PASS: loadDeks rejects unsigned records after an unverified read"
+
+proc plantUnsignedDekFile(r: string, c: GpgConfig, id, dek: string) =
+  let work = createTempDir("nimvault_audit_", "_keys")
+  let plain = work / "keys.plain"
+  writeFile(plain, "# vault-keys-v6\n" & id & "\t" & dek & "\n")
+  encryptFileTo(c, @[keyId], plain, r / ".vault" / "keys.evil.gpg", sign = false)
+  removeDir(work)
+
+proc signedRecordDek(r: string, c: GpgConfig, id: string): string =
+  loadManifestMeta(r, verifySig = true, cfg = c).deks.getOrDefault(id)
+
+proc entryByPath(entries: seq[VaultEntry], path: string): VaultEntry =
+  for e in entries:
+    if e.path == path:
+      return e
+  doAssert false, "missing entry for " & path
+
+proc assertKeysPreserved(before, after: DekTable, why: string) =
+  for id, key in before:
+    doAssert after.getOrDefault(id) == key, why & " for " & id
+
+proc makeForgedRecord(c: GpgConfig, entry: VaultEntry, badDek: string,
+                      sign: bool): tuple[dir, record: string] =
+  result.dir = createTempDir("nimvault_audit_", "_recordswap")
+  let plain = result.dir / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  result.record = result.dir / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, result.record, sign = sign)
+
+proc runUnreadSiblingSwapAddCase(recordCount: int, signedSwap: bool) =
+  ## Swap one sibling at decrypt #1 of add and assert the DEK/key outcomes.
+  doAssert recordCount in [2, 3]
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  var expectedPlain = initTable[string, string]()
+  writeFile(r / "anchor.txt", "record-dek-anchor")
+  add(r, r / "anchor.txt", c)
+  expectedPlain["anchor.txt"] = "record-dek-anchor"
+  writeFile(r / "sibling.txt", "record-dek-sibling")
+  add(r, r / "sibling.txt", c)
+  expectedPlain["sibling.txt"] = "record-dek-sibling"
+  if recordCount == 3:
+    writeFile(r / "third.txt", "record-dek-third")
+    add(r, r / "third.txt", c)
+    expectedPlain["third.txt"] = "record-dek-third"
+  seal(r, c)
+  let ordered = loadManifest(r, cfg = c)
+  doAssert ordered.len == recordCount
+  let victim = entryByPath(ordered, "sibling.txt")
+  let beforeKeys = loadDeksFromKeys(r, c)
+  let badDek = repeat(if signedSwap: 'b' else: 'a', 64)
+  let forged = makeForgedRecord(c, victim, badDek, sign = signedSwap)
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let marker = wrapBin / "swapped"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, nthDecryptSwapHook(realGpg,
+                                        entryFile(r, c, victim.id),
+                                        forged.record, marker, seen, swapOn = 1))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  writeFile(r / "later.txt", "record-dek-later-" & $recordCount &
+    (if signedSwap: "-signed" else: "-unsigned"))
+  let oldPath = getEnv("PATH")
+  let hadParallel = existsEnv("NIMVAULT_GPG_PARALLEL")
+  let oldParallel = getEnv("NIMVAULT_GPG_PARALLEL")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_PARALLEL", "1")
+  var raised = false
+  try:
+    try:
+      add(r, r / "later.txt", c)
+    except CatchableError:
+      raised = true
+  finally:
+    putEnv("PATH", oldPath)
+    if hadParallel:
+      putEnv("NIMVAULT_GPG_PARALLEL", oldParallel)
+    else:
+      delEnv("NIMVAULT_GPG_PARALLEL")
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  doAssert fileExists(seen), "decrypt history missing for swap assertion"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  let afterKeys = loadDeksFromKeys(r, c)
+  doAssert raised and checkFailed,
+    "a decrypt-1 record swap must fail add and fail check"
+  assertKeysPreserved(beforeKeys, afterKeys,
+    "decrypt-1 swap changed keys.*")
+  removeDir(forged.dir)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add handles decrypt-1 unread sibling swap (" &
+    $recordCount & " records, " & (if signedSwap: "signed" else: "unsigned") &
+    ")"
+
+block addHandlesUnreadSiblingSwapAtDecryptOne:
+  runUnreadSiblingSwapAddCase(recordCount = 2, signedSwap = true)
+  runUnreadSiblingSwapAddCase(recordCount = 3, signedSwap = true)
+  runUnreadSiblingSwapAddCase(recordCount = 2, signedSwap = false)
+  runUnreadSiblingSwapAddCase(recordCount = 3, signedSwap = false)
+
+block addKeepsOriginalKeysAcrossSnapshotCopyRace:
+  ## Swap both unread siblings right after decrypt #1; later snapshot loads in
+  ## the same add must not adopt those changed DEKs into keys.*.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "anchor.txt", "copy-race-anchor")
+  writeFile(r / "sibling.txt", "copy-race-sibling")
+  writeFile(r / "third.txt", "copy-race-third")
+  add(r, r / "anchor.txt", c)
+  add(r, r / "sibling.txt", c)
+  add(r, r / "third.txt", c)
+  seal(r, c)
+  let entries = loadManifest(r, cfg = c)
+  let victimA = entryByPath(entries, "sibling.txt")
+  let victimB = entryByPath(entries, "third.txt")
+  let beforeKeys = loadDeksFromKeys(r, c)
+  let forgedA = makeForgedRecord(c, victimA, repeat('b', 64), sign = true)
+  let forgedB = makeForgedRecord(c, victimB, repeat('c', 64), sign = true)
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_copy")
+  let marker = wrapBin / "swapped"
+  let raced = wrapBin / "raced"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, nthDecryptSwapHook(realGpg, entryFile(r, c, victimA.id),
+                                        forgedA.record, marker, seen, swapOn = 1))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let raceTmp = entryFile(r, c, victimB.id) & ".race.tmp"
+  let raceCmd = "while [ ! -e " & marker.quoteShell & " ]; do :; done; " &
+    "cp " & forgedB.record.quoteShell & " " & raceTmp.quoteShell & " && mv " &
+    raceTmp.quoteShell & " " & entryFile(r, c, victimB.id).quoteShell &
+    " && : >" & raced.quoteShell
+  let racer = startProcess("sh", args = @["-c", raceCmd],
+                           options = {poUsePath, poStdErrToStdOut})
+  writeFile(r / "later.txt", "copy-race-later")
+  let oldPath = getEnv("PATH")
+  let hadParallel = existsEnv("NIMVAULT_GPG_PARALLEL")
+  let oldParallel = getEnv("NIMVAULT_GPG_PARALLEL")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_GPG_PARALLEL", "1")
+  var addRaised = false
+  try:
+    try:
+      add(r, r / "later.txt", c)
+    except CatchableError:
+      addRaised = true
+  finally:
+    putEnv("PATH", oldPath)
+    if hadParallel:
+      putEnv("NIMVAULT_GPG_PARALLEL", oldParallel)
+    else:
+      delEnv("NIMVAULT_GPG_PARALLEL")
+  let raceOut = racer.outputStream.readAll() & racer.errorStream.readAll()
+  let raceCode = racer.waitForExit()
+  racer.close()
+  doAssert raceCode == 0, "race helper failed:\n" & raceOut
+  doAssert fileExists(raced), "race helper did not run"
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  doAssert fileExists(seen), "decrypt history missing for race assertion"
+  doAssert addRaised, "signed copy-race swap must fail add"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  doAssert checkFailed, "copy-race swap must fail check"
+  let afterKeys = loadDeksFromKeys(r, c)
+  assertKeysPreserved(beforeKeys, afterKeys,
+    "copy-race swap changed keys.*")
+  removeDir(forgedA.dir)
+  removeDir(forgedB.dir)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add refuses copy-race swaps without changing keys.*"
+
+block addDirRefusesARecordDekSwappedAfterVerify:
+  ## add-dir must not re-sign a record DEK from an unsigned swapped record.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let keepDir = r / "keep"
+  createDir(keepDir)
+  let sibling = keepDir / "sibling.txt"
+  let keep = keepDir / "secret.txt"
+  writeFile(sibling, "record-dek-sibling")
+  writeFile(keep, "record-dek-original")
+  add(r, sibling, c)
+  add(r, keep, c)
+  seal(r, c)
+  let ordered = loadManifest(r, cfg = c)
+  doAssert ordered.len >= 2
+  let entry = ordered[1]
+  let forged = createTempDir("nimvault_audit_", "_recordswap_dir")
+  let plain = forged / "record.plain"
+  let badDek = repeat('b', 64)
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{entry.path}\t{entry.hash}\tfile\t{entry.contentHash}\t{badDek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_dir")
+  let marker = wrapBin / "swapped"
+  let seen = wrapBin / "seen"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, secondRecordDecryptSwapHook(realGpg,
+                                                 entryFile(r, c, entry.id),
+                                                 badRec, marker, seen))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let incoming = r / "incoming"
+  createDir(incoming)
+  writeFile(incoming / "later.txt", "record-dek-later")
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  var raised = false
+  try:
+    try:
+      addDir(r, incoming, c)
+    except CatchableError:
+      raised = true
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert fileExists(marker), "test wrapper did not swap the record"
+  var checkFailed = false
+  try:
+    check(r, c)
+  except CatchableError:
+    checkFailed = true
+  doAssert raised and checkFailed,
+    "a post-verify record swap must fail add-dir and fail check"
+  removeDir(forged)
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add-dir refuses record-DEK swaps after verify"
+
+block addDoesNotSignDekSwappedInKeysTmp:
+  ## keys.* is now encrypted in a private work directory, so a wrapper that
+  ## only tampers `keys.*.tmp` under `.vault/` must not run.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "add-real-secret")
+  let badDek = repeat('d', 64)
+  let wrapBin = createTempDir("nimvault_audit_", "_keys_swap_add")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, keyFileEncryptSwapHook(realGpg, badDek, marker))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    add(r, f, c)
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert not fileExists(marker),
+    "add should not write key temp files under .vault/"
+  let entry = loadManifest(r, cfg = c)[0]
+  let fromKeys = loadDeksFromKeys(r, c)
+  doAssert fromKeys.getOrDefault(entry.id) != badDek,
+    "a .vault/keys.*.tmp hook must not change the key-file DEK"
+  let signedDek = signedRecordDek(r, c, entry.id)
+  doAssert signedDek.len > 0
+  doAssert signedDek != badDek,
+    "add must not sign a DEK from tampered keys.*.tmp"
+  let blob = crypto.blobPath(r, c, entry.id)
+  doAssert decryptWithDekToString(c, signedDek, blob) == "add-real-secret",
+    "add must keep the signed DEK bound to the blob it encrypted"
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add keeps signed DEKs when .vault keys temp hooks run"
+
+block addDirDoesNotSignDekSwappedInKeysTmp:
+  ## add-dir uses the same private-work key write path as add.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let incoming = r / "incoming"
+  createDir(incoming)
+  let f = incoming / "later.txt"
+  writeFile(f, "add-dir-real-secret")
+  let badDek = repeat('c', 64)
+  let wrapBin = createTempDir("nimvault_audit_", "_keys_swap_adddir")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, keyFileEncryptSwapHook(realGpg, badDek, marker))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    addDir(r, incoming, c)
+  finally:
+    putEnv("PATH", oldPath)
+  doAssert not fileExists(marker),
+    "add-dir should not write key temp files under .vault/"
+  let entry = loadManifest(r, cfg = c)[0]
+  let fromKeys = loadDeksFromKeys(r, c)
+  doAssert fromKeys.getOrDefault(entry.id) != badDek,
+    "a .vault/keys.*.tmp hook must not change the key-file DEK"
+  let signedDek = signedRecordDek(r, c, entry.id)
+  doAssert signedDek.len > 0
+  doAssert signedDek != badDek,
+    "add-dir must not sign a DEK from tampered keys.*.tmp"
+  let blob = crypto.blobPath(r, c, entry.id)
+  doAssert decryptWithDekToString(c, signedDek, blob) == "add-dir-real-secret",
+    "add-dir must keep the signed DEK bound to the blob it encrypted"
+  removeDir(wrapBin)
+  removeDir(r)
+  echo "PASS: add-dir keeps signed DEKs when .vault keys temp hooks run"
+
+block sealHashesTheCipherItProduced:
+  ## Swapping `.pending.tmp` must not leave the manifest hash matching the
+  ## swapped bytes.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "seal-hash-before")
+  add(r, f, c)
+  seal(r, c)
+  writeFile(f, "seal-hash-after")
+
+  let swapDir = createTempDir("nimvault_audit_", "_pending_swap")
+  let badPlain = swapDir / "bad.txt"
+  writeFile(badPlain, "attacker-pending-bytes")
+  let badPass = swapDir / "pass.txt"
+  writeFile(badPass, repeat('f', 64) & "\n")
+  let badCipher = swapDir / "bad.gpg"
+  let (encOut, encCode) = execCmdEx("gpg --batch --yes --quiet --symmetric " &
+    "--cipher-algo AES256 --passphrase-file " & badPass.quoteShell &
+    " --pinentry-mode loopback --set-filename '' -o " & badCipher.quoteShell &
+    " -- " & badPlain.quoteShell)
+  doAssert encCode == 0 and fileExists(badCipher), encOut
+
+  let wrapBin = createTempDir("nimvault_audit_", "_pending_swap_wrap")
+  let marker = wrapBin / "swapped"
+  let wrapper = wrapBin / "gpg"
+  let realGpg = findExe("gpg")
+  doAssert realGpg.len > 0
+  writeFile(wrapper, pendingTmpCipherSwapHook(realGpg, badCipher, marker))
+  let (lint, lintCode) = execCmdEx("sh -n " & wrapper.quoteShell)
+  doAssert lintCode == 0, lint
+  setFilePermissions(wrapper, {fpUserRead, fpUserWrite, fpUserExec})
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  try:
+    seal(r, c)
+  finally:
+    putEnv("PATH", oldPath)
+
+  if fileExists(marker):
+    var checkFailed = false
+    try:
+      check(r, c)
+    except CatchableError:
+      checkFailed = true
+    doAssert checkFailed,
+      "a swapped pending temp must not leave check green"
+  else:
+    check(r, c)
+    doAssert get(r, f, c) == "seal-hash-after"
+
+  removeDir(wrapBin)
+  removeDir(swapDir)
+  removeDir(r)
+  echo "PASS: seal hashes produced ciphertext, not swapped pending paths"
+
+block payloadDecryptRequiresSymmetricCiphertext:
+  ## A literal packet whose hash is signed into the record must not decrypt on
+  ## the DEK path.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "real-secret")
+  add(r, f, c)
+  seal(r, c)
+  let original = loadManifest(r, cfg = c)[0]
+  let dek = signedRecordDek(r, c, original.id)
+  doAssert dek.len > 0
+
+  let forged = createTempDir("nimvault_audit_", "_literal_payload")
+  let plain = forged / "payload.txt"
+  writeFile(plain, "attacker-literal")
+  let blob = crypto.blobPath(r, c, original.id)
+  let (storeOut, storeCode) = execCmdEx("gpg --batch --yes --quiet --store " &
+    "-o " & blob.quoteShell & " -- " & plain.quoteShell)
+  doAssert storeCode == 0, storeOut
+  var forgedEntry = original
+  forgedEntry.hash = sha256sum(blob)
+  saveEntryRecord(r, c, forgedEntry, dek)
+  rewriteStubFromDisk(r, c, sign = true)
+
+  check(r, c)
+
+  var raised = false
+  try:
+    discard get(r, f, c)
+  except CatchableError as e:
+    raised = true
+    doAssert "symmetric data key" in e.msg, e.msg
+  doAssert raised, "get must reject a literal packet on the DEK path"
+
+  removeFile(f)
+  raised = false
+  try:
+    unseal(r, c)
+  except CatchableError as e:
+    raised = true
+    doAssert "symmetric data key" in e.msg, e.msg
+  doAssert raised, "unseal must reject a literal packet on the DEK path"
+  doAssert not fileExists(f),
+    "a refused unseal must not restore literal-packet plaintext"
+
+  removeDir(forged)
+  removeDir(r)
+  echo "PASS: DEK payload decrypt rejects literal packets"
+
+block plantedKeysTmpSymlinkStaysSafe:
+  ## A planted `.vault/keys.*.tmp` symlink must not be written through.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  ensureVaultDir(r)
+  let gid = groupId(recipientsFor(c, "secret.txt"))
+  let keysTmp = groupKeysPath(r, c, gid) & ".tmp"
+  let victimDir = createTempDir("nimvault_audit_", "_victim_keys")
+  let victim = victimDir / "victim.txt"
+  let untouched = "keys-tmp-victim"
+  writeFile(victim, untouched)
+  createSymlink(victim, keysTmp)
+
+  let f = r / "secret.txt"
+  writeFile(f, "keys-link-secret")
+  var raised = false
+  try:
+    add(r, f, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "add should refuse a planted keys tmp symlink"
+  doAssert readFile(victim) == untouched,
+    "add must not write through a planted keys tmp symlink"
+  if symlinkExists(keysTmp):
+    removeFile(keysTmp)
+  removeDir(victimDir)
+  removeDir(r)
+  echo "PASS: planted keys tmp symlinks are refused safely"
+
+block plantedPendingTmpSymlinkStaysSafe:
+  ## A planted `.vault/<id>.gpg.pending.tmp` symlink must not be written
+  ## through while seal stages payload ciphertext.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "pending-link-secret")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let pendingTmp = crypto.blobPath(r, c, entry.id) & ".pending.tmp"
+  let victimDir = createTempDir("nimvault_audit_", "_victim_pending")
+  let victim = victimDir / "victim.txt"
+  let untouched = "pending-tmp-victim"
+  writeFile(victim, untouched)
+  createSymlink(victim, pendingTmp)
+  writeFile(f, "pending-link-secret-updated")
+  var raised = false
+  try:
+    seal(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "seal should refuse a planted pending tmp symlink"
+  doAssert readFile(victim) == untouched,
+    "seal must not write through a planted pending tmp symlink"
+  if symlinkExists(pendingTmp):
+    removeFile(pendingTmp)
+  removeDir(victimDir)
+  removeDir(r)
+  echo "PASS: planted pending tmp symlinks are refused safely"
+
+block plantedManifestTmpSymlinkStaysSafe:
+  ## A planted `.vault/manifest.gpg.tmp` symlink must not be written through.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  ensureVaultDir(r)
+  let manifestTmp = manifestPath(r, c) & ".tmp"
+  let victimDir = createTempDir("nimvault_audit_", "_victim_manifest")
+  let victim = victimDir / "victim.txt"
+  let untouched = "manifest-tmp-victim"
+  writeFile(victim, untouched)
+  createSymlink(victim, manifestTmp)
+  let f = r / "secret.txt"
+  writeFile(f, "manifest-link-secret")
+  var raised = false
+  try:
+    add(r, f, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "add should refuse a planted manifest tmp symlink"
+  doAssert readFile(victim) == untouched,
+    "add must not write through a planted manifest tmp symlink"
+  if symlinkExists(manifestTmp):
+    removeFile(manifestTmp)
+  removeDir(victimDir)
+  removeDir(r)
+  echo "PASS: planted manifest tmp symlinks are refused safely"
+
+block checkFailsFastOnFifoRecord:
+  ## A FIFO in place of a record must fail quickly, not block on a reader.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "fifo-record-secret")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let recPath = entryFile(r, c, entry.id)
+  removeFile(recPath)
+  let (mkOut, mkCode) = execCmdEx("mkfifo " & recPath.quoteShell)
+  doAssert mkCode == 0, mkOut
+  let oldRecipient = getEnv("NIMVAULT_GPG_RECIPIENT")
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  let p = startProcess(cliExe(), workingDir = r, args = @["check"],
+                       options = {poUsePath, poStdErrToStdOut})
+  let deadline = epochTime() + 3.0
+  while p.running and epochTime() < deadline:
+    sleep(50)
+  if p.running:
+    p.kill()
+    doAssert false, "check hung on a FIFO record path"
+  let outp = p.outputStream.readAll()
+  let code = p.waitForExit()
+  p.close()
+  if oldRecipient.len > 0:
+    putEnv("NIMVAULT_GPG_RECIPIENT", oldRecipient)
+  else:
+    delEnv("NIMVAULT_GPG_RECIPIENT")
+  doAssert code != 0, "check must fail on a FIFO record path"
+  doAssert "non-regular record file" in outp or "non-regular vault file" in outp,
+    "check must report a non-regular record file:\n" & outp
+  removeFile(recPath)
+  removeDir(r)
+  echo "PASS: check fails fast on FIFO record files"
+
+block symlinkedRecordCannotBeSkipped:
+  ## Replacing a record with a symlink must fail loudly, not silently skip it.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "a.txt", "alpha")
+  writeFile(r / "b.txt", "beta")
+  add(r, r / "a.txt", c)
+  add(r, r / "b.txt", c)
+  seal(r, c)
+  let entries = loadManifest(r, cfg = c)
+  doAssert entries.len == 2
+  let keepRec = entryFile(r, c, entries[0].id)
+  let victimRec = entryFile(r, c, entries[1].id)
+  removeFile(victimRec)
+  createSymlink(keepRec, victimRec)
+  var raised = false
+  try:
+    check(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "check must fail on a symlinked record path"
+  if symlinkExists(victimRec):
+    removeFile(victimRec)
+  removeDir(r)
+  echo "PASS: symlinked records are never skipped"
+
+block recordIdMustMatchItsFilename:
+  ## Copying one signed record over another id must fail at load/check.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  writeFile(r / "a.txt", "alpha")
+  writeFile(r / "b.txt", "beta")
+  add(r, r / "a.txt", c)
+  add(r, r / "b.txt", c)
+  seal(r, c)
+  let entries = loadManifest(r, cfg = c)
+  doAssert entries.len == 2
+  let first = entryFile(r, c, entries[0].id)
+  let second = entryFile(r, c, entries[1].id)
+  writeFile(second, readFile(first))
+  var raised = false
+  try:
+    check(r, c)
+  except CatchableError:
+    raised = true
+  doAssert raised, "check must fail when a record id does not match its filename"
+  removeDir(r)
+  echo "PASS: record ids must match their filenames"
+
+block olderGenerationIsRefused:
+  ## Rolling `.vault` back to an older signed generation must be refused.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "generation-1")
+  add(r, f, c)
+  seal(r, c)
+  let snapshot = createTempDir("nimvault_audit_", "_vault_snapshot")
+  copyDir(r / ".vault", snapshot / ".vault")
+  writeFile(f, "generation-2")
+  seal(r, c)
+  check(r, c)
+  removeDir(r / ".vault")
+  copyDir(snapshot / ".vault", r / ".vault")
+  var raised = false
+  var msg = ""
+  try:
+    check(r, c)
+  except CatchableError as e:
+    raised = true
+    msg = e.msg.toLowerAscii()
+  doAssert raised, "check must reject a rolled-back signed generation"
+  doAssert "generation rollback" in msg, msg
+  removeDir(snapshot)
+  removeDir(r)
+  echo "PASS: signed generation rollback is refused"
+
+block plantedRecordTmpSymlinkStaysSafe:
+  ## A planted `.vault/e/<id>.gpg.tmp` symlink must not be written through.
+  ## rotate/add/seal may fail or ignore that path, but the victim file must
+  ## stay untouched.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let tracked = r / "secret.txt"
+  writeFile(tracked, "tmp-link-secret")
+  add(r, tracked, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  let recTmp = entryFile(r, c, entry.id) & ".tmp"
+  let victimDir = createTempDir("nimvault_audit_", "_victim")
+  let victim = victimDir / "victim.txt"
+  let untouched = "victim-must-stay-plain"
+  writeFile(victim, untouched)
+  proc plantTmpLink() =
+    if fileExists(recTmp) or symlinkExists(recTmp):
+      removeFile(recTmp)
+    createSymlink(victim, recTmp)
+  proc assertVictimSafe(why: string) =
+    doAssert readFile(victim) == untouched, why
+
+  plantTmpLink()
+  var rotateRaised = false
+  try:
+    rotate(r, c)
+  except CatchableError:
+    rotateRaised = true
+  doAssert rotateRaised, "rotate should refuse a planted record temp symlink"
+  assertVictimSafe("rotate must not write through a planted record temp symlink")
+  if symlinkExists(recTmp): removeFile(recTmp)
+
+  writeFile(r / "later.txt", "tmp-link-later")
+  plantTmpLink()
+  var addRaised = false
+  try:
+    add(r, r / "later.txt", c)
+  except CatchableError:
+    addRaised = true
+  assertVictimSafe("add must not write through a planted record temp symlink")
+  if not addRaised:
+    check(r, c)
+  if symlinkExists(recTmp): removeFile(recTmp)
+
+  writeFile(tracked, "tmp-link-secret-edited")
+  plantTmpLink()
+  var sealRaised = false
+  try:
+    seal(r, c)
+  except CatchableError:
+    sealRaised = true
+  doAssert sealRaised, "seal should refuse a planted record temp symlink"
+  assertVictimSafe("seal must not write through a planted record temp symlink")
+  if symlinkExists(recTmp): removeFile(recTmp)
+  removeDir(victimDir)
+  removeDir(r)
+  echo "PASS: planted record temp symlinks are refused safely"
+
+block rmDoesNotResignUnsignedLegacyDek:
+  ## rm may rewrite the manifest but must not sign a DEK from keys.evil.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let legacy = r / "legacy.txt"
+  let victim = r / "victim.txt"
+  writeFile(legacy, "legacy")
+  writeFile(victim, "victim")
+  add(r, legacy, c)
+  add(r, victim, c)
+  seal(r, c)
+  let entries = loadManifest(r, cfg = c)
+  var legacyEntry = entries[0]
+  for e in entries:
+    if e.path == "legacy.txt":
+      legacyEntry = e
+  saveEntryRecord(r, c, legacyEntry, "")
+  rewriteStubFromDisk(r, c, sign = true)
+  plantUnsignedDekFile(r, c, legacyEntry.id, repeat('e', 64))
+  remove(r, victim, c)
+  doAssert signedRecordDek(r, c, legacyEntry.id).len == 0,
+    "rm must not sign a DEK loaded only from unsigned keys.*"
+  removeDir(r)
+  echo "PASS: rm does not re-sign unsigned legacy DEKs"
+
+block moveRefusesUnsignedLegacyDek:
+  ## Moving a legacy record whose only DEK is in keys.evil must be refused.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let legacy = r / "legacy.txt"
+  let renamed = r / "renamed.txt"
+  writeFile(legacy, "legacy")
+  add(r, legacy, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  saveEntryRecord(r, c, entry, "")
+  rewriteStubFromDisk(r, c, sign = true)
+  plantUnsignedDekFile(r, c, entry.id, repeat('e', 64))
+  let oldRecipient = getEnv("NIMVAULT_GPG_RECIPIENT")
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  var got: tuple[outp: string, code: int]
+  var checked: tuple[outp: string, code: int]
+  try:
+    got = runCli(r, @["mv", "legacy.txt", "renamed.txt"])
+    checked = runCli(r, @["check"])
+  finally:
+    if oldRecipient.len > 0:
+      putEnv("NIMVAULT_GPG_RECIPIENT", oldRecipient)
+    else:
+      delEnv("NIMVAULT_GPG_RECIPIENT")
+  doAssert got.code != 0, "move must refuse key-file-only legacy DEKs"
+  doAssert "nimvault seal --force" in got.outp, got.outp
+  doAssert fileExists(legacy), "a refused move must keep plaintext at old path"
+  doAssert not fileExists(renamed), "a refused move must not create new path"
+  doAssert loadManifest(r, cfg = c)[0].path == "legacy.txt",
+    "a refused move must not rewrite the record path"
+  doAssert checked.code == 0,
+    "a refused move should leave the vault consistent"
+  doAssert signedRecordDek(r, c, entry.id).len == 0,
+    "move must not sign an unsigned legacy DEK"
+  putEnv("NIMVAULT_GPG_RECIPIENT", keyId)
+  let recovered = runCli(r, @["seal", "--force"])
+  if oldRecipient.len > 0:
+    putEnv("NIMVAULT_GPG_RECIPIENT", oldRecipient)
+  else:
+    delEnv("NIMVAULT_GPG_RECIPIENT")
+  doAssert recovered.code == 0, recovered.outp
+  removeDir(r)
+  echo "PASS: move refuses unsigned legacy DEKs"
+
+block rotateRefusesUnsignedLegacyDek:
+  ## rotate must refuse key-file-only DEKs unless the caller rekeys explicitly.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "legacy.txt"
+  writeFile(f, "legacy")
+  add(r, f, c)
+  seal(r, c)
+  let entry = loadManifest(r, cfg = c)[0]
+  saveEntryRecord(r, c, entry, "")
+  rewriteStubFromDisk(r, c, sign = true)
+  plantUnsignedDekFile(r, c, entry.id, repeat('e', 64))
+  var raised = false
+  try:
+    rotate(r, c)
+  except CatchableError as e:
+    raised = true
+    doAssert "seal --force" in e.msg, e.msg
+  doAssert raised, "rotate must refuse key-file-only legacy DEKs"
+  doAssert signedRecordDek(r, c, entry.id).len == 0,
+    "rotate must not sign an unsigned legacy DEK"
+  removeDir(r)
+  echo "PASS: rotate refuses unsigned legacy DEKs"
 
 block gitignoreLineIsLiteral:
   let r = setupRepo()
@@ -1517,7 +2499,8 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   let payload = forged / "payload.txt"
   writeFile(payload, "PWNED-PLAINTEXT")
   let badBlob = forged / "blob.gpg"
-  encryptWithDek(c, dek, payload, badBlob)
+  discard encryptWithDek(c, dek, payload, badBlob)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
   let badHash = sha256sum(badBlob)
   let plain = forged / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -1528,7 +2511,6 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   doAssert fileExists(blob)
   doAssert fileExists(badRec)
   doAssert fileExists(badBlob)
-  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
 
   let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
   let marker = wrapBin / "swapped"
@@ -1540,17 +2522,117 @@ block unsealFailsIfSplitRecordAndBlobSwapAfterVerifiedRead:
   putEnv("PATH", wrapBin & ":" & oldPath)
   putEnv("NIMVAULT_SWAP_CMD", swapCmd)
   putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
   let got = runCli(r, @["unseal"])
   putEnv("PATH", oldPath)
   delEnv("NIMVAULT_SWAP_CMD")
   delEnv("NIMVAULT_SWAP_MARKER")
+  delEnv("NIMVAULT_SWAP_ON_STDIN")
   doAssert fileExists(marker), "test wrapper did not swap the split record:\n" & got.outp
-  doAssert got.code != 0, "unseal must fail after the split-record/blob swap:\n" & got.outp
-  doAssert not fileExists(f), "unseal must not write plaintext after the swap"
+  if got.code == 0:
+    doAssert fileExists(f), got.outp
+    doAssert readFile(f) == "ORIGINAL-PLAINTEXT",
+      "a post-verify swap must not change unsealed plaintext:\n" & got.outp
+  else:
+    doAssert not fileExists(f), "unseal must not write plaintext after a refused swap"
   removeDir(r)
   removeDir(forged)
   removeDir(wrapBin)
-  echo "PASS: unseal refuses split-record/blob swaps after the verified read"
+  echo "PASS: split-record/blob swaps after verify do not change plaintext"
+
+block unsealRecordOnlySwapKeepsOriginalPlaintext:
+  ## Swapping only the record after verify must not redirect plaintext writes.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  writeFile(f, "ORIGINAL-PLAINTEXT")
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  let entry = loadManifest(r, cfg = c)[0]
+  let dek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_record_only_forged")
+  let badPath = "evil.txt"
+  let plain = forged / "record.plain"
+  writeFile(plain, EntryHeader & "\n" &
+    &"{entry.id}\t{badPath}\t{entry.hash}\tfile\t{entry.contentHash}\t{dek}\n")
+  let badRec = forged / "record.gpg"
+  encryptFileTo(c, @[c.recipient], plain, badRec, sign = false)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap_record_only")
+  let marker = wrapBin / "swapped"
+  writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badRec.quoteShell & " > " & entryFile(r, c, entry.id).quoteShell
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  putEnv("NIMVAULT_SWAP_ON_STDIN", "1")
+  let got = runCli(r, @["unseal"])
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  delEnv("NIMVAULT_SWAP_ON_STDIN")
+  doAssert fileExists(marker), "test wrapper did not swap the split record:\n" & got.outp
+  let planted = r / badPath
+  if got.code == 0:
+    doAssert fileExists(f), got.outp
+    doAssert readFile(f) == "ORIGINAL-PLAINTEXT",
+      "a post-verify record swap must keep the original plaintext:\n" & got.outp
+    doAssert not fileExists(planted),
+      "record-only swap must not redirect plaintext writes:\n" & got.outp
+  else:
+    doAssert not fileExists(f), "a refused unseal must not write the original path"
+    doAssert not fileExists(planted), "a refused unseal must not write the swapped path"
+  removeDir(r)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: record-only swaps after verify keep original plaintext"
+
+block getDecryptsVerifiedSnapshotBytes:
+  ## A blob swap hook can only target a path argument. `get` must decrypt the
+  ## bytes it already hashed, not reopen a path the hook can replace.
+  let r = setupRepo()
+  let c = GpgConfig(recipient: keyId, root: r)
+  let f = r / "secret.txt"
+  let plain = "ORIGINAL-PLAINTEXT"
+  writeFile(f, plain)
+  add(r, f, c)
+  seal(r, c)
+  removeFile(f)
+  let entry = loadManifest(r, cfg = c)[0]
+  let dek = loadDeks(r, c)[entry.id]
+  let forged = createTempDir("nimvault_audit_", "_forged")
+  let payload = forged / "payload.txt"
+  writeFile(payload, "PWNED-PLAINTEXT")
+  let badBlob = forged / "blob.gpg"
+  discard encryptWithDek(c, dek, payload, badBlob)
+  writeFile(r / ".vault" / "config", &"recipient = {keyId}\nroot = repo\n")
+
+  let wrapBin = createTempDir("nimvault_audit_", "_gpgwrap")
+  let marker = wrapBin / "swapped"
+  writeFile(wrapBin / "gpg", payloadDecryptHook(findExe("gpg")))
+  setFilePermissions(wrapBin / "gpg", {fpUserRead, fpUserWrite, fpUserExec})
+  let swapCmd = "cat " & badBlob.quoteShell & " > \"$NIMVAULT_DECRYPT_TARGET\""
+  let oldPath = getEnv("PATH")
+  putEnv("PATH", wrapBin & ":" & oldPath)
+  putEnv("NIMVAULT_SWAP_CMD", swapCmd)
+  putEnv("NIMVAULT_SWAP_MARKER", marker)
+  let got = runCli(r, @["get", "secret.txt"])
+  putEnv("PATH", oldPath)
+  delEnv("NIMVAULT_SWAP_CMD")
+  delEnv("NIMVAULT_SWAP_MARKER")
+  doAssert got.code == 0, got.outp
+  doAssert got.outp == plain,
+    "get must return the original plaintext after a swap attempt:\n" & got.outp
+  doAssert not fileExists(marker),
+    "the decrypt hook should see no blob path reopen during get"
+  removeDir(r)
+  removeDir(forged)
+  removeDir(wrapBin)
+  echo "PASS: get decrypts the verified snapshot bytes"
 
 block vaultedPlaintextFailsTheCommitAndPushScans:
   ## The pre-commit hook runs `scan --cached` and the pre-push hook runs
@@ -1923,6 +3005,7 @@ block unsealReportsRecordsItCouldNotOpen:
   doAssert not fileExists(remote)
   for e in loadManifest(r, verifySig = true, cfg = c):
     removeFile(findEntryFile(r, c, e.id))
+  rewriteStubFromDisk(r, c, sign = true)
   removeFile(local)
   var msg = ""
   try:
@@ -1982,17 +3065,35 @@ block getDoesNotWritePlaintextToTheRuntimeDir:
   removeDir(shm)
   echo "PASS: get keeps the plaintext off disk"
 
-proc holder(repo: string) {.thread.} =
+type HoldArgs = tuple[repo, ready: string]
+
+proc holder(args: HoldArgs) {.thread.} =
+  ## Publish `ready` only after the lock is held, then keep it for 700ms.
+  ## A fixed sleep before the contender raced on macOS: the thread had not
+  ## started, so the contender took a free lock and the exclusion check failed.
   {.cast(gcsafe).}:
-    var lk = acquire(repo, timeoutMs = 3000)
+    var lk = acquire(args.repo, timeoutMs = 3000)
+    writeFile(args.ready, "held")
     sleep(700)
     release(lk)
 
+proc waitUntilHeld(ready: string) =
+  var spins = 0
+  while not fileExists(ready):
+    sleep(5)
+    inc spins
+    doAssert spins < 2000, "holder thread did not take the vault lock"
+
+proc heldMarker(tag: string): string =
+  getTempDir() / ("nv-held-" & $getCurrentProcessId() & "-" & tag)
+
 block secondThreadCannotTakeTheLock:
   let r = setupRepo()
-  var thr: Thread[string]
-  createThread(thr, holder, r)
-  sleep(150)
+  let ready = heldMarker("thread")
+  if fileExists(ready): removeFile(ready)
+  var thr: Thread[HoldArgs]
+  createThread(thr, holder, (repo: r, ready: ready))
+  waitUntilHeld(ready)
   var raised = false
   try:
     var mine = acquire(r, timeoutMs = 200)
@@ -2000,6 +3101,7 @@ block secondThreadCannotTakeTheLock:
   except CatchableError:
     raised = true
   joinThread(thr)
+  if fileExists(ready): removeFile(ready)
   doAssert raised, "a second thread must not enter the vault while it is locked"
   var after = acquire(r, timeoutMs = 1000)
   release(after)
@@ -2016,9 +3118,11 @@ block pendingPromotionWaitsForTheLock:
   add(r, f, c)
   seal(r, c)
   for name in ["check", "status", "get"]:
-    var thr: Thread[string]
-    createThread(thr, holder, r)
-    sleep(150)
+    let ready = heldMarker(name)
+    if fileExists(ready): removeFile(ready)
+    var thr: Thread[HoldArgs]
+    createThread(thr, holder, (repo: r, ready: ready))
+    waitUntilHeld(ready)
     let started = epochTime()
     case name
     of "check": discard checkVault(r, c)
@@ -2026,6 +3130,7 @@ block pendingPromotionWaitsForTheLock:
     else: doAssert get(r, f, c, allowUnsigned = true) == "promotion-under-lock"
     let waited = epochTime() - started
     joinThread(thr)
+    if fileExists(ready): removeFile(ready)
     doAssert waited >= 0.4, &"{name} must wait for the vault lock (waited {waited:.2f}s)"
   removeDir(r)
   echo "PASS: check, status and get wait for the vault lock"
@@ -2045,7 +3150,7 @@ block listAndStatusVerifyRecordsBeforePendingPromotion:
   let payload = work / "payload"
   writeFile(payload, "forged-pending")
   let pend = crypto.blobPath(r, c, entry.id) & ".pending"
-  encryptWithDek(c, deks[entry.id], payload, pend)
+  discard encryptWithDek(c, deks[entry.id], payload, pend)
   let forgedHash = sha256sum(pend)
   let plain = work / "record.plain"
   writeFile(plain, EntryHeader & "\n" &
@@ -2200,7 +3305,7 @@ block recipientEmailRefusesMaliceSigner:
     writeFile(payload, "planted-by-malice")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -2211,6 +3316,7 @@ block recipientEmailRefusesMaliceSigner:
       " --set-filename '' -o " & rec.quoteShell & " -- " & plain.quoteShell)
     doAssert scode == 0, signed
     removeDir(work)
+    rewriteStubFromDisk(r, c, sign = true)
 
     var raised = false
     try:
@@ -2248,7 +3354,7 @@ block recordSignedByAnotherKeyIsRefused:
     writeFile(payload, "planted-by-other-key")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -2263,6 +3369,7 @@ block recordSignedByAnotherKeyIsRefused:
     doAssert "[GNUPG:] GOODSIG" in status,
       "the forged record carries a good signature from the other key"
     removeDir(work)
+    rewriteStubFromDisk(r, c, sign = true)
 
     let planted = r / "planted.txt"
     var raised = false
@@ -2288,6 +3395,7 @@ block recordSignedByAnotherKeyIsRefused:
 
     var both = c
     both.wraps = @[&"**:{vaultKey},{otherKey}"]
+    rewriteStubFromDisk(r, both, sign = true)
     doAssert get(r, planted, both) == "planted-by-other-key",
       "a key named in a wrap rule is a configured signer"
   finally:
@@ -2325,13 +3433,14 @@ block allowUnsignedRefusesAnUnconfiguredRecordSigner:
     writeFile(payload, "planted-by-other-key")
     let key = newDek(c)
     let blob = crypto.blobPath(r, c, id)
-    encryptWithDek(c, key, payload, blob)
+    discard encryptWithDek(c, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
     let rec = entryFile(r, c, id)
     let planted = r / "planted.txt"
     gpgSignEncrypt(otherKey, vaultKey, plain, rec)
+    rewriteStubFromDisk(r, c, sign = true)
     var raised = false
     try:
       unseal(r, c, allowUnsigned = true)
@@ -2348,6 +3457,7 @@ block allowUnsignedRefusesAnUnconfiguredRecordSigner:
     doAssert raised, "get --allow-unsigned must refuse an unconfigured signer"
 
     gpgSignEncrypt("", vaultKey, plain, rec, sign = false)
+    rewriteStubFromDisk(r, c, sign = true)
     raised = false
     try:
       unseal(r, c)
@@ -2475,7 +3585,7 @@ block nameSpecifierIsRefused:
     writeFile(payload, "planted-by-malice")
     let key = newDek(honest)
     let blob = crypto.blobPath(r, honest, id)
-    encryptWithDek(honest, key, payload, blob)
+    discard encryptWithDek(honest, key, payload, blob)
     let plain = work / "record.plain"
     writeFile(plain, EntryHeader & "\n" &
       &"{id}\tplanted.txt\t{sha256sum(blob)}\tfile\t{sha256sum(payload)}\t{key}\n")
@@ -2579,6 +3689,7 @@ block recordThatHoldsNoEntryIsCounted:
   encryptFileTo(c, @[c.recipient], work / "record.plain",
                 entryFile(r, c, "6b6b6b6b6b6b6b6b"))
   removeDir(work)
+  rewriteStubFromDisk(r, c, sign = true)
   let rep = checkVault(r, c)
   doAssert "1 record(s) open but hold no entry this version can read" in
     rep.problems, $rep

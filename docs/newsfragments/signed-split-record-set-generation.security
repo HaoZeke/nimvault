@@ -1,0 +1,5 @@
+Split-manifest stubs now sign the full on-disk record set as
+`id -> record digest` rows and carry a monotonic generation. Loads compare
+disk records to that signed set, enforce filename/id alignment and duplicate
+id checks, and reject a generation rollback below this machine's last seen
+generation stored outside `.vault`.

@@ -1,0 +1,2 @@
+The age CLI timeout tests now use an in-process poll/kill timeout helper, so
+they run on macOS runners that do not ship GNU timeout.

@@ -1,0 +1,2 @@
+The unsigned record-swap audit now pins the repro to decrypt step five and
+requires add plus check to fail together.

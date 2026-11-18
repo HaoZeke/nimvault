@@ -1,0 +1,2 @@
+Split-record loading now snapshots every candidate record before any decrypt
+starts, so a sibling cannot be swapped between the directory walk and decrypt.

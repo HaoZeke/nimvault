@@ -7,7 +7,7 @@
 ## and is copied into a file this process created, so neither tool is handed
 ## a path to write.
 
-import std/[osproc, posix, sysrand]
+import std/[osproc, posix, streams, sysrand]
 
 var
   ONoFollow* {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
@@ -69,6 +69,8 @@ type Drain* = object
   ## stderr is kept in `err`.
   p*: Process
   outFd*: cint
+  capture*: bool
+  outp*: string
   err*: string
   head*: string    ## first bytes of stdout, at most two
   writeErr*: cint  ## errno of a write to `outFd` that failed, else 0
@@ -123,6 +125,109 @@ proc drain*(jobs: var openArray[Drain]) =
           inc j
         if jobs[i].outFd >= 0 and jobs[i].writeErr == 0:
           jobs[i].writeErr = writeAll(jobs[i].outFd, addr buf[0], n)
+        elif jobs[i].capture:
+          let at = jobs[i].outp.len
+          jobs[i].outp.setLen(at + n)
+          copyMem(addr jobs[i].outp[at], addr buf[0], n)
   for i in 0 .. jobs.high:
     jobs[i].code = jobs[i].p.waitForExit()
     jobs[i].p.close()
+
+type FeedResult* = tuple[outp, err: string, code: int, writeErr: cint]
+
+proc runWithInput*(p: Process, input: string): FeedResult =
+  ## Feed `input` to `p` while draining stdout and stderr together.
+  var inOpen = true
+  var outOpen = true
+  var errOpen = true
+  var off = 0
+  let inFd = p.inputHandle.cint
+  template closeInput() =
+    if not inOpen:
+      discard
+    else:
+      try:
+        p.inputStream.close()
+      except CatchableError:
+        if result.writeErr == 0:
+          result.writeErr = EIO
+      inOpen = false
+  let inFlags = fcntl(inFd, F_GETFL, 0)
+  if inFlags >= 0:
+    discard fcntl(inFd, F_SETFL, inFlags or O_NONBLOCK)
+  if input.len == 0:
+    closeInput()
+  var buf: array[65536, char]
+  while inOpen or outOpen or errOpen:
+    var fds: seq[TPollfd] = @[]
+    var owner: seq[int] = @[]
+    if inOpen:
+      fds.add(TPollfd(fd: inFd, events: POLLOUT))
+      owner.add(0)
+    if outOpen:
+      fds.add(TPollfd(fd: p.outputHandle.cint, events: POLLIN))
+      owner.add(1)
+    if errOpen:
+      fds.add(TPollfd(fd: p.errorHandle.cint, events: POLLIN))
+      owner.add(2)
+    if fds.len == 0:
+      break
+    if poll(addr fds[0], fds.len.Tnfds, -1) < 0:
+      if errno == EINTR:
+        continue
+      if result.writeErr == 0:
+        result.writeErr = EIO
+      if inOpen:
+        closeInput()
+      p.kill()
+      break
+    for k in 0 .. fds.high:
+      if fds[k].revents == 0:
+        continue
+      case owner[k]
+      of 0:
+        if off >= input.len:
+          closeInput()
+          continue
+        let take = min(input.len - off, 16384)
+        let n = posix.write(fds[k].fd, unsafeAddr input[off], take)
+        if n < 0:
+          if errno == EINTR or errno == EAGAIN:
+            continue
+          if result.writeErr == 0:
+            result.writeErr = errno
+          closeInput()
+        elif n == 0:
+          if result.writeErr == 0:
+            result.writeErr = EIO
+          closeInput()
+        else:
+          off += n
+          if off >= input.len:
+            closeInput()
+      of 1:
+        let n = posix.read(fds[k].fd, addr buf[0], buf.len)
+        if n < 0 and (errno == EINTR or errno == EAGAIN):
+          continue
+        if n <= 0:
+          outOpen = false
+        else:
+          let at = result.outp.len
+          result.outp.setLen(at + n)
+          copyMem(addr result.outp[at], addr buf[0], n)
+      else:
+        let n = posix.read(fds[k].fd, addr buf[0], buf.len)
+        if n < 0 and (errno == EINTR or errno == EAGAIN):
+          continue
+        if n <= 0:
+          errOpen = false
+        else:
+          let at = result.err.len
+          result.err.setLen(at + n)
+          copyMem(addr result.err[at], addr buf[0], n)
+  result.code = p.waitForExit()
+  if off < input.len and result.writeErr == 0:
+    # Child exited before consuming all input: treat the short write the same
+    # as EPIPE so callers fail closed.
+    result.writeErr = EPIPE
+  p.close()
