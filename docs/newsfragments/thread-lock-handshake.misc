@@ -1,0 +1,1 @@
+The in-process vault lock tests wait until the holder thread has the lock, so a slow macOS thread start cannot skip the exclusion check.

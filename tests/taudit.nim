@@ -3065,17 +3065,35 @@ block getDoesNotWritePlaintextToTheRuntimeDir:
   removeDir(shm)
   echo "PASS: get keeps the plaintext off disk"
 
-proc holder(repo: string) {.thread.} =
+type HoldArgs = tuple[repo, ready: string]
+
+proc holder(args: HoldArgs) {.thread.} =
+  ## Publish `ready` only after the lock is held, then keep it for 700ms.
+  ## A fixed sleep before the contender raced on macOS: the thread had not
+  ## started, so the contender took a free lock and the exclusion check failed.
   {.cast(gcsafe).}:
-    var lk = acquire(repo, timeoutMs = 3000)
+    var lk = acquire(args.repo, timeoutMs = 3000)
+    writeFile(args.ready, "held")
     sleep(700)
     release(lk)
 
+proc waitUntilHeld(ready: string) =
+  var spins = 0
+  while not fileExists(ready):
+    sleep(5)
+    inc spins
+    doAssert spins < 2000, "holder thread did not take the vault lock"
+
+proc heldMarker(tag: string): string =
+  getTempDir() / ("nv-held-" & $getCurrentProcessId() & "-" & tag)
+
 block secondThreadCannotTakeTheLock:
   let r = setupRepo()
-  var thr: Thread[string]
-  createThread(thr, holder, r)
-  sleep(150)
+  let ready = heldMarker("thread")
+  if fileExists(ready): removeFile(ready)
+  var thr: Thread[HoldArgs]
+  createThread(thr, holder, (repo: r, ready: ready))
+  waitUntilHeld(ready)
   var raised = false
   try:
     var mine = acquire(r, timeoutMs = 200)
@@ -3083,6 +3101,7 @@ block secondThreadCannotTakeTheLock:
   except CatchableError:
     raised = true
   joinThread(thr)
+  if fileExists(ready): removeFile(ready)
   doAssert raised, "a second thread must not enter the vault while it is locked"
   var after = acquire(r, timeoutMs = 1000)
   release(after)
@@ -3099,9 +3118,11 @@ block pendingPromotionWaitsForTheLock:
   add(r, f, c)
   seal(r, c)
   for name in ["check", "status", "get"]:
-    var thr: Thread[string]
-    createThread(thr, holder, r)
-    sleep(150)
+    let ready = heldMarker(name)
+    if fileExists(ready): removeFile(ready)
+    var thr: Thread[HoldArgs]
+    createThread(thr, holder, (repo: r, ready: ready))
+    waitUntilHeld(ready)
     let started = epochTime()
     case name
     of "check": discard checkVault(r, c)
@@ -3109,6 +3130,7 @@ block pendingPromotionWaitsForTheLock:
     else: doAssert get(r, f, c, allowUnsigned = true) == "promotion-under-lock"
     let waited = epochTime() - started
     joinThread(thr)
+    if fileExists(ready): removeFile(ready)
     doAssert waited >= 0.4, &"{name} must wait for the vault lock (waited {waited:.2f}s)"
   removeDir(r)
   echo "PASS: check, status and get wait for the vault lock"
