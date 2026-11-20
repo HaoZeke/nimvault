@@ -45,6 +45,7 @@ tests/tmp/
 tests/tmanifest
 tests/tgpg
 tests/tcommands
+tests/tpatterns
 
 # Generated
 README.md

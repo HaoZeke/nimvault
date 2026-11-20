@@ -3,7 +3,7 @@
 ## All commands take a repo path and GpgConfig.
 ## Parallel GPG via startProcess with direct invocation (no shell).
 
-import std/[os, osproc, strutils, strformat, streams, terminal, re, sets, sequtils,
+import std/[os, osproc, strutils, strformat, streams, terminal, sets, sequtils,
             tables, posix]
 import ./gpg, ./manifest, ./crypto, ./lock, ./dek, ./fsat
 # NimvaultError, nvRaise, nvQuiet from gpg
@@ -1219,19 +1219,100 @@ const SkipFileNames = [
 
 type SecretHit = tuple[file, rule: string, line: int, bytes: int]
 
-proc compileRules(): seq[(string, Regex)] =
-  ## Returns (rule-name, compiled-regex) pairs. Order matters: more specific
-  ## prefixes first so the Anthropic match wins against the generic sk- rule.
-  @[
-    ("anthropic-api-key", re(r"sk-ant-[A-Za-z0-9_\-]{24,}")),
-    ("context7-api-key", re(r"ctx7sk-[a-f0-9\-]{20,}")),
-    ("openai-api-key", re(r"sk-[A-Za-z0-9]{20,}")),
-    ("github-pat", re(r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})")),
-    ("gitlab-pat", re(r"glpat-[A-Za-z0-9_\-]{20,}")),
-    ("slack-token", re(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
-    ("aws-access-key", re(r"(AKIA|ASIA)[0-9A-Z]{16}")),
-    ("ssh-private-key", re(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+const
+  Alnum = {'A'..'Z', 'a'..'z', '0'..'9'}
+  AlnumDash = Alnum + {'-'}
+  AlnumDashUnder = Alnum + {'-', '_'}
+  AlnumUnder = Alnum + {'_'}
+  HexDash = {'0'..'9', 'a'..'f', '-'}
+  UpperDigit = {'A'..'Z', '0'..'9'}
+  # More specific prefixes first, so an Anthropic key wins against `sk-`.
+  SecretRules = [
+    "anthropic-api-key",
+    "context7-api-key",
+    "openai-api-key",
+    "github-pat",
+    "gitlab-pat",
+    "slack-token",
+    "aws-access-key",
+    "ssh-private-key",
   ]
+
+proc hasToken(line, prefix: string, allowed: set[char], minLen: int): bool =
+  ## `prefix` followed by at least `minLen` characters from `allowed`,
+  ## anywhere on the line. A short run does not hide a later one.
+  var start = 0
+  while start < line.len:
+    let j = line.find(prefix, start)
+    if j < 0:
+      return false
+    var n = 0
+    var k = j + prefix.len
+    while k < line.len and line[k] in allowed:
+      inc n
+      inc k
+    if n >= minLen:
+      return true
+    start = j + 1
+  false
+
+proc hasAnyToken(line: string, prefixes: openArray[string], allowed: set[char],
+                 minLen: int): bool =
+  for prefix in prefixes:
+    if hasToken(line, prefix, allowed, minLen):
+      return true
+  false
+
+proc hasSshPrivateKey(line: string): bool =
+  ## `-----BEGIN [A-Z ]*PRIVATE KEY-----` anywhere on the line.
+  const
+    beginMark = "-----BEGIN "
+    endMark = "PRIVATE KEY-----"
+  var start = 0
+  while start < line.len:
+    let j = line.find(beginMark, start)
+    if j < 0:
+      return false
+    var p = j + beginMark.len
+    while true:
+      if p + endMark.len <= line.len and
+         line[p ..< p + endMark.len] == endMark:
+        return true
+      if p >= line.len or line[p] notin {'A'..'Z', ' '}:
+        break
+      inc p
+    start = j + 1
+  false
+
+proc ruleMatches(name, line: string): bool =
+  case name
+  of "anthropic-api-key":
+    hasToken(line, "sk-ant-", AlnumDashUnder, 24)
+  of "context7-api-key":
+    hasToken(line, "ctx7sk-", HexDash, 20)
+  of "openai-api-key":
+    hasToken(line, "sk-", Alnum, 20)
+  of "github-pat":
+    hasAnyToken(line, ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"], Alnum, 20) or
+      hasToken(line, "github_pat_", AlnumUnder, 20)
+  of "gitlab-pat":
+    hasToken(line, "glpat-", AlnumDashUnder, 20)
+  of "slack-token":
+    hasAnyToken(line, ["xoxb-", "xoxa-", "xoxp-", "xoxr-", "xoxs-"],
+                AlnumDash, 10)
+  of "aws-access-key":
+    hasAnyToken(line, ["AKIA", "ASIA"], UpperDigit, 16)
+  of "ssh-private-key":
+    hasSshPrivateKey(line)
+  else:
+    false
+
+when defined(nimvaultTest):
+  proc matchSecretRule*(line: string): string =
+    ## First secret-scan rule that matches `line`, or empty.
+    for name in SecretRules:
+      if ruleMatches(name, line):
+        return name
 
 proc componentSkipped(path: string): bool =
   ## Dependency and tool directories. A repository directory named `tmp` is
@@ -1256,19 +1337,18 @@ proc isSkippedFile(path: string): bool =
     if base == s: return true
   false
 
-proc scanText(label, content: string, nbytes: int,
-               rules: seq[(string, Regex)]): seq[SecretHit] =
+proc scanText(label, content: string, nbytes: int): seq[SecretHit] =
   var lineNo = 0
   for line in content.splitLines:
     inc lineNo
     # Short-circuit on extremely long lines (minified JS, base64 blobs)
     if line.len > 2000: continue
-    for (name, rx) in rules:
-      if line.contains(rx):
+    for name in SecretRules:
+      if ruleMatches(name, line):
         result.add((label, name, lineNo, nbytes))
         break  # one hit per line is enough
 
-proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
+proc scanFile(path: string): seq[SecretHit] =
   if not fileExists(path): return
   let nbytes = int(getFileSize(path))
   if nbytes > 2_000_000: return  # skip very large files
@@ -1277,7 +1357,7 @@ proc scanFile(path: string, rules: seq[(string, Regex)]): seq[SecretHit] =
     content = readFile(path)
   except IOError:
     return
-  result = scanText(path, content, nbytes, rules)
+  result = scanText(path, content, nbytes)
 
 proc canonicalPath(path: string): string =
   ## `path` with the symlinks in its directories resolved, so a vaulted file
@@ -1316,7 +1396,6 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
     nvRaise(&"FATAL: not a file or directory: {abs}")
 
   let vaulted = loadVaulted(repo, cfg)
-  let rules = compileRules()
 
   var files: seq[string]
   if fileExists(abs):
@@ -1335,7 +1414,7 @@ proc scan*(repo: string, target: string, cfg: GpgConfig) =
     if isBinaryExt(f): continue
     if isSkippedFile(f): continue
     inc scanned
-    hits.add(scanFile(f, rules))
+    hits.add(scanFile(f))
 
   if hits.len == 0:
     if not nvQuiet:
@@ -1467,7 +1546,6 @@ proc noteHit(hits: var seq[SecretHit], seen: var HashSet[string], hit: SecretHit
   hits.add(hit)
 
 proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
-                     rules: seq[(string, Regex)],
                      hits: var seq[SecretHit], seen: var HashSet[string],
                      scanned: var int) =
   ## `spec` is `:<rel>` or `<sha>:<rel>` and goes to git after `--`, so a
@@ -1503,7 +1581,7 @@ proc considerGitBlob(gitRepo, rel, spec: string, vaulted: HashSet[string],
     return
   if not inVault:
     inc scanned
-  for hit in scanText(abs, blob.outp, nbytes, rules):
+  for hit in scanText(abs, blob.outp, nbytes):
     noteHit(hits, seen, hit)
 
 proc scanCached*(repo: string, cfg: GpgConfig, gitRepo: string) =
@@ -1513,14 +1591,13 @@ proc scanCached*(repo: string, cfg: GpgConfig, gitRepo: string) =
   if gitRepo.len == 0 or not dirExists(gitRepo):
     nvRaise(&"FATAL: not a git repository: {gitRepo}")
   let vaulted = loadVaulted(repo, cfg)
-  let rules = compileRules()
   let listed = gitMust(gitRepo, @["diff", "--cached", "--name-only",
                                   "--diff-filter=ACMRT", "-z"])
   var hits: seq[SecretHit] = @[]
   var seen = initHashSet[string]()
   var scanned = 0
   for rel in splitZ(listed):
-    considerGitBlob(gitRepo, rel, ":" & rel, vaulted, rules, hits, seen, scanned)
+    considerGitBlob(gitRepo, rel, ":" & rel, vaulted, hits, seen, scanned)
   reportHits(hits, scanned)
 
 proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string,
@@ -1531,7 +1608,6 @@ proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string,
   if gitRepo.len == 0 or not dirExists(gitRepo):
     nvRaise(&"FATAL: not a git repository: {gitRepo}")
   let vaulted = loadVaulted(repo, cfg)
-  let rules = compileRules()
   var hits: seq[SecretHit] = @[]
   var seen = initHashSet[string]()
   var scanned = 0
@@ -1540,8 +1616,8 @@ proc scanRev*(repo: string, cfg: GpgConfig, gitRepo, rev: string,
       "diff-tree", "--root", "-m", "-r", "--no-commit-id", "--name-only",
       "--diff-filter=ACMRT", "-z", commit])
     for rel in splitZ(listed):
-      considerGitBlob(gitRepo, rel, commit & ":" & rel, vaulted, rules,
-                      hits, seen, scanned)
+      considerGitBlob(gitRepo, rel, commit & ":" & rel, vaulted, hits, seen,
+                      scanned)
   reportHits(hits, scanned)
 
 proc statusReport*(repo: string, cfg: GpgConfig): string =
@@ -1729,12 +1805,31 @@ proc orphans*(repo: string, cfg: GpgConfig): seq[string] =
     if stem notin live:
       result.add(path)
 
+proc isStagedPlaintextName(name: string): bool =
+  ## `.nimvault-` + 16 lowercase hex chars + `.tmp`. `mv` writes
+  ## `.nimvault-mv-<id>.tmp`, which is a different file and not this one.
+  const
+    prefix = ".nimvault-"
+    suffix = ".tmp"
+    hexLen = 16
+  if name.len != prefix.len + hexLen + suffix.len:
+    return false
+  if not name.startsWith(prefix) or not name.endsWith(suffix):
+    return false
+  for i in prefix.len ..< prefix.len + hexLen:
+    if name[i] notin {'0'..'9', 'a'..'f'}:
+      return false
+  true
+
+when defined(nimvaultTest):
+  proc isUnsealStageName*(name: string): bool =
+    isStagedPlaintextName(name)
+
 proc stagedPlaintext*(repo: string, cfg: GpgConfig): seq[string] =
   ## `.nimvault-<id>.tmp` files beside the entries this identity can open.
   ## `unseal` decrypts there before it verifies and renames, so a kill in
   ## between leaves plaintext that nothing tracks. Records are verified first:
   ## the directories searched are the ones they name.
-  let stagedName = re"^\.nimvault-[0-9a-f]{16}\.tmp$"
   var dirs = initHashSet[string]()
   for e in loadManifest(repo, verifySig = recordsNeedSig(cfg), cfg = cfg):
     if not isPathSafe(cfg, e.path):
@@ -1747,7 +1842,7 @@ proc stagedPlaintext*(repo: string, cfg: GpgConfig): seq[string] =
     if not dirExists(dir):
       continue
     for kind, path in walkDir(dir):
-      if kind == pcFile and path.extractFilename.match(stagedName):
+      if kind == pcFile and isStagedPlaintextName(path.extractFilename):
         result.add(path)
 
 proc gc*(repo: string, cfg: GpgConfig, dryRun = false) =

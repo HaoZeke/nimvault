@@ -1,0 +1,1 @@
+The Linux release binary no longer loads libpcre. Secret scanning and wrap globs are plain matchers, and the release workflow publishes static musl builds for amd64 and arm64 (`nimvault-linux-amd64`, `nimvault-linux-arm64`) alongside `nimvault-macos-arm64`.

@@ -33,19 +33,13 @@ jobs:
       - name: Install cligen
         run: nimble install cligen -y
 
-      - name: Install age and PCRE (Linux)
+      - name: Install age (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y age libpcre3
+        run: sudo apt-get update && sudo apt-get install -y age
 
-      - name: Install age, gnupg and PCRE (macOS)
+      - name: Install age and gnupg (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install age gnupg pcre
-          # std/re dlopens libpcre by bare name; /opt/homebrew/lib is not searched.
-          sudo mkdir -p /usr/local/lib
-          for lib in "$(brew --prefix pcre)"/lib/libpcre.*dylib; do
-            sudo ln -sf "$lib" /usr/local/lib/
-          done
+        run: brew install age gnupg
 
       - name: Allow user namespaces (Linux)
         if: runner.os == 'Linux'

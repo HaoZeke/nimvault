@@ -32,7 +32,7 @@
 ## no new dependency and no hand-rolled primitive.
 
 import std/[os, osproc, streams, strutils, strformat, sysrand, tables,
-            algorithm, sets, re]
+            algorithm, sets]
 import ./gpg
 from ./age import ageKeygenBinary, ageRecipientForIdentity, ageBinary
 import ./crypto
@@ -71,41 +71,70 @@ proc groupId*(recips: seq[string]): string =
     return "default"
   sha256sumBytes(norm.join("\n"))[0 ..< 16]
 
-proc globToRe(pat: string): string =
-  ## Glob, not PCRE. Only `*` and `**` are special.
-  result = "^"
-  var i = 0
-  while i < pat.len:
-    if i + 1 < pat.len and pat[i] == '*' and pat[i + 1] == '*':
-      if i + 2 < pat.len and pat[i + 2] == '/':
-        result.add("(.*/)?")
-        i += 3
-      else:
-        result.add(".*")
-        i += 2
-    elif pat[i] == '*':
-      result.add("[^/]*")
-      inc i
-    elif pat[i] in {'.', '+', '?', '(', ')', '|', '[', ']', '{', '}',
-                    '^', '$', '\\'}:
-      result.add('\\')
-      result.add(pat[i])
-      inc i
-    else:
-      result.add(pat[i])
-      inc i
-  result.add("$")
-
 proc matchesGlob(pattern, path: string): bool =
-  ## `**` spans separators, `*` does not, and a pattern ending in `/` or `/**`
-  ## matches everything beneath it. Deliberately small: a rule that is hard to
-  ## predict is a rule that silently sends a secret to the wrong machine.
+  ## `**` spans separators, `*` does not, and a pattern ending in `/` matches
+  ## everything beneath it. `?` and the other punctuation are literal, and the
+  ## match is anchored at both ends. Deliberately small: a rule that is hard
+  ## to predict is a rule that silently sends a secret to the wrong machine.
+  ##
+  ## Same paths as the old glob-to-PCRE translation (`**/` was `(.*/)?`, a
+  ## bare `**` was `.*`, a single `*` was `[^/]*`), without loading libpcre.
   var pat = pattern.strip()
   if pat.len == 0:
     return false
   if pat.endsWith("/"):
     pat.add("**")
-  return path.match(re(globToRe(pat)))
+
+  proc rec(pi, ti: int): bool =
+    if pi == pat.len:
+      # `$` is the end, or the position just before one trailing newline.
+      if ti == path.len:
+        return true
+      return ti == path.len - 1 and path[ti] == '\n'
+    if pi + 1 < pat.len and pat[pi] == '*' and pat[pi + 1] == '*':
+      if pi + 2 < pat.len and pat[pi + 2] == '/':
+        # Optional run of segments on this line: `dir/name` and a bare `name`.
+        # `.` does not cross a newline, so a `/` past one does not count.
+        let rest = pi + 3
+        var limit = ti
+        while limit < path.len and path[limit] != '\n':
+          inc limit
+        var k = limit - 1
+        while k >= ti:
+          if path[k] == '/':
+            if rec(rest, k + 1):
+              return true
+          dec k
+        return rec(rest, ti)
+      # `.*` stays on this line.
+      let rest = pi + 2
+      var limit = ti
+      while limit < path.len and path[limit] != '\n':
+        inc limit
+      for n in countdown(limit, ti):
+        if rec(rest, n):
+          return true
+      return false
+    elif pat[pi] == '*':
+      let rest = pi + 1
+      var endPos = ti
+      while endPos < path.len and path[endPos] != '/':
+        inc endPos
+      for n in countdown(endPos, ti):
+        if rec(rest, n):
+          return true
+      return false
+    elif ti < path.len and path[ti] == pat[pi]:
+      rec(pi + 1, ti + 1)
+    else:
+      false
+
+  rec(0, 0)
+
+when defined(nimvaultTest):
+  proc matchGlob*(pattern, path: string): bool =
+    ## Test hook for the wrap-rule glob.
+    matchesGlob(pattern, path)
 
 proc recipientsFor*(cfg: GpgConfig, path: string): seq[string] =
   ## Recipients for one entry: the first matching `wrap` rule wins, and the
