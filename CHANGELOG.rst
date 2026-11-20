@@ -4,6 +4,14 @@ Changelog
 
 .. towncrier release notes start
 
+nimvault 0.5.5 (2026-11-19)
+===========================
+
+Fixed
+-----
+
+- The Linux release binary no longer loads libpcre. Secret scanning and wrap globs are plain matchers, and the release workflow publishes static musl builds for amd64 and arm64 (`nimvault-linux-amd64`, `nimvault-linux-arm64`) alongside `nimvault-macos-arm64`. (linux-no-pcre)
+
 nimvault 0.5.4 (2026-11-18)
 ===========================
 
