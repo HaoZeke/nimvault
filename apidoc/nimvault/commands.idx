@@ -8,32 +8,32 @@ nim	get	nimvault/commands.html#get,string,string,GpgConfig	proc get(repo, path: 
 nim	move	nimvault/commands.html#move,string,string,string,GpgConfig	proc move(repo, oldPath, newPath: string; cfg: GpgConfig)		1122
 nim	listReport	nimvault/commands.html#listReport,string,GpgConfig	proc listReport(repo: string; cfg: GpgConfig): string		1178
 nim	list	nimvault/commands.html#list,string,GpgConfig	proc list(repo: string; cfg: GpgConfig)		1186
-nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		1307
-nim	scanCached	nimvault/commands.html#scanCached,string,GpgConfig,string	proc scanCached(repo: string; cfg: GpgConfig; gitRepo: string)		1509
-nim	scanRev	nimvault/commands.html#scanRev,string,GpgConfig,string,string,string	proc scanRev(repo: string; cfg: GpgConfig; gitRepo, rev: string; remote = "")		1526
-nim	statusReport	nimvault/commands.html#statusReport,string,GpgConfig	proc statusReport(repo: string; cfg: GpgConfig): string		1547
-nim	rotate	nimvault/commands.html#rotate,string,GpgConfig	proc rotate(repo: string; cfg: GpgConfig; rekey = false)		1618
-nim	orphans	nimvault/commands.html#orphans,string,GpgConfig	proc orphans(repo: string; cfg: GpgConfig): seq[string]		1669
-nim	stagedPlaintext	nimvault/commands.html#stagedPlaintext,string,GpgConfig	proc stagedPlaintext(repo: string; cfg: GpgConfig): seq[string]		1732
-nim	gc	nimvault/commands.html#gc,string,GpgConfig	proc gc(repo: string; cfg: GpgConfig; dryRun = false)		1753
-nim	CheckResult	nimvault/commands.html#CheckResult	tuple CheckResult		1782
-nim	checkVault	nimvault/commands.html#checkVault,string,GpgConfig	proc checkVault(repo: string; cfg: GpgConfig): CheckResult		1786
-nim	checkReport	nimvault/commands.html#checkReport,string,GpgConfig	proc checkReport(repo: string; cfg: GpgConfig): string		1839
-nim	check	nimvault/commands.html#check,string,GpgConfig	proc check(repo: string; cfg: GpgConfig)		1853
-nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		1874
-nim	whoReport	nimvault/commands.html#whoReport,string,GpgConfig	proc whoReport(repo: string; cfg: GpgConfig): string		1946
-nim	who	nimvault/commands.html#who,string,GpgConfig	proc who(repo: string; cfg: GpgConfig)		1955
-nim	lockPlaintext	nimvault/commands.html#lockPlaintext,string,GpgConfig	proc lockPlaintext(repo: string; cfg: GpgConfig; allowUnsigned = false)		1968
-nim	initVault	nimvault/commands.html#initVault,string,string	proc initVault(repo, recipient: string)		2010
-nim	redirectedHooksDir	nimvault/commands.html#redirectedHooksDir,string	proc redirectedHooksDir(repo: string): string		2027
-nim	installedHooksInactive	nimvault/commands.html#installedHooksInactive,string	proc installedHooksInactive(repo: string): string		2047
-nim	installHooks	nimvault/commands.html#installHooks,string	proc installHooks(repo: string)		2055
-nim	doctorReport	nimvault/commands.html#doctorReport,string,GpgConfig	proc doctorReport(repo: string; cfg: GpgConfig): string		2123
-nim	doctor	nimvault/commands.html#doctor,string,GpgConfig	proc doctor(repo: string; cfg: GpgConfig)		2162
-nim	sealReport	nimvault/commands.html#sealReport,string,GpgConfig	proc sealReport(repo: string; cfg: GpgConfig): string		2167
-nim	unsealReport	nimvault/commands.html#unsealReport,string,GpgConfig,seq[string]	proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;\n             only: seq[string] = @[]): string		2171
-nim	addReport	nimvault/commands.html#addReport,string,string,GpgConfig	proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string		2176
-nim	addDirReport	nimvault/commands.html#addDirReport,string,string,GpgConfig	proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string		2180
-nim	removeReport	nimvault/commands.html#removeReport,string,string,GpgConfig	proc removeReport(repo, path: string; cfg: GpgConfig): string		2184
-nim	moveReport	nimvault/commands.html#moveReport,string,string,string,GpgConfig	proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string		2188
-nim	scanReport	nimvault/commands.html#scanReport,string,string,GpgConfig	proc scanReport(repo, target: string; cfg: GpgConfig): string		2192
+nim	scan	nimvault/commands.html#scan,string,string,GpgConfig	proc scan(repo: string; target: string; cfg: GpgConfig)		1387
+nim	scanCached	nimvault/commands.html#scanCached,string,GpgConfig,string	proc scanCached(repo: string; cfg: GpgConfig; gitRepo: string)		1587
+nim	scanRev	nimvault/commands.html#scanRev,string,GpgConfig,string,string,string	proc scanRev(repo: string; cfg: GpgConfig; gitRepo, rev: string; remote = "")		1603
+nim	statusReport	nimvault/commands.html#statusReport,string,GpgConfig	proc statusReport(repo: string; cfg: GpgConfig): string		1623
+nim	rotate	nimvault/commands.html#rotate,string,GpgConfig	proc rotate(repo: string; cfg: GpgConfig; rekey = false)		1694
+nim	orphans	nimvault/commands.html#orphans,string,GpgConfig	proc orphans(repo: string; cfg: GpgConfig): seq[string]		1745
+nim	stagedPlaintext	nimvault/commands.html#stagedPlaintext,string,GpgConfig	proc stagedPlaintext(repo: string; cfg: GpgConfig): seq[string]		1828
+nim	gc	nimvault/commands.html#gc,string,GpgConfig	proc gc(repo: string; cfg: GpgConfig; dryRun = false)		1848
+nim	CheckResult	nimvault/commands.html#CheckResult	tuple CheckResult		1877
+nim	checkVault	nimvault/commands.html#checkVault,string,GpgConfig	proc checkVault(repo: string; cfg: GpgConfig): CheckResult		1881
+nim	checkReport	nimvault/commands.html#checkReport,string,GpgConfig	proc checkReport(repo: string; cfg: GpgConfig): string		1934
+nim	check	nimvault/commands.html#check,string,GpgConfig	proc check(repo: string; cfg: GpgConfig)		1948
+nim	status	nimvault/commands.html#status,string,GpgConfig	proc status(repo: string; cfg: GpgConfig)		1969
+nim	whoReport	nimvault/commands.html#whoReport,string,GpgConfig	proc whoReport(repo: string; cfg: GpgConfig): string		2041
+nim	who	nimvault/commands.html#who,string,GpgConfig	proc who(repo: string; cfg: GpgConfig)		2050
+nim	lockPlaintext	nimvault/commands.html#lockPlaintext,string,GpgConfig	proc lockPlaintext(repo: string; cfg: GpgConfig; allowUnsigned = false)		2063
+nim	initVault	nimvault/commands.html#initVault,string,string	proc initVault(repo, recipient: string)		2105
+nim	redirectedHooksDir	nimvault/commands.html#redirectedHooksDir,string	proc redirectedHooksDir(repo: string): string		2122
+nim	installedHooksInactive	nimvault/commands.html#installedHooksInactive,string	proc installedHooksInactive(repo: string): string		2142
+nim	installHooks	nimvault/commands.html#installHooks,string	proc installHooks(repo: string)		2150
+nim	doctorReport	nimvault/commands.html#doctorReport,string,GpgConfig	proc doctorReport(repo: string; cfg: GpgConfig): string		2218
+nim	doctor	nimvault/commands.html#doctor,string,GpgConfig	proc doctor(repo: string; cfg: GpgConfig)		2257
+nim	sealReport	nimvault/commands.html#sealReport,string,GpgConfig	proc sealReport(repo: string; cfg: GpgConfig): string		2262
+nim	unsealReport	nimvault/commands.html#unsealReport,string,GpgConfig,seq[string]	proc unsealReport(repo: string; cfg: GpgConfig; allowUnsigned = false;\n             only: seq[string] = @[]): string		2266
+nim	addReport	nimvault/commands.html#addReport,string,string,GpgConfig	proc addReport(repo, path: string; cfg: GpgConfig; noGitignore = false): string		2271
+nim	addDirReport	nimvault/commands.html#addDirReport,string,string,GpgConfig	proc addDirReport(repo, dirPath: string; cfg: GpgConfig; noGitignore = false): string		2275
+nim	removeReport	nimvault/commands.html#removeReport,string,string,GpgConfig	proc removeReport(repo, path: string; cfg: GpgConfig): string		2279
+nim	moveReport	nimvault/commands.html#moveReport,string,string,string,GpgConfig	proc moveReport(repo, oldPath, newPath: string; cfg: GpgConfig): string		2283
+nim	scanReport	nimvault/commands.html#scanReport,string,string,GpgConfig	proc scanReport(repo, target: string; cfg: GpgConfig): string		2287
