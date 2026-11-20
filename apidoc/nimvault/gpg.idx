@@ -17,8 +17,10 @@ nim	gpgSignerProblem	nimvault/gpg.html#gpgSignerProblem,string,string,seq[string
 nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		358
 nim	gpgVerdict	nimvault/gpg.html#gpgVerdict,string,string,int,bool,seq[string]	proc gpgVerdict(status, path: string; code: int; verifySig: bool;\n           allowed: seq[string]; checkPresent = false): string		377
 nim	gpgNoSecretKey	nimvault/gpg.html#gpgNoSecretKey,string	proc gpgNoSecretKey(status: string): bool		434
-nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,GpgConfig,string,string	proc gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		447
-nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,GpgConfig,string	proc gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                   checkPresent = false): string		463
-nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		477
-nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		488
-nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		509
+nim	gpgAgentRefused	nimvault/gpg.html#gpgAgentRefused,string,int	proc gpgAgentRefused(status: string; code: int): bool		447
+nim	gpgDecryptAttempts	nimvault/gpg.html#gpgDecryptAttempts	const gpgDecryptAttempts		455
+nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,GpgConfig,string,string	proc gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		457
+nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,GpgConfig,string	proc gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                   checkPresent = false): string		478
+nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		497
+nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		508
+nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		529
