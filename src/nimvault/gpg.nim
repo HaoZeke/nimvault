@@ -444,18 +444,33 @@ proc gpgNoSecretKey*(status: string): bool =
     return true
   not encToKeyIds(status).anyIt(holdsSecretKey(it))
 
+proc gpgAgentRefused*(status: string, code: int): bool =
+  ## True when gpg failed only because the agent refused a session-key
+  ## decrypt with "wrong secret key" (code 18). Under several concurrent
+  ## decrypts the agent returns this now and then for records that decrypt
+  ## on the next attempt. A corrupted or forged packet fails every time, so
+  ## a retry cannot accept anything a single decrypt would refuse.
+  code != 0 and pkdecryptCodes(status).anyIt(it == 18)
+
+const gpgDecryptAttempts* = 3
+
 proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
   ## Decrypt a GPG-encrypted file to a target path. With `verifySig` the
   ## signature must come from a key `cfg` names.
   let allowed = if verifySig: vaultSigners(cfg) else: @[]
-  let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
-             "-d", "-o", outPath, "--", inPath],
-    options = {poUsePath})
-  discard p.outputStream.readAll()
-  let status = p.errorStream.readAll()
-  let code = p.waitForExit()
-  p.close()
+  var status = ""
+  var code = 0
+  for attempt in 1 .. gpgDecryptAttempts:
+    let p = startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--status-fd", "2",
+               "-d", "-o", outPath, "--", inPath],
+      options = {poUsePath})
+    discard p.outputStream.readAll()
+    status = p.errorStream.readAll()
+    code = p.waitForExit()
+    p.close()
+    if not gpgAgentRefused(status, code):
+      break
   let problem = gpgVerdict(status, inPath, code, verifySig, allowed)
   if problem.len > 0:
     nvRaise(problem)
@@ -463,13 +478,18 @@ proc gpgDecrypt*(cfg: GpgConfig, inPath, outPath: string, verifySig = false) =
 proc gpgDecryptToString*(cfg: GpgConfig, inPath: string, verifySig = false,
                          checkPresent = false): string =
   let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
-  let p = startProcess("gpg",
-    args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", inPath],
-    options = {poUsePath})
-  result = p.outputStream.readAll()
-  let status = p.errorStream.readAll()
-  let code = p.waitForExit()
-  p.close()
+  var status = ""
+  var code = 0
+  for attempt in 1 .. gpgDecryptAttempts:
+    let p = startProcess("gpg",
+      args = @["--batch", "--yes", "--quiet", "--status-fd", "2", "-d", "--", inPath],
+      options = {poUsePath})
+    result = p.outputStream.readAll()
+    status = p.errorStream.readAll()
+    code = p.waitForExit()
+    p.close()
+    if not gpgAgentRefused(status, code):
+      break
   let problem = gpgVerdict(status, inPath, code, verifySig, allowed, checkPresent)
   if problem.len > 0:
     nvRaise(problem)

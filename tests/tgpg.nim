@@ -174,5 +174,16 @@ block decryptManyKeepsOrderAndReportsFailures:
   removeDir(tmpDir)
   echo "PASS: decryptManyToString order and failures"
 
+block agentRefusal:
+  const refused = "[GNUPG:] ENC_TO 7BDD0C9AC98D5838 1 0\n" &
+    "[GNUPG:] ERROR pkdecrypt_failed 33554450\n[GNUPG:] NO_SECKEY 7BDD0C9AC98D5838\n"
+  const missing = "[GNUPG:] ENC_TO 7BDD0C9AC98D5838 1 0\n" &
+    "[GNUPG:] ERROR pkdecrypt_failed 33554449\n[GNUPG:] NO_SECKEY 7BDD0C9AC98D5838\n"
+  doAssert gpgAgentRefused(refused, 2)
+  doAssert not gpgAgentRefused(refused, 0)
+  doAssert not gpgAgentRefused(missing, 2)
+  doAssert not gpgAgentRefused("[GNUPG:] BADSIG x\n", 2)
+  echo "PASS: agent refusal is told apart from a missing key"
+
 cleanupTestGpgHome(gpgHome)
 echo "All GPG tests passed."

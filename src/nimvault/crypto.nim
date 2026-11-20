@@ -6,6 +6,7 @@
 import std/[os, osproc, streams, strformat, strutils, posix, sysrand]
 from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString,
                   gpgStatusHas, gpgParallelism, sha256sum, gpgVerdict, vaultSigners,
+                  gpgAgentRefused,
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
@@ -252,6 +253,7 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
     return
   let batch = gpgParallelism()
   let allowed = if verifySig or checkPresent: vaultSigners(cfg) else: @[]
+  var retry: seq[int] = @[]
   for start in countup(0, paths.high, batch):
     let stop = min(start + batch - 1, paths.high)
     var procs: seq[(int, Process)] = @[]
@@ -264,9 +266,18 @@ proc decryptManyToString*(cfg: GpgConfig, paths: seq[string],
       let status = p.errorStream.readAll()
       let code = p.waitForExit()
       p.close()
+      if gpgAgentRefused(status, code):
+        # Retried alone below: the refusal comes from concurrent decrypts.
+        retry.add(i)
+        continue
       let problem = gpgVerdict(status, paths[i], code, verifySig, allowed,
                                checkPresent)
       result[i] = if problem.len > 0: ("", problem) else: (plain, "")
+  for i in retry:
+    try:
+      result[i] = (gpgDecryptToString(cfg, paths[i], verifySig, checkPresent), "")
+    except CatchableError as err:
+      result[i] = ("", err.msg)
 
 proc effectiveSigner*(cfg: GpgConfig): string =
   ## An empty signer means the config was built without going through
