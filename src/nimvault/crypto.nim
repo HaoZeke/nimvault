@@ -10,30 +10,56 @@ from ./gpg import GpgConfig, nvRaise, gpgEncrypt, gpgDecrypt, gpgDecryptToString
                   signingKey, AgeGpgSigner
 from ./age import ageEncrypt, ageDecrypt, ageDecryptToString, ageDecryptBytesToString, sshSign,
                   sshVerify, ageBinary, ageIdentityPath
-from ./fsat import ONoFollow
+from ./fsat import replacePath
+when defined(windows):
+  from ./fsat import openNoFollowWrite, commitFd, ownerOnlyPath
+else:
+  from ./fsat import ONoFollow
+
+when defined(windows):
+  proc runtimeOwnerTag*(): string =
+    ## Per-user directory name. Windows has no uid; the account name is folded
+    ## into characters that are legal in a path.
+    var u = getEnv("USERNAME")
+    if u.len == 0: u = "user"
+    for c in u:
+      if c in {'a'..'z', 'A'..'Z', '0'..'9', '-', '_', '.'}: result.add(c)
+      else: result.add('_')
+    if result.len == 0: result = "user"
 
 proc ensureOwnerDir*(dir: string) =
   ## Create `dir` mode 0700, or tighten a directory this user already owns.
   ## A symlink or another uid's directory is refused: plaintext and data keys
-  ## are written underneath it.
+  ## are written underneath it. On Windows the same restriction is a DACL
+  ## that grants the current user alone.
   if symlinkExists(dir):
     nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
-  if not dirExists(dir):
-    if posix.mkdir(dir.cstring, 0o700.Mode) != 0 and posix.errno != posix.EEXIST:
+  when defined(windows):
+    if not dirExists(dir):
+      createDir(dir)
+    if symlinkExists(dir):
+      nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+    if not dirExists(dir):
       nvRaise(&"FATAL: cannot create runtime directory: {dir}")
-  if symlinkExists(dir):
-    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
-  var st: posix.Stat
-  if posix.lstat(dir.cstring, st) != 0:
-    nvRaise(&"FATAL: cannot stat runtime directory: {dir}")
-  if posix.S_ISLNK(st.st_mode):
-    nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
-  if not posix.S_ISDIR(st.st_mode):
-    nvRaise(&"FATAL: runtime directory is not a directory: {dir}")
-  if st.st_uid != posix.getuid():
-    nvRaise(&"FATAL: runtime directory is not owned by this user: {dir}")
-  if posix.chmod(dir.cstring, 0o700.Mode) != 0:
-    nvRaise(&"FATAL: cannot restrict runtime directory: {dir}")
+    if not ownerOnlyPath(dir):
+      nvRaise(&"FATAL: cannot restrict runtime directory: {dir}")
+  else:
+    if not dirExists(dir):
+      if posix.mkdir(dir.cstring, 0o700.Mode) != 0 and posix.errno != posix.EEXIST:
+        nvRaise(&"FATAL: cannot create runtime directory: {dir}")
+    if symlinkExists(dir):
+      nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+    var st: posix.Stat
+    if posix.lstat(dir.cstring, st) != 0:
+      nvRaise(&"FATAL: cannot stat runtime directory: {dir}")
+    if posix.S_ISLNK(st.st_mode):
+      nvRaise(&"FATAL: refusing runtime directory symlink: {dir}")
+    if not posix.S_ISDIR(st.st_mode):
+      nvRaise(&"FATAL: runtime directory is not a directory: {dir}")
+    if st.st_uid != posix.getuid():
+      nvRaise(&"FATAL: runtime directory is not owned by this user: {dir}")
+    if posix.chmod(dir.cstring, 0o700.Mode) != 0:
+      nvRaise(&"FATAL: cannot restrict runtime directory: {dir}")
 
 proc privateWorkDir*(): string =
   ## Owner-only directory for plaintext and data keys that must not land in
@@ -43,7 +69,11 @@ proc privateWorkDir*(): string =
   let xdg = getEnv("XDG_RUNTIME_DIR")
   let parent =
     if xdg.len > 0 and dirExists(xdg): xdg / "nimvault"
-    else: getTempDir() / &"nimvault-{getuid()}"
+    else:
+      when defined(windows):
+        getTempDir() / ("nimvault-" & runtimeOwnerTag())
+      else:
+        getTempDir() / &"nimvault-{getuid()}"
   ensureOwnerDir(parent)
   var buf: array[8, byte]
   doAssert urandom(buf)
@@ -51,8 +81,13 @@ proc privateWorkDir*(): string =
   for b in buf:
     id.add(b.toHex(2).toLowerAscii())
   result = parent / id
-  if posix.mkdir(result.cstring, 0o700.Mode) != 0:
-    nvRaise(&"FATAL: cannot create work directory: {result}")
+  when defined(windows):
+    createDir(result)
+    if not dirExists(result) or not ownerOnlyPath(result):
+      nvRaise(&"FATAL: cannot create work directory: {result}")
+  else:
+    if posix.mkdir(result.cstring, 0o700.Mode) != 0:
+      nvRaise(&"FATAL: cannot create work directory: {result}")
   setFilePermissions(result, {fpUserRead, fpUserWrite, fpUserExec})
 
 proc shredFile*(path: string) =
@@ -66,7 +101,10 @@ proc shredFile*(path: string) =
     return
   if not fileExists(path):
     return
-  let fd = posix.open(path.cstring, posix.O_WRONLY or ONoFollow)
+  when defined(windows):
+    let fd = openNoFollowWrite(path)
+  else:
+    let fd = posix.open(path.cstring, posix.O_WRONLY or ONoFollow)
   if fd >= 0:
     var left = getFileSize(path)
     var buf: array[8192, byte]
@@ -77,7 +115,10 @@ proc shredFile*(path: string) =
       let w = posix.write(fd, addr buf[0], n)
       if w <= 0: break
       left -= w
-    discard posix.fsync(fd)
+    when defined(windows):
+      discard commitFd(fd)
+    else:
+      discard posix.fsync(fd)
     discard posix.close(fd)
   try: removeFile(path) except CatchableError: discard
 
@@ -89,34 +130,34 @@ proc discardPrivate*(dir: string) =
     shredFile(path)
   try: removeDir(dir) except CatchableError: discard
 
-proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
-  ## `rename(2)`. Replaces `dest` when it is a symlink and does not follow it.
-  ## Nim's posix module does not wrap this call.
-
 proc publishPending*(src, dest: string) =
   ## Replace `dest` with `src`. A failed rename leaves `src` where it is:
   ## the record may already name those bytes, and deleting them would leave
   ## the record pointing at ciphertext that is no longer on disk.
-  if renameAt(src.cstring, dest.cstring) != 0:
+  if replacePath(src, dest) != 0:
     nvRaise(&"FATAL: could not publish blob {dest}")
 
 proc renameOver*(src, dest: string) =
   ## `rename` replaces `dest` even when `dest` is a symlink, and does not
   ## follow it. The copy fallback in `moveFile` does follow, which writes
   ## plaintext through a symlink when the two paths are on different devices.
-  if renameAt(src.cstring, dest.cstring) != 0:
+  if replacePath(src, dest) != 0:
     shredFile(src)
     nvRaise(&"FATAL: could not place plaintext at {dest}")
 
 template withPrivateUmask*(body: untyped) =
   ## Decrypt/encrypt sidecars inherit the process umask. Force 077 so a
   ## typical 022 does not leave a world-readable plaintext next to the
-  ## destination for the length of the batch.
-  let old = posix.umask(0o077.Mode)
-  try:
+  ## destination for the length of the batch. Windows applies the same
+  ## restriction as a DACL on the runtime directory instead of a umask.
+  when defined(windows):
     body
-  finally:
-    discard posix.umask(old)
+  else:
+    let old = posix.umask(0o077.Mode)
+    try:
+      body
+    finally:
+      discard posix.umask(old)
 
 proc ensureVaultDir*(repo: string) =
   ## `.vault/` holds ciphertext, but a crash can leave a plaintext sidecar
@@ -140,7 +181,10 @@ proc syncPath*(path: string) =
   let fd = posix.open(path.cstring, O_RDONLY)
   if fd < 0:
     return
-  discard fsync(fd)
+  when defined(windows):
+    discard commitFd(fd)
+  else:
+    discard fsync(fd)
   discard close(fd)
 
 proc syncParentDir*(path: string) =
@@ -189,7 +233,7 @@ proc resolveBlob*(repo: string, cfg: GpgConfig, id, expectedHash: string): strin
     return live
   if matches(pend):
     let dest = blobPath(repo, cfg, id)
-    if renameAt(pend.cstring, dest.cstring) != 0:
+    if replacePath(pend, dest) != 0:
       if matches(dest): return dest
       if matches(live): return live
       return ""

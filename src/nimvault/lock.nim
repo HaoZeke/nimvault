@@ -37,7 +37,10 @@ proc lockDir(): string =
   if xdg.len > 0 and dirExists(xdg):
     xdg / "nimvault"
   else:
-    getTempDir() / &"nimvault-{getuid()}"
+    when defined(windows):
+      getTempDir() / ("nimvault-" & runtimeOwnerTag())
+    else:
+      getTempDir() / &"nimvault-{getuid()}"
 
 proc lockPath*(repo: string): string =
   ## One lock per vault, named by the resolved repo path so two checkouts of
@@ -79,13 +82,27 @@ proc `=wasMoved`(l: var VaultLock) =
 proc `=copy`(dst: var VaultLock, src: VaultLock) {.error:
   "VaultLock owns a file descriptor; move it or take a new one".}
 
+when defined(windows):
+  proc lockFileEx(h: int, flags, reserved, low, high: uint32, ol: pointer): int32
+    {.importc: "LockFileEx", header: "<windows.h>", sideEffect.}
+  proc getOsf(fd: cint): int {.importc: "_get_osfhandle", header: "<io.h>".}
+
 proc tryFlock(fd: cint): bool =
-  var fl: Tflock
-  fl.l_type = F_WRLCK.cshort
-  fl.l_whence = SEEK_SET.cshort
-  fl.l_start = 0
-  fl.l_len = 0        # whole file
-  fcntl(fd, F_SETLK, addr fl) != -1
+  when defined(windows):
+    # Exclusive, non-blocking, whole file. The process mutex covers threads;
+    # LockFileEx covers other processes and is dropped when the handle closes.
+    var ol: array[32, byte]
+    let h = getOsf(fd)
+    if h == 0 or h == -1: return false
+    lockFileEx(h, 0x00000003'u32, 0'u32, 0xFFFFFFFF'u32, 0xFFFFFFFF'u32,
+               addr ol[0]) != 0
+  else:
+    var fl: Tflock
+    fl.l_type = F_WRLCK.cshort
+    fl.l_whence = SEEK_SET.cshort
+    fl.l_start = 0
+    fl.l_len = 0        # whole file
+    fcntl(fd, F_SETLK, addr fl) != -1
 
 proc takeGate(timeoutMs: int) =
   const stepMs = 50
@@ -109,7 +126,15 @@ proc acquire*(repo: string, timeoutMs = 30_000): VaultLock =
     let dir = lockDir()
     ensureOwnerDir(dir)
     let path = lockPath(repo)
-    let fd = open(path.cstring, O_RDWR or O_CREAT or O_CLOEXEC, 0o600.Mode)
+    var fd: cint
+    when defined(windows):
+      # _O_BINARY 0x8000, _O_NOINHERIT 0x0080. O_CLOEXEC is not a CRT flag.
+      const oBinary = 0x8000.cint
+      const oNoInherit = 0x0080.cint
+      fd = open(path.cstring, O_RDWR or O_CREAT or oBinary or oNoInherit,
+                0o600.Mode)
+    else:
+      fd = open(path.cstring, O_RDWR or O_CREAT or O_CLOEXEC, 0o600.Mode)
     if fd < 0:
       nvRaise(&"FATAL: cannot open vault lock: {path}")
 

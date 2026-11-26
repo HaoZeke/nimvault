@@ -55,4 +55,23 @@ block docsWorkflowDoesNotWriteOnPullRequest:
     "gh-pages deploy must not run in the PR-triggered job"
   echo "PASS: docs workflow isolates write to a push-only deploy job"
 
+block releaseWorkflowAssets:
+  ## Asset names already published stay, and the next tag adds the two
+  ## missing binaries plus one checksum file. Linux stays a static musl
+  ## build that does not load libpcre.
+  let y = readFile(Root / ".github" / "workflows" / "ci_release.yml")
+  for name in ["nimvault-linux-amd64", "nimvault-linux-arm64",
+               "nimvault-macos-arm64", "nimvault-macos-amd64",
+               "nimvault-windows-amd64"]:
+    doAssert name in y, "release workflow dropped " & name
+  doAssert "musl-gcc" in y
+  doAssert "--passL:-static" in y
+  doAssert "libpcre" in y
+  doAssert "SHA256SUMS" in y
+  doAssert "nimvault.exe" in y
+  doAssert "macos-15-intel" in y
+  doAssert "windows-latest" in y
+  doAssert "os: macos-13" notin y
+  echo "PASS: release workflow keeps current assets and adds macos amd64, windows, checksums"
+
 echo "All metadata tests passed."

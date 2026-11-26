@@ -170,18 +170,32 @@ proc openDirFd(path: string, createMissing: bool): cint =
   let norm = normalizedPath(path)
   if not norm.isAbsolute:
     nvRaise(&"FATAL: expected an absolute path, got: {path}")
-  let flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
-  result = posix.open("/".cstring, flags)
+  var flags: cint
+  when defined(windows):
+    flags = ODirectory or ONoFollow
+    result = openVolumeRoot(norm)
+  else:
+    flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
+    result = posix.open("/".cstring, flags)
   if result < 0:
-    nvRaise("FATAL: cannot open / for secure path walk")
+    when defined(windows):
+      nvRaise("FATAL: cannot open the volume root for secure path walk")
+    else:
+      nvRaise("FATAL: cannot open / for secure path walk")
   if norm == "/":
     return
+  when defined(windows):
+    var skipVol = leadingVolumeParts(norm)
   for part in norm.split(DirSep):
     if part.len == 0 or part == ".":
       continue
     if part == "..":
       discard posix.close(result)
       nvRaise(&"FATAL: refusing parent component in path: {path}")
+    when defined(windows):
+      if skipVol > 0:
+        dec skipVol
+        continue
     var next = openAt(result, part.cstring, flags)
     if next < 0 and createMissing and posix.errno == posix.ENOENT:
       if mkdirAt(result, part.cstring, 0o777.Mode) != 0 and posix.errno != posix.EEXIST:
@@ -204,9 +218,13 @@ proc stageBeside(dest: string, cfg: GpgConfig): StagedPath =
   assertParentWithinBoundary(cfg, dest, parent)
   let dirFd = openDirFd(parent, createMissing = true)
   let tmpName = ".nimvault-" & genId() & ".tmp"
-  let fd = openAt(dirFd, tmpName.cstring,
-                  posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
-                  O_CLOEXEC or ONoFollow, 0o600.Mode)
+  var createFlags: cint
+  when defined(windows):
+    createFlags = posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or ONoFollow
+  else:
+    createFlags = posix.O_WRONLY or posix.O_CREAT or posix.O_EXCL or
+                  O_CLOEXEC or ONoFollow
+  let fd = openAt(dirFd, tmpName.cstring, createFlags, 0o600.Mode)
   if fd < 0:
     discard posix.close(dirFd)
     nvRaise(&"FATAL: cannot create temporary plaintext in {parent}")
@@ -230,7 +248,11 @@ proc openParentFromBoundary(sp: StagedPath): cint =
   if not insideBase(sp.boundaryBase, parent):
     return -1
   let rel = relativePath(parent, sp.boundaryBase)
-  let flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
+  var flags: cint
+  when defined(windows):
+    flags = ODirectory or ONoFollow
+  else:
+    flags = posix.O_RDONLY or ODirectory or ONoFollow or O_CLOEXEC
   result = openDirFd(sp.boundaryReal, createMissing = false)
   if rel.len == 0 or rel == ".":
     return
@@ -250,11 +272,15 @@ proc openParentFromBoundary(sp: StagedPath): cint =
 proc parentStillBound(sp: StagedPath): bool =
   if sp.boundaryBase.len == 0:
     return true
-  template sameAsHeld(fdNow: cint): bool =
-    (var held, current: Stat;
-     fstat(sp.dirFd, held) == 0 and
-     fstat(fdNow, current) == 0 and
-     sameFile(held, current))
+  when defined(windows):
+    template sameAsHeld(fdNow: cint): bool =
+      sameOpenFile(sp.dirFd, fdNow)
+  else:
+    template sameAsHeld(fdNow: cint): bool =
+      (var held, current: Stat;
+       fstat(sp.dirFd, held) == 0 and
+       fstat(fdNow, current) == 0 and
+       sameFile(held, current))
   var nowFd = -1.cint
   try:
     nowFd = openParentFromBoundary(sp)
@@ -281,17 +307,23 @@ proc parentStillBound(sp: StagedPath): bool =
 
 proc stillNamed(sp: StagedPath): bool =
   ## Whether the staging name still refers to the file this process created.
-  var mine, named: Stat
-  fstat(sp.fd, mine) == 0 and
-    fstatAt(sp.dirFd, sp.tmpName.cstring, named, AtSymlinkNoFollow) == 0 and
-    sameFile(mine, named)
+  when defined(windows):
+    heldName(sp.dirFd, sp.fd, sp.tmpName.cstring)
+  else:
+    var mine, named: Stat
+    fstat(sp.fd, mine) == 0 and
+      fstatAt(sp.dirFd, sp.tmpName.cstring, named, AtSymlinkNoFollow) == 0 and
+      sameFile(mine, named)
 
 proc destStillNamed(sp: StagedPath): bool =
   ## Whether the destination name still refers to this staged file.
-  var mine, named: Stat
-  fstat(sp.fd, mine) == 0 and
-    fstatAt(sp.dirFd, sp.destName.cstring, named, AtSymlinkNoFollow) == 0 and
-    sameFile(mine, named)
+  when defined(windows):
+    heldName(sp.dirFd, sp.fd, sp.destName.cstring)
+  else:
+    var mine, named: Stat
+    fstat(sp.fd, mine) == 0 and
+      fstatAt(sp.dirFd, sp.destName.cstring, named, AtSymlinkNoFollow) == 0 and
+      sameFile(mine, named)
 
 proc discardStaged(sp: StagedPath) =
   ## Close the entry's descriptors. A staging file that was not placed is
@@ -314,9 +346,15 @@ proc placeStaged(sp: StagedPath, job: Drain) =
   ## over the destination through the descriptor it was created under. One
   ## directory, so a symlink at the destination is replaced, not followed.
   let dest = sp.destPath
-  let mode = if job.head == "#!": 0o700.Mode else: 0o600.Mode
-  if posix.fchmod(sp.fd, mode) != 0:
-    nvRaise(&"FATAL: cannot set the mode of the plaintext for {dest}")
+  when defined(windows):
+    # Unix mode bits are not how Windows grants access. Owner-only is the
+    # 0600 this file was created with; a shebang is not an executable bit.
+    if not ownerOnlyFd(sp.fd):
+      nvRaise(&"FATAL: cannot set the mode of the plaintext for {dest}")
+  else:
+    let mode = if job.head == "#!": 0o700.Mode else: 0o600.Mode
+    if posix.fchmod(sp.fd, mode) != 0:
+      nvRaise(&"FATAL: cannot set the mode of the plaintext for {dest}")
   if not stillNamed(sp):
     nvRaise(&"FATAL: the staging file for {dest} was replaced")
   if not parentStillBound(sp):
@@ -1093,8 +1131,6 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
 
   nvRaise(&"Not in vault: {path}")
 
-proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
-
 proc safeMovePath(oldAbs, newAbs: string) =
   ## Move without `moveFile`'s cross-device copy-through-symlink fallback.
   if symlinkExists(oldAbs):
@@ -1102,7 +1138,7 @@ proc safeMovePath(oldAbs, newAbs: string) =
   if symlinkExists(newAbs):
     nvRaise(&"FATAL: refusing destination symlink: {newAbs}")
   createDir(newAbs.parentDir)
-  if renameAt(oldAbs.cstring, newAbs.cstring) == 0:
+  if replacePath(oldAbs, newAbs) == 0:
     return
   if posix.errno != posix.EXDEV:
     nvRaise(&"FATAL: could not move {oldAbs} -> {newAbs}")
