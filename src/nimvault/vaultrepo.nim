@@ -85,7 +85,7 @@ proc warnIfRootIsAmbiguous*(vaultRepo, configuredRoot: string) =
   ## `root = repo` means "paths are relative to the repository". With the vault
   ## in its own repository that is ambiguous, and resolving it against the
   ## vault would silently point every entry at the wrong tree.
-  if configuredRoot.len == 0:
+  if configuredRoot.len == 0 or configuredRoot.isAbsolute:
     return
   let here = gitRoot()
   if here.len > 0 and not sameDir(here, vaultRepo):

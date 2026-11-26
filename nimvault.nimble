@@ -14,6 +14,7 @@ requires "cligen >= 1.9.0"
 requires "checksums >= 0.2.0"
 
 task test, "Run test suite":
+  exec "nim c --hints:off --out:bin/nimvault src/nimvault.nim"
   for f in listFiles("tests"):
     if f.endsWith(".nim"):
       exec "nim c -r --hints:off -d:nimvaultTest -p:src " & f

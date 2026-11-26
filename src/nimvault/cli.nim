@@ -24,7 +24,7 @@ proc resolve(recipient: string, vault = ""): (string, GpgConfig) =
   ## `vaultrepo`. Everything else keys off whatever it resolves to.
   let repo = resolveVaultRepo(vault)
   let cfg = initGpgConfig(recipient, repo)
-  warnIfRootIsAmbiguous(repo, cfg.root)
+  warnIfRootIsAmbiguous(repo, cfg.configuredRoot)
   (repo, cfg)
 
 proc doSeal(path: seq[string] = @[], recipient = "", force = false, vault = "") =

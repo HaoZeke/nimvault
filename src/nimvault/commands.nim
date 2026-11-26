@@ -936,7 +936,10 @@ proc seal*(repo: string, cfg: GpgConfig, force = false,
     if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
       if stale.len > 0:
         saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
-      nvEcho(&"\nNothing to seal; {selected.len} file(s) already current.")
+      if selective:
+        nvEcho(&"\nNothing to seal; {selected.len} selected file(s) already current.")
+      else:
+        nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
       return
 
     if selective and splitSeal:

@@ -8,6 +8,7 @@ type
   GpgConfig* = object
     recipient*: string
     root*: string  ## When non-empty, paths are relative to this dir (not ~/...)
+    configuredRoot*: string  ## Preserve whether the root depends on the vault location.
     ## Which primitive encrypts blobs and the manifest. "gpg" keeps the
     ## long-standing behaviour where signing and encryption are one operation.
     ## "age" separates them: age has no signing, so authenticity moves to a
@@ -124,6 +125,7 @@ proc initGpgConfig*(cliRecipient: string, repo: string): GpgConfig =
   result = GpgConfig(
     recipient: recipient,
     root: root,
+    configuredRoot: c.root,
     backend: backend,
     identity: identity,
     signer: signer,
