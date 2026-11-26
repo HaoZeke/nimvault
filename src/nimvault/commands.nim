@@ -624,6 +624,12 @@ proc deksForEntries(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
     if e.id notin result and e.id in fromKeys:
       result[e.id] = fromKeys[e.id]
 
+proc warnSkips(skips: seq[AppendSkip]) =
+  ## Unsigned fragments are not entries. Say so on the paths that would
+  ## otherwise materialise them.
+  for s in skips:
+    stderr.writeLine("warning: " & s.msg)
+
 proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
              only: seq[string] = @[]) =
   ## Decrypt tracked entries back to their target paths. With no selector this
@@ -637,6 +643,7 @@ proc unseal*(repo: string, cfg: GpgConfig, allowUnsigned = false,
   let requireSig = not allowUnsigned
   let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
                               checkPresent = true)
+  warnSkips(meta.skippedAppends)
   let allEntries = meta.entries
   if meta.unparsed > 0:
     nvRaise(&"FATAL: {meta.unparsed} record(s) open but hold no entry this " &
@@ -1195,6 +1202,7 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
   let requireSig = not allowUnsigned
   let meta = loadManifestMeta(repo, verifySig = requireSig, cfg = cfg,
                               checkPresent = true)
+  warnSkips(meta.skippedAppends)
   let entries = meta.entries
   let deks = deksForEntries(repo, cfg, entries, meta.deks)
 
@@ -1235,6 +1243,9 @@ proc get*(repo, path: string, cfg: GpgConfig, allowUnsigned = false): string =
     finally:
       discardSnapshot(snap)
 
+  for s in meta.skippedAppends:
+    if s.path.len > 0 and resolvePath(cfg, s.path) == absPath:
+      nvRaise(&"Not in vault: {path}\n  {s.msg}")
   nvRaise(&"Not in vault: {path}")
 
 proc renameAt(src, dest: cstring): cint {.importc: "rename", header: "<stdio.h>".}
@@ -1835,7 +1846,7 @@ proc statusReport*(repo: string, cfg: GpgConfig): string =
   finally:
     discardPrivate(work)
 
-proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
+proc rotate*(repo: string, cfg: GpgConfig, rekey = false, adopt = false) =
   ## Re-wrap the data keys to the current recipients, or re-encrypt everything.
   ##
   ## These are different operations, and the difference is the reason v6 exists,
@@ -1847,6 +1858,10 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   ## rotation of the *wrapping*: a recipient key that should no longer open the
   ## vault stops being able to.
   ##
+  ## `adopt`: unsigned `.vault/a/` fragments that do not duplicate a signed id
+  ## or path are rewritten as signed `.vault/e/` records. Without this flag a
+  ## rewrap leaves those fragments unsigned. `seal` does not adopt them either.
+  ##
   ## `rekey`: every payload is re-encrypted under a fresh data key. Only that
   ## answers a suspected compromise of a data key or of the plaintext, because
   ## rewrapping leaves the old ciphertext openable by whoever already holds the
@@ -1854,6 +1869,9 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
   ## doi:10.1007/978-3-319-63697-9_4). Churn is the intent, so it deliberately
   ## bypasses the incremental skip.
   if rekey:
+    if adopt:
+      nvRaise("FATAL: rotate --rekey does not adopt unsigned fragments.\n" &
+              "  Run 'nimvault rotate --adopt' first.")
     banner("Rekeying vault ...")
     seal(repo, cfg, force = true)
     nvEcho("Every payload re-encrypted under a fresh data key.")
@@ -1861,12 +1879,18 @@ proc rotate*(repo: string, cfg: GpgConfig, rekey = false) =
 
   banner("Rewrapping data keys ...")
   let lk {.used.} = acquire(repo)
-  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
+  let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg,
+                              adoptUnsigned = adopt)
+  warnSkips(meta.skippedAppends)
   let entries = meta.entries
   if entries.len == 0:
     if splitRecordIds(repo).len > 0:
       nvRaise("FATAL: no records this identity can open.\n" &
               "  Refusing to treat the vault as empty (unread wrap groups stay).")
+    if meta.skippedAppends.len > 0:
+      nvRaise("FATAL: unsigned append fragments are not in the signed manifest.\n" &
+              "  Run 'nimvault rotate --adopt' to sign fragments that do not " &
+              "duplicate a signed entry.")
     nvEcho("vault is empty")
     return
   let deks = deksForEntries(repo, cfg, entries, meta.deks)
@@ -2067,10 +2091,22 @@ proc diffDigests(repo, digests: string, r: var CheckResult) =
   for rel in r.digestMissing:
     r.problems.add(&"digest missing {rel}")
 
+proc vaultSealedResidue(repo: string, cfg: GpgConfig): bool =
+  ## A manifest or data-key file means this vault held sealed entries.
+  ## Deleting the blob-index and the records must not look like a fresh init.
+  findManifest(repo, cfg).len > 0 or keyFiles(repo, cfg).len > 0
+
 proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
-  ## Verify payloads against the records this identity can open, or against
-  ## the blob-index when this process has no decrypt key. Optionally also
-  ## against a previous digest list. Neither comparison decrypts a payload.
+  ## Verify payloads against the records this identity can open.
+  ##
+  ## With no decrypt key, and only when `--public-only` was set, compare
+  ## payload ids to `.vault/blob-index`. That file is unsigned. A public
+  ## writer rewrites it while appending, so a match detects accidental drift
+  ## (a blob edited or deleted outside nimvault), not a plant. `--digests`
+  ## diffs a snapshot taken outside the change. That is the tamper signal.
+  ##
+  ## A missing age identity or gpg secret key is not `--public-only`. On a
+  ## signer-configured vault `check` fails instead of reporting success.
   ##
   ## `status` answers a different question: it compares the *plaintext* on this
   ## machine against the manifest's `contentHash`, so it says nothing about
@@ -2078,16 +2114,35 @@ proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
   ##
   ## The records are a signed list of per-blob digests, which is a one-level
   ## Merkle construction (Merkle, CRYPTO 1987, doi:10.1007/3-540-48184-2_32).
-  ## Reading those digests takes the secret key that opens the records. The
-  ## blob-index is that list without the paths, so a runner that holds only
-  ## public keys can still see an added, changed, or missing blob.
+  ## Reading those digests takes the secret key that opens the records.
   ## A payload whose record this identity cannot open is not "added": the
   ## record is still there. Holds the vault lock for the pending-blob rename
   ## in `resolveBlob` on the keyed path.
   result.keyless = publicKeyOnly(cfg)
   result.anchor = if result.keyless: "blob-index" else: "manifest"
+  if result.keyless and not explicitPublicOnly(cfg) and recordsNeedSig(cfg):
+    result.anchor = "none"
+    result.checked.inc
+    result.problems.add(
+      "no decrypt key for a signer-configured vault; pass --public-only to " &
+      "compare ciphertext drift, and --digests to check for tampering")
+    diffDigests(repo, digests, result)
+    finishLists(result)
+    return
+
   if result.keyless:
     let blobs = payloadBlobHashes(repo)
+    let nRec = splitRecordIds(repo).len + appendRecordIds(repo).len
+    let residue = vaultSealedResidue(repo, cfg)
+    template noteGone() =
+      if digests.len > 0:
+        result.anchor = "digests"
+      else:
+        result.anchor = "none"
+        result.checked.inc
+        result.problems.add(
+          "blob-index and records are gone; this is not an empty vault. " &
+          "Pass --digests to check ciphertext")
     if blobIndexExists(repo):
       let index = readBlobIndex(repo)
       var seen = initHashSet[string]()
@@ -2105,11 +2160,14 @@ proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
           result.missing.add(id)
           result.problems.add(&"missing blob {id}")
           result.checked.inc
-    elif digests.len == 0 and (blobs.len > 0 or splitRecordIds(repo).len > 0 or
-                                appendRecordIds(repo).len > 0):
+      if index.len == 0 and blobs.len == 0 and nRec == 0 and residue:
+        noteGone()
+    elif digests.len == 0 and (blobs.len > 0 or nRec > 0):
       result.anchor = "none"
       result.checked.inc
       result.problems.add("no blob-index and no digest list; cannot check without a key")
+    elif blobs.len == 0 and nRec == 0 and residue:
+      noteGone()
     elif digests.len > 0:
       result.anchor = "digests"
     diffDigests(repo, digests, result)
@@ -2125,8 +2183,12 @@ proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
                         "this version can read")
     result.checked.inc
   elif entries.len == 0 and (splitRecordIds(repo).len > 0 or
-                             appendRecordIds(repo).len > 0):
+                             (appendRecordIds(repo).len > 0 and
+                              meta.skippedAppends.len == 0)):
     result.problems.add(UnreadableRecords)
+    result.checked.inc
+  for s in meta.skippedAppends:
+    result.problems.add(s.msg)
     result.checked.inc
   var known = initHashSet[string]()
   for e in entries:
@@ -2156,6 +2218,9 @@ proc checkVault*(repo: string, cfg: GpgConfig, digests = ""): CheckResult =
       result.problems.add(&"blob does not match the manifest for {e.path}")
   # A payload with no record at all is a plant. A record this identity cannot
   # open still names its blob, and check must not fail the wrap group for it.
+  # An unsigned append id is not "added": skippedAppends already names it,
+  # and the signed entry wins when the path or id collides. The blob-index
+  # is not consulted here; it is unsigned.
   var recorded = splitRecordIds(repo)
   for id in appendRecordIds(repo):
     recorded.incl(id)
@@ -2194,7 +2259,7 @@ proc checkReport*(repo: string, cfg: GpgConfig): string =
     result.add &"  could not open {r.unopened} record(s) with this machine's secret keys.\n"
   if r.problems.len == 0:
     if r.keyless:
-      result.add &"{r.checked} blobs consistent with the blob-index.\n"
+      result.add &"{r.checked} blobs match the blob-index (accidental drift only; --digests is the tamper check).\n"
     else:
       result.add &"{r.checked} entries consistent with the manifest.\n"
   else:
@@ -2235,7 +2300,7 @@ proc check*(repo: string, cfg: GpgConfig, digests = "", writeDigests = "",
     nvRaise(&"{r.problems.len} of {r.checked} entries are inconsistent " &
             "(seal, or restore the missing blob)", 2)
   if r.keyless:
-    nvEcho(&"\n{r.checked} blobs consistent with the blob-index.")
+    nvEcho(&"\n{r.checked} blobs match the blob-index (accidental drift only; --digests is the tamper check).")
   else:
     nvEcho(&"\n{r.checked} entries consistent with the manifest.")
   return 0

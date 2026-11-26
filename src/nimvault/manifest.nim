@@ -11,6 +11,8 @@ type
     ekDir = "dir"      ## Directory entry (for future use)
   ## hash = SHA-256 of ciphertext blob; contentHash = SHA-256 of plaintext (optional, v4+).
   VaultEntry* = tuple[id, path, hash: string, kind: EntryKind, contentHash: string]
+  ## An unsigned `.vault/a/` fragment a keyed load refused to trust.
+  AppendSkip* = tuple[id, path, msg: string]
 
 const SealKeyHeader* = "# vault-seal-key"
   ## Comment header, so every older reader skips it as a comment.
@@ -22,7 +24,9 @@ const EntryDirName* = "e"
   ## paths under here, so git can merge them. The combined manifest cannot.
 const AppendDirName* = "a"
   ## Unsigned fragments from a writer that holds recipient public keys and no
-  ## secret key. A signed record in `e/` wins when both exist for one id.
+  ## secret key. A keyed load does not trust these while a signature is
+  ## required, unless that load was asked to adopt them. The same id or path
+  ## in `e/` always wins.
 const EntryHeader* = "# vault-entry-v7"
 const BlobIndexName* = "blob-index"
 const BlobIndexHeader* = "# nimvault-blob-index-v1"
@@ -337,11 +341,13 @@ proc saveAppendRecord*(repo: string, cfg: GpgConfig, e: VaultEntry, dek: string)
   ## recipients as a signed record, so the path stays inside ciphertext, and
   ## it is a new path, so it does not rewrite any existing record.
   ##
-  ## It is not signed. Anyone who has the recipient public keys can plant one.
-  ## A bad signature on an `e/` record is still fatal. `check` against the
-  ## blob-index and a previous digest list is what makes a plant visible
-  ## without a key. A later `seal` or `rotate` by a holder of a secret key
-  ## rewrites a changed fragment as a signed `e/` record.
+  ## It is not signed. Anyone who has the recipient public keys can plant one,
+  ## and can rewrite the blob-index in the same change. A bad signature on an
+  ## `e/` record is still fatal. A keyed load ignores this fragment while a
+  ## signature is required. `check` fails until `rotate --adopt` rewrites it
+  ## as a signed `e/` record, or the fragment is removed. `seal` does not
+  ## adopt it. `--digests` is the tamper signal; the blob-index only shows
+  ## accidental drift.
   let recips = recipientsFor(cfg, e.path)
   createDir(appendDir(repo))
   let work = privateWorkDir()
@@ -381,11 +387,12 @@ proc appendRecordUnchanged(repo: string, cfg: GpgConfig, e: VaultEntry,
     false
 
 proc loadAppendEntries(repo: string, cfg: GpgConfig): tuple[entries: seq[VaultEntry],
-                                                           deks: DekTable] =
-  ## Public-key fragments this identity can decrypt. No signature is required:
-  ## the writer did not have a key. A fragment this identity cannot decrypt
-  ## is skipped. These files are not in `.vault/e/`, so a missing signature
-  ## here does not weaken the check on signed records.
+                                                           deks: DekTable,
+                                                           unread: int] =
+  ## Public-key fragments this identity can decrypt. No signature is checked:
+  ## the writer did not have one. A fragment this identity cannot decrypt
+  ## increments `unread` and is not returned. Callers that require a signature
+  ## must not treat `entries` as a signed record.
   let dir = appendDir(repo)
   if not dirExists(dir):
     return
@@ -401,6 +408,7 @@ proc loadAppendEntries(repo: string, cfg: GpgConfig): tuple[entries: seq[VaultEn
     try:
       plain = decryptToString(cfg, path, false)
     except CatchableError:
+      result.unread.inc
       continue
     rememberRecord(path, plain)
     let parsed = parseEntryPlain(plain)
@@ -416,9 +424,10 @@ proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
   ## `force` is for rotate, which must rewrap even when the fields match.
   ## Unread stems stay; `dropEntryRecord` is the only remover.
   ##
-  ## An unchanged public-key fragment stays in `.vault/a/`. A changed one is
-  ## rewritten as a signed `e/` record, which is the adoption step a holder
-  ## of a secret key can do and a public-key writer cannot.
+  ## Unsigned fragments are not in `entries` unless the caller adopted them.
+  ## `force` (rotate --adopt, or a rewrap) rewrites every listed entry as a
+  ## signed `e/` record and deletes the fragment. `seal` does not pass
+  ## unadopted fragments in, so an unchanged fragment stays unsigned.
   createDir(entryDir(repo))
   for e in entries:
     let dek = deks.getOrDefault(e.id)
@@ -435,11 +444,13 @@ proc saveSplitEntries*(repo: string, cfg: GpgConfig, entries: seq[VaultEntry],
 
 proc loadManifestMeta*(repo: string, verifySig = false,
                        cfg = GpgConfig(),
-                       checkPresent = false): tuple[entries: seq[VaultEntry],
+                       checkPresent = false,
+                       adoptUnsigned = false): tuple[entries: seq[VaultEntry],
                                                     sealKey: string,
                                                     envelope: bool,
                                                     unopened, unparsed: int,
-                                                    deks: DekTable] =
+                                                    deks: DekTable,
+                                                    skippedAppends: seq[AppendSkip]] =
   ## Decrypt and parse the vault manifest, with the seal key it was written
   ## under (empty for v4 and earlier, which did not record one).
   ## Returns empty seq if no manifest exists. `unparsed` counts records and
@@ -453,6 +464,12 @@ proc loadManifestMeta*(repo: string, verifySig = false,
   ##
   ## `checkPresent` is `--allow-unsigned`: with `verifySig` off, a signature
   ## that is present must still verify and come from a configured signer.
+  ##
+  ## `adoptUnsigned` merges an unsigned `.vault/a/` fragment into the result
+  ## so `rotate --adopt` can rewrite it as a signed record. Without it, and
+  ## while `verifySig` is set, those fragments are listed in `skippedAppends`
+  ## and are not entries. A duplicate id or path is always a skip: the signed
+  ## entry wins.
   let sealed = hasSplitEntries(repo) or hasAppendEntries(repo)
   if publicKeyOnly(cfg) and (sealed or findManifest(repo, cfg).len > 0):
     nvRaise("FATAL: no secret key; cannot read sealed entries.\n" &
@@ -467,16 +484,36 @@ proc loadManifestMeta*(repo: string, verifySig = false,
       result.deks = split.deks
     result.envelope = true
     var seen = initHashSet[string]()
+    var seenPaths: seq[string] = @[]
     for e in result.entries:
       seen.incl(e.id)
-    # Signed records win. An append fragment is only the copy a public-key
-    # writer could produce.
+      seenPaths.add(e.path)
+    # Signed records win. An append fragment is unsigned, so a load that
+    # requires a signature does not trust it unless this call is adopting.
     let appended = loadAppendEntries(repo, cfg)
     for e in appended.entries:
-      if e.id notin seen:
-        result.entries.add(e)
-        if e.id in appended.deks:
-          result.deks[e.id] = appended.deks[e.id]
+      var dupPath = false
+      for p in seenPaths:
+        if p == e.path or resolvePath(cfg, p) == resolvePath(cfg, e.path):
+          dupPath = true
+          break
+      if e.id in seen or dupPath:
+        let why = if e.id in seen: "signed id" else: "signed path " & e.path
+        result.skippedAppends.add((e.id, e.path,
+          &"unsigned append fragment {e.id} duplicates {why}; signed entry kept"))
+        continue
+      if verifySig and not adoptUnsigned:
+        result.skippedAppends.add((e.id, e.path,
+          &"unsigned append fragment {e.id} for {e.path} is not signed and was not adopted"))
+        continue
+      result.entries.add(e)
+      seen.incl(e.id)
+      seenPaths.add(e.path)
+      if e.id in appended.deks:
+        result.deks[e.id] = appended.deks[e.id]
+    if (verifySig or adoptUnsigned) and appended.unread > 0:
+      result.skippedAppends.add(("", "",
+        &"{appended.unread} unsigned append fragment(s) could not be opened"))
     # Seal key still lives on the stub combined manifest when one exists.
     let encStub = findManifest(repo, cfg)
     if encStub.len > 0:
@@ -498,7 +535,7 @@ proc loadManifestMeta*(repo: string, verifySig = false,
     return
   let enc = findManifest(repo, cfg)
   if enc.len == 0:
-    return (@[], "", false, 0, 0, initTable[string, string]())
+    return
   let plain = verifyAndDecryptToString(cfg, enc, verifySig, checkPresent)
   for line in plain.splitLines:
     let stripped = line.strip()

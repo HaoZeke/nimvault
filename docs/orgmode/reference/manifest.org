@@ -139,9 +139,11 @@ The signed records are the integrity anchor. On ~unseal~:
 With a secret key, ~nimvault check~ decrypts the records this identity can
 open, reads their digests, and compares each payload blob to its digest.
 Records this identity cannot open are counted and reported, not treated as
-added payloads. Without a secret key, ~check~ compares payload ids to
-~.vault/blob-index~ and does not decrypt. ~--digests~ diffs a previous
-snapshot of the ciphertext. See [[file:../howto/machine-writers.org][machine writers]].
+added payloads. Without a secret key, ~check~ fails on a signer-configured
+vault unless ~--public-only~ is set. That mode compares payload ids to
+~.vault/blob-index~ and does not decrypt; the index shows accidental drift
+only. ~--digests~ diffs a previous snapshot of the ciphertext and is the
+tamper signal. See [[file:../howto/machine-writers.org][machine writers]].
 
 For the signed records this prevents forgery (attacker encrypts a malicious
 blob to your public key), ciphertext swapping (attacker renames blobs), and
@@ -180,13 +182,17 @@ A signature on ~e/~ proves the long-term signing key produced that ciphertext.
 An encrypt-only fragment has no signature. A per-run key would prove only that
 the writer could sign what it had just written.
 
-A signed record wins when both exist for one id. ~rotate~ rewrites every
-openable fragment as a signed ~e/~ record and deletes the fragment. ~seal~
-does that only when the fragment no longer matches the entry.
+A signed record wins when both exist for one id or one path. A keyed load
+does not trust an unsigned fragment while signing is required. ~rotate
+--adopt~ rewrites a fragment that does not duplicate a signed entry as a
+signed ~e/~ record and deletes the fragment. ~seal~ does not. ~check~ fails
+while an unadopted fragment or a duplicate remains. ~get~ and ~unseal~ skip
+it and warn.
 
-The fragment is not a signature. A plant is visible to ~check --digests~
-against a snapshot the writer did not rewrite, and to git. An older binary
-ignores ~.vault/a/~.
+The fragment is not a signature. The blob-index is not one either: a public
+writer updates it. A plant is visible to ~check --digests~ against a
+snapshot the writer did not rewrite, and to git. An older binary ignores
+~.vault/a/~.
 
 * Blob index
 
@@ -197,8 +203,9 @@ ignores ~.vault/a/~.
 
 No paths. ~add~ and ~seal~ upsert the id they wrote and leave every other
 line. ~rm~ drops its line. A writer who cannot read the other entries must
-not drop them. Keyless ~check~ diffs top-level 16-hex payloads against this
-file: added, changed, missing.
+not drop them. The file is unsigned. Keyless ~check --public-only~ diffs
+top-level 16-hex payloads against it (added, changed, missing) and that
+detects accidental drift only. ~--digests~ is the tamper signal.
 
 * Digest list
 

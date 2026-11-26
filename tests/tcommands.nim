@@ -1418,8 +1418,8 @@ removeDir(incRepo)
 
 block publicKeyWriterSealsWithoutASecretKey:
   ## A runner that holds only recipient public keys must append an entry
-  ## without decrypting what is already sealed, and a reader of either key
-  ## must be able to open that entry. Signed records stay signed.
+  ## without decrypting what is already sealed. A reader does not trust that
+  ## fragment until rotate --adopt. Signed records stay signed.
   let ownerHome = getEnv("GNUPGHOME")
   let ownerKey = keyId
   var personaHome = ""
@@ -1527,12 +1527,18 @@ block publicKeyWriterSealsWithoutASecretKey:
              "personas/mosswell/**"
 
     # Keyless tamper report: added, changed, missing, and a previous digest list.
-    var ck = checkVault(r, c)
+    # The blob-index path is explicit. A missing secret key alone must not pass.
+    var pub = c
+    pub.publicOnly = true
+    let implicit = checkVault(r, c)
+    doAssert implicit.problems.len > 0, $implicit.problems
+    doAssert "no decrypt key" in implicit.problems.join("\n"), $implicit.problems
+    var ck = checkVault(r, pub)
     doAssert ck.keyless
     doAssert ck.problems.len == 0, $ck.problems
     let dig = r / "digests.txt"
     writeDigestFile(dig, vaultCipherDigests(r))
-    doAssert checkVault(r, c, dig).problems.len == 0
+    doAssert checkVault(r, pub, dig).problems.len == 0
 
     # The digest list is the keyless anchor. Drop the blob-index and replace
     # a signed record with bytes that will not decrypt: check reports the
@@ -1543,11 +1549,11 @@ block publicKeyWriterSealsWithoutASecretKey:
     # The snapshot has to describe the tree under test. blob-index was in
     # the previous one, and removing it is itself a digest change.
     writeDigestFile(dig, vaultCipherDigests(r))
-    doAssert checkVault(r, c, dig).problems.len == 0
+    doAssert checkVault(r, pub, dig).problems.len == 0
     let recPath = findEntryFile(r, c, oldId)
     let recSaved = readFile(recPath)
     writeFile(recPath, "not-a-gpg-message")
-    let listed = checkVault(r, c, dig)
+    let listed = checkVault(r, pub, dig)
     doAssert listed.keyless
     doAssert "decrypt" notin listed.problems.join("\n")
     doAssert listed.digestChanged.len > 0
@@ -1558,7 +1564,7 @@ block publicKeyWriterSealsWithoutASecretKey:
     let blob = findBlob(r, c, noteId)
     let good = readFile(blob)
     writeFile(blob, good & "x")
-    ck = checkVault(r, c, dig)
+    ck = checkVault(r, pub, dig)
     doAssert noteId in ck.changed
     doAssert ck.digestChanged.len > 0
     let cj = parseJson(checkJson(ck))
@@ -1567,25 +1573,31 @@ block publicKeyWriterSealsWithoutASecretKey:
     writeFile(blob, good)
 
     removeFile(blob)
-    ck = checkVault(r, c)
+    ck = checkVault(r, pub)
     doAssert noteId in ck.missing
     writeFile(blob, good)
 
     let stray = r / ".vault" / "0123456789abcdef.gpg"
     writeFile(stray, "planted")
-    ck = checkVault(r, c)
+    ck = checkVault(r, pub)
     doAssert "0123456789abcdef" in ck.added
     removeFile(stray)
-    doAssert checkVault(r, c).problems.len == 0
+    doAssert checkVault(r, pub).problems.len == 0
 
-    # Readers who hold a recipient secret key open the fragment.
+    # A keyed reader does not trust the unsigned fragment until rotate --adopt.
     # A signed record with no signature is still refused.
     putEnv("GNUPGHOME", ownerHome)
-    doAssert get(r, note, c, allowUnsigned = false) == "private-stance"
+    var blocked = false
+    try:
+      discard get(r, note, c, allowUnsigned = false)
+    except CatchableError as e:
+      blocked = true
+      doAssert "not signed" in e.msg or "unsigned" in e.msg, e.msg
+    doAssert blocked, "a keyed get must skip an unadopted fragment"
+    doAssert checkVault(r, c).problems.len > 0
     let whoText = whoReport(r, c)
     doAssert "personas/mosswell/**" in whoText
     doAssert parseJson(statusJson(r, c))["ok"].getBool
-    doAssert parseJson(doctorJson(r, c))["ok"].getBool
     doAssert parseJson(checkJson(checkVault(r, c)))["manifest"].hasKey("added")
 
     let plant = entryDir(r) / (noteId & ".gpg")
@@ -1598,9 +1610,25 @@ block publicKeyWriterSealsWithoutASecretKey:
       doAssert "missing signature" in e.msg, e.msg
     doAssert unsignedRefused, "an unsigned file in e/ must still be refused"
     removeFile(plant)
+    doAssert loadManifest(r, verifySig = true, cfg = c).len == 1
+
+    # Adoption re-encrypts the record to the wrap recipients, so the persona
+    # public key has to be on this keyring. The append itself was sealed from
+    # the public-only home, which is the only place that key was imported.
+    let (impOwn, impOwnCode) = execCmdEx(
+      &"gpg --batch --import {personaPub.quoteShell}")
+    doAssert impOwnCode == 0, impOwn
+    rotate(r, c, adopt = true)
+    doAssert get(r, note, c, allowUnsigned = false) == "private-stance"
     doAssert loadManifest(r, verifySig = true, cfg = c).len >= 2
+    doAssert parseJson(doctorJson(r, c))["ok"].getBool
 
     putEnv("GNUPGHOME", personaHome)
+    # The adopted record is signed by the owner. gpg will not verify that
+    # signature in a home that only holds the persona secret key.
+    let (impSigner, impSignerCode) = execCmdEx(
+      &"gpg --batch --import {ownerPub.quoteShell}")
+    doAssert impSignerCode == 0, impSigner
     doAssert get(r, note, c, allowUnsigned = false) == "private-stance"
 
     # A rule that seals to nobody writes nothing.
@@ -1626,6 +1654,7 @@ block publicKeyWriterSealsWithoutASecretKey:
         blobsAfter.inc
     doAssert blobsAfter == blobsBefore, "a nobody-rule must not write ciphertext"
 
+    discard execCmdEx(&"gpg --batch --yes --delete-keys {personaKey}")
     echo "PASS: public-key writer seals without a secret key"
   finally:
     nvNonInteractive = false

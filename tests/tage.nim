@@ -461,7 +461,14 @@ block ageWriterHasNoSigningKey:
 
   let dig = work / "cipher-digests.txt"
   writeDigestFile(dig, vaultCipherDigests(work))
-  let writer = GpgConfig(recipient: recipient, root: work, backend: "age")
+  let writer = GpgConfig(recipient: recipient, root: work, backend: "age",
+                         publicOnly: true)
+  var implicit = writer
+  implicit.publicOnly = false
+  let refused = checkVault(work, implicit, dig)
+  doAssert refused.problems.len > 0,
+    "a missing age identity must not pass check without --public-only"
+  doAssert "no decrypt key" in refused.problems.join("\n"), $refused.problems
   let clean = checkVault(work, writer, dig)
   doAssert clean.keyless, "check with no age identity must not decrypt records"
   doAssert clean.problems.len == 0, $clean.problems
@@ -489,6 +496,14 @@ block ageWriterHasNoSigningKey:
   doAssert appendPath.len > 0, "encrypt-only add must write .vault/a/<id>.age"
   doAssert not fileExists(appendPath & ".sig"),
     "an encrypt-only fragment is not signed"
+  var blocked = false
+  try:
+    discard get(work, note, ownerCfg)
+  except CatchableError as e:
+    blocked = true
+    doAssert "not signed" in e.msg or "unsigned" in e.msg, e.msg
+  doAssert blocked, "owner get must skip an unadopted age fragment"
+  rotate(work, ownerCfg, adopt = true)
   doAssert get(work, note, ownerCfg) == "age-public-stance"
   echo "PASS: age public-key writer seals without an ssh key"
 

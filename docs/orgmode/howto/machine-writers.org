@@ -45,16 +45,19 @@ and the payload digest is still inside the ciphertext.
 The fragment under ~.vault/a/~ is not signed. A key minted for that one run
 would prove only that the process which encrypted the fragment could also
 sign it. Anyone holding the recipient public key can do that, so it is not
-used. Keyless integrity is the plaintext digest list: ~check --digests~
-compares ciphertext bytes with a list written earlier. It does not say who
-wrote them.
+used. The same person can rewrite ~.vault/blob-index~, which is unsigned and
+carries no paths. A keyless ~check~ that matches the blob-index detects
+accidental drift only: a blob edited or deleted outside nimvault. It does
+not say who wrote an entry, and it does not see a plant that updated the
+index. ~check --digests~ against a snapshot taken outside that change is the
+tamper signal.
 
-Anyone who has the recipient public keys can plant a fragment. The digest
-list, taken from outside that change, is what makes the plant visible. A
-holder of a decrypt key adopts a fragment with ~rotate~, which rewrites every
-openable fragment as a signed ~.vault/e/~ record. ~seal~ does that when the
-fragment no longer matches the entry; an unchanged fragment stays where it
-is, so a no-op seal does not churn ciphertext.
+A keyed reader does not trust an unsigned fragment while signing is
+required. ~check~ fails. ~get~ and ~unseal~ skip the fragment and warn.
+~rotate --adopt~ rewrites a fragment that does not duplicate a signed id or
+path as a signed ~.vault/e/~ record. ~seal~ does not adopt one. A duplicate
+path or id across ~e/~ and ~a/~ is never trusted: the signed entry wins, and
+~check~ keeps failing until that fragment is gone.
 
 #+begin_src yaml
 - name: Append with public keys only
@@ -132,13 +135,17 @@ records. ~who PATH~, ~add~, ~seal~, ~check~ and ~doctor~ do not.
 * Check without a key
 
 With a secret key, ~check~ compares each blob to the hash in the records it
-can open. A missing blob, a hash mismatch, and a payload id that is not in
-those records are all problems.
+can open. A missing blob, a hash mismatch, a payload id that is not in
+those records, and an unsigned ~.vault/a/~ fragment are all problems.
+~get~ and ~unseal~ skip that fragment until ~rotate --adopt~.
 
-Without a decrypt key (no gpg secret key, or no age identity file) it does
-not decrypt records. It compares top-level
-~.vault/<16 hex>.gpg~ (and ~.age~) files to ~.vault/blob-index~.
-~keys.<group>.gpg~ is not a payload.
+A missing decrypt key does not enter the keyless comparison by itself. On a
+signer-configured vault that is a failure, unless ~--public-only~ (or
+~NIMVAULT_PUBLIC_ONLY=1~) was set. With that flag, ~check~ does not decrypt
+records. It compares top-level ~.vault/<16 hex>.gpg~ (and ~.age~) files to
+~.vault/blob-index~. ~keys.<group>.gpg~ is not a payload. The index is
+unsigned and writable by the same public writer, so this comparison is
+accidental drift only. Pass ~--digests~ for a tamper check.
 
 #+begin_src text
 # nimvault-blob-index-v1
@@ -147,7 +154,10 @@ not decrypt records. It compares top-level
 
 Added, changed and missing ids are problems. If ciphertext exists and there
 is no index and no ~--digests~ file, the problem is ~no blob-index and no
-digest list; cannot check without a key~.
+digest list; cannot check without a key~. If the blob-index and the records
+are both gone but a manifest or data-key file remains, that is not an empty
+vault: ~check~ fails unless ~--digests~ is passed, which is what a CI job
+needs in order to pass.
 
 ~--write-digests FILE~ writes every file under ~.vault/~ except ~config~ and
 ~*.tmp~, including the blob-index. The file is the bytes on disk, even when

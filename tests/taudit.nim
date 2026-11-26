@@ -1783,7 +1783,14 @@ block checkWithoutSecretKey:
     doAssert pcode == 0 and "pub:" in pubs, pubs
     let (secs, _) = execCmdEx("gpg --list-secret-keys --with-colons")
     doAssert "sec:" notin secs and "ssb:" notin secs, secs
-    let looked = checkVault(r, c)
+    let implicit = checkVault(r, c)
+    doAssert implicit.problems.len > 0,
+      "missing secret key must not pass check without --public-only: " &
+      $implicit.problems
+    doAssert "no decrypt key" in implicit.problems.join("\n"), $implicit.problems
+    var pub = c
+    pub.publicOnly = true
+    let looked = checkVault(r, pub)
     doAssert looked.keyless, "a public key must take the blob-index path"
     doAssert looked.problems.len == 0,
       "a just-sealed vault matches its blob-index: " & $looked.problems
@@ -1796,7 +1803,7 @@ block checkWithoutSecretKey:
     let fh = open(blobPath, fmAppend)
     fh.write("tamper")
     fh.close()
-    let tampered = checkVault(r, c)
+    let tampered = checkVault(r, pub)
     doAssert tampered.changed.len == 1, $tampered
     doAssert tampered.problems.len > 0
     for p in tampered.problems:
@@ -1804,7 +1811,7 @@ block checkWithoutSecretKey:
       doAssert "decrypt" notin p, p
     var raised = false
     try:
-      check(r, c)
+      check(r, pub)
     except CatchableError as e:
       raised = true
       doAssert "check-needs-the-secret" notin e.msg, e.msg

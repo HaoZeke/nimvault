@@ -95,14 +95,26 @@ proc ageIdentityPresent(cfg: GpgConfig): bool =
     p = getHomeDir() / p[2 .. ^1]
   fileExists(p)
 
+proc explicitPublicOnly*(cfg: GpgConfig): bool =
+  ## True only when the caller asked for the public-key lane.
+  ## A missing age identity or gpg secret key is not this. `check` must not
+  ## treat that implicit case as a passing keyless audit of a signer-configured
+  ## vault.
+  cfg.publicOnly or getEnv("NIMVAULT_PUBLIC_ONLY") == "1"
+
 proc publicKeyOnly*(cfg: GpgConfig): bool =
   ## Encrypt to public keys and do not decrypt or sign.
   ##
   ## gpg signs in the same operation as `-e`, so a home with no secret key
   ## cannot produce a signed record. age does not sign; the ssh key does, and
-  ## the identity file is what decrypts. No identity file is that same case.
-  ## `--public-only` forces it when a decrypt key is present and must not be used.
-  if cfg.publicOnly or getEnv("NIMVAULT_PUBLIC_ONLY") == "1":
+  ## the identity file is what decrypts. No identity file selects this lane
+  ## for `add` and `seal`, which can still append. `--public-only` forces it
+  ## when a decrypt key is present and must not be used.
+  ##
+  ## `check` is not that lane. Only `explicitPublicOnly` may pass a keyless
+  ## comparison. A signer-configured vault whose decrypt key is simply absent
+  ## fails closed.
+  if explicitPublicOnly(cfg):
     return true
   if cfg.backend == "age":
     return not ageIdentityPresent(cfg)

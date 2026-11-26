@@ -127,12 +127,13 @@ proc doStatus(recipient = "", vault = "", json = false, noninteractive = false) 
     else:
       commands.status(repo, cfg)
 
-proc doRotate(recipient = "", rekey = false, vault = "") =
+proc doRotate(recipient = "", rekey = false, adopt = false, vault = "") =
   ## Rewrap the data keys to the current recipients. `--rekey` re-encrypts every
   ## payload instead, which is the only form that answers a key compromise.
+  ## `--adopt` signs unsigned public-key fragments into `.vault/e/`.
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    commands.rotate(repo, cfg, rekey)
+    commands.rotate(repo, cfg, rekey, adopt)
 
 proc doGc(recipient = "", dryRun = false, vault = "") =
   ## Remove blobs no manifest entry points at.
@@ -142,7 +143,8 @@ proc doGc(recipient = "", dryRun = false, vault = "") =
 
 proc doCheck(recipient = "", vault = "", json = false, noninteractive = false,
              publicOnly = false, digests = "", writeDigests = "") =
-  ## Blob-vs-manifest consistency, or blob-vs-blob-index with no secret key.
+  ## Blob-vs-manifest consistency. `--public-only` compares the blob-index,
+  ## which detects accidental drift; `--digests` is the tamper check.
   ## Exits 2 when anything is off, so a hook or a CI job can gate on it.
   ## `--digests` compares ciphertext hashes to a previous list. `--write-digests`
   ## records the list that is on disk now.
@@ -254,7 +256,7 @@ proc main*(args: seq[string] = commandLineParams()) =
      help = {"recipient": rh, "vault": vh,
              "json": "one JSON object on stdout; exit 2 when inconsistent",
              "noninteractive": "fail instead of prompting for a passphrase",
-             "publicOnly": "compare blobs to the blob-index, not the manifest",
+             "publicOnly": "compare blobs to the blob-index for accidental drift, not tampering",
              "digests": "compare ciphertext hashes to this previous list",
              "writeDigests": "write the ciphertext hashes that are on disk now"}],
     [doGc, cmdName = "gc",
@@ -262,7 +264,8 @@ proc main*(args: seq[string] = commandLineParams()) =
              "dryRun": "list orphans without removing them"}],
     [doRotate, cmdName = "rotate",
      help = {"recipient": rh, "vault": vh,
-             "rekey": "re-encrypt every payload, not just the key wrapping"}],
+             "rekey": "re-encrypt every payload, not just the key wrapping",
+             "adopt": "sign unsigned .vault/a/ fragments into .vault/e/; a signed path or id wins"}],
     [doScan, cmdName = "scan", positional = "path",
      help = {"recipient": rh, "vault": vh,
              "cached": "scan the git index instead of the worktree",
