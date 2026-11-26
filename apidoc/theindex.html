@@ -550,9 +550,11 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
                 groupOf: Table[string, string];
-                recipsOf: Table[string, seq[string]])" href="nimvault/dek.html#saveDeksGrouped%2Cstring%2CGpgConfig%2CDekTable%2CTable%5Bstring%2Cstring%5D%2CTable%5Bstring%2Cseq%5Bstring%5D%5D">dek: proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
+                recipsOf: Table[string, seq[string]];
+                onlyGroups: seq[string] = @[])" href="nimvault/dek.html#saveDeksGrouped%2Cstring%2CGpgConfig%2CDekTable%2CTable%5Bstring%2Cstring%5D%2CTable%5Bstring%2Cseq%5Bstring%5D%5D%2Cseq%5Bstring%5D">dek: proc saveDeksGrouped(repo: string; cfg: GpgConfig; deks: DekTable;
                 groupOf: Table[string, string];
-                recipsOf: Table[string, seq[string]])</a></li>
+                recipsOf: Table[string, seq[string]];
+                onlyGroups: seq[string] = @[])</a></li>
           </ul></dd>
 <dt><a name="saveEntryRecord" href="#saveEntryRecord"><span>saveEntryRecord:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -562,9 +564,11 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
              sealKey = &quot;&quot;; envelope = false;
-             knownDeks: DekTable = initTable[string, string](); haveDeks = false)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring%2CDekTable">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             knownDeks: DekTable = initTable[string, string]();
+             haveDeks = false; splitEntries = true)" href="nimvault/manifest.html#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring%2CDekTable">manifest: proc saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
              sealKey = &quot;&quot;; envelope = false;
-             knownDeks: DekTable = initTable[string, string](); haveDeks = false)</a></li>
+             knownDeks: DekTable = initTable[string, string]();
+             haveDeks = false; splitEntries = true)</a></li>
           </ul></dd>
 <dt><a name="saveManifestKeep" href="#saveManifestKeep"><span>saveManifestKeep:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -596,7 +600,7 @@
           </ul></dd>
 <dt><a name="seal" href="#seal"><span>seal:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc seal(repo: string; cfg: GpgConfig; force = false)" href="nimvault/commands.html#seal%2Cstring%2CGpgConfig">commands: proc seal(repo: string; cfg: GpgConfig; force = false)</a></li>
+          data-doc-search-tag="commands: proc seal(repo: string; cfg: GpgConfig; force = false; only: seq[string] = @[])" href="nimvault/commands.html#seal%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc seal(repo: string; cfg: GpgConfig; force = false; only: seq[string] = @[])</a></li>
           </ul></dd>
 <dt><a name="sealKey" href="#sealKey"><span>sealKey:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -768,7 +772,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-20 19:40:34 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:39:08 UTC</small>
       </div>
     </div>
   </div>

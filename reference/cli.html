@@ -318,10 +318,29 @@ subcommand is a thin wrapper around the corresponding <code class="docutils lite
 <h2><a class="toc-backref" href="#id4" role="doc-backlink">2 Commands</a><a class="headerlink" href="#commands" title="Link to this heading">¶</a></h2>
 <section id="seal">
 <h3><a class="toc-backref" href="#id5" role="doc-backlink">2.1 seal</a><a class="headerlink" href="#seal" title="Link to this heading">¶</a></h3>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault seal [--recipient KEY] [--force]
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">nimvault seal [PATH...] [--recipient KEY] [--force]
 </span></pre></div>
 </div>
-<p>Encrypt every entry whose plaintext changed, and write the manifest.</p>
+<p>Encrypt tracked entries whose plaintext changed, and write their metadata.</p>
+<p>With no paths, seal processes every entry. Paths select exact tracked files;
+directories do not expand to subtrees. Paths use the same root and home
+resolution as <code class="docutils literal notranslate"><span class="pre">add</span></code>. Repeated spellings of one entry are deduplicated. Every
+selector must identify exactly one entry; missing or ambiguous paths fail before
+any payload is written. All selected plaintext must exist. Unselected plaintext
+is neither read nor required to exist.</p>
+<p>For example, <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">seal</span> <span class="pre">~/.config/example/settings.ini</span></code> updates that entry
+without sealing other edited files. <code class="docutils literal notranslate"><span class="pre">--force</span></code> applies only to selected entries.
+Every unselected payload and per-entry encrypted record (including its signature)
+is retained. A shared data-key group changes only when a selected member changes;
+its unselected keys retain their values and unrelated groups are not rewritten.
+Legacy combined manifests retain every unselected row and remain combined.</p>
+<p>A selected seal requires the configured encryption settings to match the recorded
+seal-key marker, and retains that marker. Missing or changed settings are an
+error before any payload is written: a vault-wide migration or key rotation is a
+separate explicit full seal. This prevents a partial operation from regrouping
+unselected data keys under new recipients. The selected entries use the existing
+encryption and signature checks; selecting a path does not permit unsigned
+metadata.</p>
 <p>Only changed files are re-encrypted. Encryption output is not deterministic –
 both backends draw a fresh session key per run – so re-encrypting an untouched
 file would still produce a different blob, and a one-file edit used to arrive as
@@ -338,11 +357,11 @@ is updated to name that file, and only then is it renamed over the live blob.
 A crash before the record is durable leaves the previous blob in place. A
 crash after the record is written leaves <code class="docutils literal notranslate"><span class="pre">.pending</span></code>, which the next read
 promotes when its hash matches.</p>
-<p>Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+<p>Exits non-zero if any selected plaintext file is missing, or if a plaintext path, or a
 directory symlink above it, resolves outside <code class="docutils literal notranslate"><span class="pre">$HOME</span></code> or <code class="docutils literal notranslate"><span class="pre">root</span></code>. <code class="docutils literal notranslate"><span class="pre">rotate</span> <span class="pre">--rekey</span></code> seals, so it refuses the same paths.</p>
 <section id="force">
 <h4><a class="toc-backref" href="#id6" role="doc-backlink">2.1.1 <code class="docutils literal notranslate"><span class="pre">--force</span></code></a><a class="headerlink" href="#force" title="Link to this heading">¶</a></h4>
-<p>Re-encrypt every entry, not only the changed ones.</p>
+<p>Re-encrypt every selected entry, not only the changed ones.</p>
 </section>
 </section>
 <section id="unseal">

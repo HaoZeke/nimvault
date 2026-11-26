@@ -148,9 +148,11 @@
 <ul class="simple nested-toc-section">saveManifest
   <li><a class="reference" href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring%2CDekTable" title="saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
              sealKey = &quot;&quot;; envelope = false;
-             knownDeks: DekTable = initTable[string, string](); haveDeks = false)">saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
+             knownDeks: DekTable = initTable[string, string]();
+             haveDeks = false; splitEntries = true)">saveManifest(repo: string; entries: seq[VaultEntry]; cfg: GpgConfig;
              sealKey = &quot;&quot;; envelope = false;
-             knownDeks: DekTable = initTable[string, string](); haveDeks = false)</a></li>
+             knownDeks: DekTable = initTable[string, string]();
+             haveDeks = false; splitEntries = true)</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">saveManifestKeep
@@ -445,10 +447,11 @@
   <dt><pre><span class="Keyword">proc</span> <a href="#saveManifest%2Cstring%2Cseq%5BVaultEntry%5D%2CGpgConfig%2Cstring%2CDekTable"><span class="Identifier">saveManifest</span></a><span class="Other">(</span><span class="Identifier">repo</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">entries</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="manifest.html#VaultEntry"><span class="Identifier">VaultEntry</span></a><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span>
                   <span class="Identifier">sealKey</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">;</span> <span class="Identifier">envelope</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
                   <span class="Identifier">knownDeks</span><span class="Other">:</span> <a href="dek.html#DekTable"><span class="Identifier">DekTable</span></a> <span class="Other">=</span> <span class="Identifier">initTable</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">,</span> <span class="Identifier">string</span><span class="Other">]</span><span class="Other">(</span><span class="Other">)</span><span class="Other">;</span>
-                  <span class="Identifier">haveDeks</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span>
-    <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
-    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span>
-    <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+                  <span class="Identifier">haveDeks</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">splitEntries</span> <span class="Other">=</span> <span class="Identifier">true</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span>
+    <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">NimvaultError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span>
+    <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">WriteDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span>
+                                 <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span>
+                                 <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
     Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt. A non-empty <tt class="docutils literal"><span class="pre"><span class="Identifier">sealKey</span></span></tt> records what the blobs are encrypted to (v5), which is what lets a later <tt class="docutils literal"><span class="pre"><span class="Identifier">seal</span></span></tt> skip unchanged files without going stale across a recipient change.
@@ -546,7 +549,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-20 19:40:33 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:39:07 UTC</small>
       </div>
     </div>
   </div>
