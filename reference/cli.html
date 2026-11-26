@@ -322,25 +322,23 @@ subcommand is a thin wrapper around the corresponding <code class="docutils lite
 </span></pre></div>
 </div>
 <p>Encrypt tracked entries whose plaintext changed, and write their metadata.</p>
-<p>With no paths, seal processes every entry. Paths select exact tracked files;
-directories do not expand to subtrees. Paths use the same root and home
-resolution as <code class="docutils literal notranslate"><span class="pre">add</span></code>. Repeated spellings of one entry are deduplicated. Every
-selector must identify exactly one entry; missing or ambiguous paths fail before
-any payload is written. All selected plaintext must exist. Unselected plaintext
+<p>With no paths, seal processes every entry. Supply the exact paths of tracked
+files. Paths use the same root and home
+resolution as <code class="docutils literal notranslate"><span class="pre">add</span></code>. Repeated spellings of one entry are deduplicated.
+Each selector must identify exactly one entry. Missing or ambiguous paths fail
+before the vault writes any payload. All selected plaintext must exist. Unselected plaintext
 is neither read nor required to exist.</p>
 <p>For example, <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">seal</span> <span class="pre">~/.config/example/settings.ini</span></code> updates that entry
 without sealing other edited files. <code class="docutils literal notranslate"><span class="pre">--force</span></code> applies only to selected entries.
 Every unselected payload and per-entry encrypted record (including its signature)
-is retained. A shared data-key group changes only when a selected member changes;
-its unselected keys retain their values and unrelated groups are not rewritten.
+is retained. A shared data-key group changes only when a selected member changes. The update
+preserves the unselected keys and leaves unrelated groups untouched.
 Legacy combined manifests retain every unselected row and remain combined.</p>
 <p>A selected seal requires the configured encryption settings to match the recorded
-seal-key marker, and retains that marker. Missing or changed settings are an
-error before any payload is written: a vault-wide migration or key rotation is a
-separate explicit full seal. This prevents a partial operation from regrouping
+seal-key marker. A vault-wide migration or key rotation requires an explicit
+full seal. This prevents a partial operation from regrouping
 unselected data keys under new recipients. The selected entries use the existing
-encryption and signature checks; selecting a path does not permit unsigned
-metadata.</p>
+encryption and signature checks.</p>
 <p>Only changed files are re-encrypted. Encryption output is not deterministic –
 both backends draw a fresh session key per run – so re-encrypting an untouched
 file would still produce a different blob, and a one-file edit used to arrive as

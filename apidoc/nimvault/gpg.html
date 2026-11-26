@@ -57,12 +57,13 @@
     <ul class="simple simple-toc-section">
       <li><a class="reference" href="#GpgConfig" title="GpgConfig = object
   recipient*: string
-  root*: string ## When non-empty, paths are relative to this dir (not ~/...)
-                ## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the
-                ## long-standing behaviour where signing and encryption are one operation.
-                ## &quot;age&quot; separates them: age has no signing, so authenticity moves to a
-                ## detached signature over the manifest, whose recorded hashes already
-                ## cover every blob.
+  root*: string              ## When non-empty, paths are relative to this dir (not ~/...)
+  configuredRoot*: string ## Preserve whether the root depends on the vault location.
+                          ## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the
+                          ## long-standing behaviour where signing and encryption are one operation.
+                          ## &quot;age&quot; separates them: age has no signing, so authenticity moves to a
+                          ## detached signature over the manifest, whose recorded hashes already
+                          ## cover every blob.
   backend*: string           ## &quot;gpg&quot; (default) | &quot;age&quot;
   identity*: string          ## age identity file; required when backend is age
   signer*: string            ## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;
@@ -200,12 +201,13 @@
     <div id="GpgConfig">
   <dt><pre><a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
   <span class="Identifier">recipient</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
-  <span class="Identifier">root</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Comment">## When non-empty, paths are relative to this dir (not ~/...)</span>
-                <span class="Comment">## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the</span>
-                <span class="Comment">## long-standing behaviour where signing and encryption are one operation.</span>
-                <span class="Comment">## &quot;age&quot; separates them: age has no signing, so authenticity moves to a</span>
-                <span class="Comment">## detached signature over the manifest, whose recorded hashes already</span>
-                <span class="Comment">## cover every blob.</span>
+  <span class="Identifier">root</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>              <span class="Comment">## When non-empty, paths are relative to this dir (not ~/...)</span>
+  <span class="Identifier">configuredRoot</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Comment">## Preserve whether the root depends on the vault location.</span>
+                          <span class="Comment">## Which primitive encrypts blobs and the manifest. &quot;gpg&quot; keeps the</span>
+                          <span class="Comment">## long-standing behaviour where signing and encryption are one operation.</span>
+                          <span class="Comment">## &quot;age&quot; separates them: age has no signing, so authenticity moves to a</span>
+                          <span class="Comment">## detached signature over the manifest, whose recorded hashes already</span>
+                          <span class="Comment">## cover every blob.</span>
   <span class="Identifier">backend</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>           <span class="Comment">## &quot;gpg&quot; (default) | &quot;age&quot;</span>
   <span class="Identifier">identity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>          <span class="Comment">## age identity file; required when backend is age</span>
   <span class="Identifier">signer</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>            <span class="Comment">## &quot;gpg&quot; (default) | &quot;ssh&quot; | &quot;none&quot;</span>
@@ -532,7 +534,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:39:07 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:42:40 UTC</small>
       </div>
     </div>
   </div>
