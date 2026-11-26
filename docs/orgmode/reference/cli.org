@@ -19,10 +19,32 @@ subcommand is a thin wrapper around the corresponding ~commands~ module proc.
 ** seal
 
 #+begin_src text
-nimvault seal [--recipient KEY] [--force]
+nimvault seal [PATH...] [--recipient KEY] [--force]
 #+end_src
 
-Encrypt every entry whose plaintext changed, and write the manifest.
+Encrypt tracked entries whose plaintext changed, and write their metadata.
+
+With no paths, seal processes every entry. Paths select exact tracked files;
+directories do not expand to subtrees. Paths use the same root and home
+resolution as =add=. Repeated spellings of one entry are deduplicated. Every
+selector must identify exactly one entry; missing or ambiguous paths fail before
+any payload is written. All selected plaintext must exist. Unselected plaintext
+is neither read nor required to exist.
+
+For example, =nimvault seal ~/.config/example/settings.ini= updates that entry
+without sealing other edited files. =--force= applies only to selected entries.
+Every unselected payload and per-entry encrypted record (including its signature)
+is retained. A shared data-key group changes only when a selected member changes;
+its unselected keys retain their values and unrelated groups are not rewritten.
+Legacy combined manifests retain every unselected row and remain combined.
+
+A selected seal requires the configured encryption settings to match the recorded
+seal-key marker, and retains that marker. Missing or changed settings are an
+error before any payload is written: a vault-wide migration or key rotation is a
+separate explicit full seal. This prevents a partial operation from regrouping
+unselected data keys under new recipients. The selected entries use the existing
+encryption and signature checks; selecting a path does not permit unsigned
+metadata.
 
 Only changed files are re-encrypted. Encryption output is not deterministic --
 both backends draw a fresh session key per run -- so re-encrypting an untouched
@@ -44,13 +66,13 @@ A crash before the record is durable leaves the previous blob in place. A
 crash after the record is written leaves ~.pending~, which the next read
 promotes when its hash matches.
 
-Exits non-zero if any plaintext file is missing, or if a plaintext path, or a
+Exits non-zero if any selected plaintext file is missing, or if a plaintext path, or a
 directory symlink above it, resolves outside ~$HOME~ or ~root~. ~rotate
 --rekey~ seals, so it refuses the same paths.
 
 *** ~--force~
 
-Re-encrypt every entry, not only the changed ones.
+Re-encrypt every selected entry, not only the changed ones.
 
 ** unseal
 

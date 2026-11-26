@@ -27,11 +27,12 @@ proc resolve(recipient: string, vault = ""): (string, GpgConfig) =
   warnIfRootIsAmbiguous(repo, cfg.root)
   (repo, cfg)
 
-proc doSeal(recipient = "", force = false, vault = "") =
-  ## Unchanged files keep their existing blob; `--force` re-encrypts every one.
+proc doSeal(path: seq[string] = @[], recipient = "", force = false, vault = "") =
+  ## Paths select exact tracked files; no path seals every entry.
+  ## `--force` re-encrypts every selected file.
   cliRun:
     let (repo, cfg) = resolve(recipient, vault)
-    commands.seal(repo, cfg, force)
+    commands.seal(repo, cfg, force, path)
 
 proc doUnseal(path: seq[string] = @[], recipient = "", allowUnsigned = false,
               vault = "") =
@@ -178,9 +179,10 @@ proc main*(args: seq[string] = commandLineParams()) =
   const vh = "vault repository holding .vault/ (or NIMVAULT_VAULT_REPO, or a " &
              ".nimvault pointer file)"
   dispatchMulti(
-    [doSeal, cmdName = "seal",
+    [doSeal, cmdName = "seal", positional = "path",
      help = {"recipient": rh, "vault": vh,
-             "force": "re-encrypt every file, not only changed ones"}],
+             "path": "seal only these exact tracked files (default: all)",
+             "force": "re-encrypt every selected file, not only changed ones"}],
     [doUnseal, cmdName = "unseal", positional = "path",
      help = {"recipient": rh, "vault": vh,
              "allowUnsigned": "accept records with no signature; a present one must verify",

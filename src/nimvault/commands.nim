@@ -414,6 +414,34 @@ proc selectEntries(cfg: GpgConfig, entries: seq[VaultEntry],
     if matched == 0:
       nvRaise(&"Not in vault: {sel}")
 
+proc selectSealEntries(cfg: GpgConfig, entries: seq[VaultEntry],
+                       only: seq[string]): seq[VaultEntry] =
+  ## Seal selectors name exact tracked files, never directory subtrees.
+  ## Resolve all selectors before reading plaintext or replacing any blob.
+  var trackedPaths = initHashSet[string]()
+  for entry in entries:
+    let path = normalizedPath(absolutePath(resolvePath(cfg, entry.path)))
+    if path in trackedPaths:
+      nvRaise(&"FATAL: ambiguous vault path: {path}")
+    trackedPaths.incl(path)
+  for sel in only:
+    if sel.len == 0:
+      nvRaise("FATAL: seal requires a non-empty file path")
+    let abs = normalizedPath(absolutePath(toAbs(cfg, sel)))
+    var matches: seq[VaultEntry] = @[]
+    for e in entries:
+      if normalizedPath(absolutePath(resolvePath(cfg, e.path))) == abs:
+        matches.add(e)
+    if matches.len == 0:
+      nvRaise(&"Not in vault: {sel} (seal accepts exact file paths)")
+    if matches.len != 1:
+      nvRaise(&"FATAL: ambiguous vault path: {sel}")
+    let entry = matches[0]
+    if not isPathSafe(cfg, entry.path):
+      nvRaise(&"FATAL: unsafe path in manifest: {entry.path}")
+    if not result.anyIt(it.id == entry.id):
+      result.add(entry)
+
 proc persistDeks(repo: string, cfg: GpgConfig, deks: DekTable,
                  entries: seq[VaultEntry]) =
   ## Write the live data keys, grouped the way the current wrap rules say.
@@ -746,8 +774,9 @@ proc discardPendingUnlessRecorded(repo: string, cfg: GpgConfig,
     if key notin named:
       try: removeFile(pend) except CatchableError: discard
 
-proc seal*(repo: string, cfg: GpgConfig, force = false) =
-  ## Encrypt every tracked file whose plaintext changed since the last seal.
+proc seal*(repo: string, cfg: GpgConfig, force = false,
+           only: seq[string] = @[]) =
+  ## Encrypt selected tracked files whose plaintext changed since the last seal.
   ##
   ## Encryption output is not deterministic: GPG and age both draw a fresh
   ## session key per run, so re-encrypting a file nobody edited still produces
@@ -761,6 +790,12 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   let lk {.used.} = acquire(repo)
   let meta = loadManifestMeta(repo, verifySig = recordsNeedSig(cfg), cfg = cfg)
   let entries = meta.entries
+  let selective = only.len > 0
+  let selected = if selective: selectSealEntries(cfg, entries, only)
+                 else: entries
+  var selectedIds = initHashSet[string]()
+  for e in selected:
+    selectedIds.incl(e.id)
   if entries.len == 0:
     if splitRecordIds(repo).len > 0:
       nvRaise("FATAL: no records this identity can open.\n" &
@@ -776,10 +811,13 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     nvEcho("vault is empty")
     return
 
-  banner("Sealing vault ...")
+  if selective:
+    banner(&"Sealing {selected.len} selected entries ...")
+  else:
+    banner("Sealing vault ...")
 
-  # Verify all plaintext files exist first
-  for e in entries:
+  # Verify all selected plaintext files exist before encrypting any of them.
+  for e in selected:
     let src = resolvePath(cfg, e.path)
     if not fileExists(src):
       stderr.writeLine &"FATAL: plaintext missing: {src}"
@@ -787,6 +825,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     assertReadPath(cfg, repo, src)
 
   let currentKey = sealKey(cfg)
+  if selective and (meta.sealKey.len == 0 or meta.sealKey != currentKey):
+    nvRaise("FATAL: selected seal requires unchanged recorded encryption settings.\n" &
+            "  A vault-wide migration or key rotation requires an explicit full seal.")
   # No recorded key means a v4 or older manifest: seal everything once to
   # establish one, rather than trusting hashes written under unknown settings.
   let resealAll = force or meta.sealKey.len == 0 or meta.sealKey != currentKey
@@ -795,6 +836,9 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   var todo: seq[VaultEntry] = @[]
   var keptIds = initHashSet[string]()
   for e in entries:
+    if e.id notin selectedIds:
+      keptIds.incl(e.id)
+  for e in selected:
     let plainPath = resolvePath(cfg, e.path)
     let ph = sha256sum(plainPath)
     plainHashes[e.id] = ph
@@ -819,6 +863,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
   # small, and a key that never outlives the bytes it protects is the cheaper
   # thing to reason about.
   var deks = loadDeks(repo, cfg)
+  let splitSeal = hasSplitEntries(repo)
   # Which recipients may open each entry. With no `wrap` rules every entry
   # lands in one group holding the configured recipient, which is byte for
   # byte the behaviour before groups existed.
@@ -842,11 +887,20 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     for e in todo:
       let inPath = resolvePath(cfg, e.path)
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
-      let key = newDek(cfg)
-      encryptWithDek(cfg, key, inPath, pend)
       pendingPaths.add(pend)
+      if selective and not splitSeal:
+        # Combined records do not carry data keys. Keep the existing
+        # encryption mode so every committed state can open its payload.
+        let key = deks.getOrDefault(e.id)
+        if key.len > 0:
+          encryptWithDek(cfg, key, inPath, pend)
+        else:
+          encryptFileTo(cfg, recipsOf[groupOf[e.id]], inPath, pend)
+      else:
+        let key = newDek(cfg)
+        encryptWithDek(cfg, key, inPath, pend)
+        deks[e.id] = key
       pendingHash[e.id] = sha256sum(pend)
-      deks[e.id] = key
       syncPath(pend)
       nvEcho(&"  {e.path}")
 
@@ -857,7 +911,7 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
       live.incl(e.id)
     var stale: seq[string] = @[]
     for id in deks.keys:
-      if id notin live:
+      if not selective and id notin live:
         stale.add(id)
     for id in stale:
       deks.del(id)
@@ -882,11 +936,17 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
     if todo.len == 0 and meta.sealKey == currentKey and hashedEntries == entries:
       if stale.len > 0:
         saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
-      nvEcho(&"\nNothing to seal; {entries.len} file(s) already current.")
+      nvEcho(&"\nNothing to seal; {selected.len} file(s) already current.")
       return
 
-    saveManifest(repo, hashedEntries, cfg, currentKey, envelope = true,
-                 knownDeks = deks, haveDeks = true)
+    if selective and splitSeal:
+      saveSplitEntries(repo, cfg, hashedEntries.filterIt(it.id in selectedIds), deks)
+    elif selective:
+      saveManifest(repo, hashedEntries, cfg, meta.sealKey,
+                   envelope = meta.envelope, splitEntries = false)
+    else:
+      saveManifest(repo, hashedEntries, cfg, currentKey, envelope = true,
+                   knownDeks = deks, haveDeks = true)
     recordsCommitted = true
     for e in todo:
       let pend = crypto.blobPath(repo, cfg, e.id) & ".pending"
@@ -896,12 +956,22 @@ proc seal*(repo: string, cfg: GpgConfig, force = false) =
         syncPath(dest)
     if todo.len > 0:
       syncParentDir(crypto.blobPath(repo, cfg, todo[0].id))
-    saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
+    if selective and splitSeal:
+      var changedGroups: seq[string] = @[]
+      for e in todo:
+        let gid = groupOf[e.id]
+        if gid notin changedGroups:
+          changedGroups.add(gid)
+      saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf, onlyGroups = changedGroups)
+    elif not selective:
+      saveDeksGrouped(repo, cfg, deks, groupOf, recipsOf)
   except CatchableError:
     if not recordsCommitted:
       discardPendingUnlessRecorded(repo, cfg, pendingPaths)
     raise
-  if keptIds.len > 0:
+  if selective:
+    nvEcho(&"\nSealed {todo.len} selected file(s); {entries.len - selected.len} not selected.")
+  elif keptIds.len > 0:
     nvEcho(&"\nSealed {todo.len} file(s), {keptIds.len} unchanged.")
   else:
     nvEcho(&"\nSealed {todo.len} file(s).")

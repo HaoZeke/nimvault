@@ -277,7 +277,8 @@ proc loadDeks*(repo: string, cfg: GpgConfig): DekTable =
 
 proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
                       groupOf: Table[string, string],
-                      recipsOf: Table[string, seq[string]]) =
+                      recipsOf: Table[string, seq[string]],
+                      onlyGroups: seq[string] = @[]) =
   ## One key file per recipient group, each encrypted to that group only.
   ##
   ## Written atomically and flushed, because a key file is as load bearing as
@@ -291,11 +292,29 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
     byGroup.mgetOrPut(gid, @[]).add(&"{id}\t{dek}")
 
   for gid, lines in byGroup:
+    if onlyGroups.len > 0 and gid notin onlyGroups:
+      continue
     let path = groupKeysPath(repo, cfg, gid)
+    var groupLines = lines
+    if onlyGroups.len > 0 and fileExists(path):
+      # Retain keys for records outside the readable entry view too.
+      var merged = initTable[string, string]()
+      for line in decryptToString(cfg, path, false).splitLines:
+        if line.len == 0 or line.startsWith("#"):
+          continue
+        let fields = line.split('\t')
+        if fields.len >= 2:
+          merged[fields[0]] = fields[1]
+      for line in lines:
+        let fields = line.split('\t')
+        merged[fields[0]] = fields[1]
+      groupLines = @[]
+      for id, key in merged:
+        groupLines.add(&"{id}\t{key}")
     let work = privateWorkDir()
     let plainPath = work / "keys.plain"
     var content = "# vault-keys-v6\n"
-    for l in lines:
+    for l in groupLines:
       content.add(l & "\n")
     writeFile(plainPath, content)
     setFilePermissions(plainPath, {fpUserRead, fpUserWrite})
@@ -308,6 +327,10 @@ proc saveDeksGrouped*(repo: string, cfg: GpgConfig, deks: DekTable,
     syncPath(tmp)
     moveFile(tmp, path)
     syncParentDir(path)
+
+  # A selected seal updates affected groups without pruning others.
+  if onlyGroups.len > 0:
+    return
 
   # Drop key files for groups that no longer have entries.
   for kind, path in walkDir(dir):

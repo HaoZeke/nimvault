@@ -139,9 +139,10 @@ proc sealKey*(cfg: GpgConfig): string =
   ## because then unchanged plaintext still owes a fresh blob under the new
   ## key. Recording this alongside the entries turns a key rotation into a
   ## full re-seal instead of a vault half-sealed to a key that is gone.
+  let backend = if cfg.backend.len > 0: cfg.backend else: "gpg"
   sha256sumBytes(
-    cfg.backend & "\n" & cfg.recipient & "\n" & cfg.identity & "\n" &
-    cfg.signer & "\n" & cfg.signKey & "\n" & cfg.allowedSigners & "\n" &
+    backend & "\n" & cfg.recipient & "\n" & cfg.identity & "\n" &
+    cfg.effectiveSigner & "\n" & cfg.signKey & "\n" & cfg.allowedSigners & "\n" &
     cfg.signerIdentity & "\n" & cfg.wraps.join("\n"))
 
 proc parseEntryPlain(plain: string): tuple[ok: bool, entry: VaultEntry, dek: string] =
@@ -388,7 +389,7 @@ proc loadManifest*(repo: string, verifySig = false,
 proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
                    sealKey = "", envelope = false,
                    knownDeks: DekTable = initTable[string, string](),
-                   haveDeks = false) =
+                   haveDeks = false, splitEntries = true) =
   ## Serialize entries (v4: blob hash, kind, plaintext content hash) and encrypt.
   ## A non-empty `sealKey` records what the blobs are encrypted to (v5), which
   ## is what lets a later `seal` skip unchanged files without going stale
@@ -402,7 +403,7 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     content.add(&"{SealKeyHeader} {sealKey}\n")
   if envelope:
     content.add(&"{EnvelopeHeader} 1\n")
-  if envelope:
+  if envelope and splitEntries:
     # Split records are the mergeable trust root. The combined file is a
     # stub: seal-key plus envelope mark, no rows. Rewriting it on every add
     # would recreate the last-writer-wins hole, so the stub is only written
@@ -417,7 +418,7 @@ proc saveManifest*(repo: string, entries: seq[VaultEntry], cfg: GpgConfig,
     # Fall through and write a rowless stub so old readers see an explicit
     # empty combined manifest rather than a missing one.
   for e in entries:
-    if envelope:
+    if envelope and splitEntries:
       break
     content.add(&"{e.id}\t{e.path}\t{e.hash}\t{e.kind}\t{e.contentHash}\n")
   writeFile(plainPath, content)
