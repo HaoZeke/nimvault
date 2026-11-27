@@ -70,8 +70,10 @@
   signKey*: string           ## ssh private key used to sign the manifest
   allowedSigners*: string    ## ssh allowed-signers file used to verify it
   signerIdentity*: string    ## principal to match within allowed_signers
-  wraps*: seq[string]        ## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order">GpgConfig</a></li>
-<li><a class="reference" href="#NimvaultError" title="NimvaultError = object of CatchableError">NimvaultError</a></li>
+  wraps*: seq[string]        ## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order
+  publicOnly*: bool          ## Encrypt to public keys and do not touch a secret key.">GpgConfig</a></li>
+<li><a class="reference" href="#NimvaultError" title="NimvaultError = object of CatchableError
+  code*: int                 ## Process exit. 1 operational, 2 tamper or unhealthy, 3 no prompt.">NimvaultError</a></li>
 <li><a class="reference" href="#VaultConfigFile" title="VaultConfigFile = tuple[recipient, root, backend, identity, signer, signKey,
                         allowedSigners, signerIdentity: string,
                         wraps: seq[string]]">VaultConfigFile</a></li>
@@ -83,7 +85,8 @@
   <details open>
     <summary><a class="reference reference-toplevel" href="#8" id="58">Vars</a></summary>
     <ul class="simple simple-toc-section">
-      <li><a class="reference" href="#nvQuiet" title="nvQuiet {.threadvar.}: bool">nvQuiet</a></li>
+      <li><a class="reference" href="#nvNonInteractive" title="nvNonInteractive {.threadvar.}: bool">nvNonInteractive</a></li>
+<li><a class="reference" href="#nvQuiet" title="nvQuiet {.threadvar.}: bool">nvQuiet</a></li>
 
     </ul>
   </details>
@@ -102,7 +105,11 @@
   <details open>
     <summary><a class="reference reference-toplevel" href="#12" id="62">Procs</a></summary>
     <ul class="simple simple-toc-section">
-      <ul class="simple nested-toc-section">gpgAgentRefused
+      <ul class="simple nested-toc-section">explicitPublicOnly
+  <li><a class="reference" href="#explicitPublicOnly%2CGpgConfig" title="explicitPublicOnly(cfg: GpgConfig): bool">explicitPublicOnly(cfg: GpgConfig): bool</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">gpgAgentRefused
   <li><a class="reference" href="#gpgAgentRefused%2Cstring%2Cint" title="gpgAgentRefused(status: string; code: int): bool">gpgAgentRefused(status: string; code: int): bool</a></li>
 
 </ul>
@@ -120,12 +127,20 @@
   <li><a class="reference" href="#gpgEncrypt%2CGpgConfig%2Cstring%2Cstring" title="gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)">gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">gpgFailureCode
+  <li><a class="reference" href="#gpgFailureCode%2Cstring" title="gpgFailureCode(output: string): int">gpgFailureCode(output: string): int</a></li>
+
+</ul>
 <ul class="simple nested-toc-section">gpgNoSecretKey
   <li><a class="reference" href="#gpgNoSecretKey%2Cstring" title="gpgNoSecretKey(status: string): bool">gpgNoSecretKey(status: string): bool</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">gpgParallelism
   <li><a class="reference" href="#gpgParallelism" title="gpgParallelism(): int">gpgParallelism(): int</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">gpgSecretKeyPresent
+  <li><a class="reference" href="#gpgSecretKeyPresent" title="gpgSecretKeyPresent(): bool">gpgSecretKeyPresent(): bool</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">gpgSignerProblem
@@ -147,7 +162,15 @@
 
 </ul>
 <ul class="simple nested-toc-section">nvRaise
-  <li><a class="reference" href="#nvRaise%2Cstring" title="nvRaise(msg: string)">nvRaise(msg: string)</a></li>
+  <li><a class="reference" href="#nvRaise%2Cstring%2Cint" title="nvRaise(msg: string; code = 1)">nvRaise(msg: string; code = 1)</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">pinentryInsert
+  <li><a class="reference" href="#pinentryInsert%2Cseq%5Bstring%5D" title="pinentryInsert(args: var seq[string])">pinentryInsert(args: var seq[string])</a></li>
+
+</ul>
+<ul class="simple nested-toc-section">publicKeyOnly
+  <li><a class="reference" href="#publicKeyOnly%2CGpgConfig" title="publicKeyOnly(cfg: GpgConfig): bool">publicKeyOnly(cfg: GpgConfig): bool</a></li>
 
 </ul>
 <ul class="simple nested-toc-section">resolveRecipient
@@ -214,7 +237,8 @@
   <span class="Identifier">signKey</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>           <span class="Comment">## ssh private key used to sign the manifest</span>
   <span class="Identifier">allowedSigners</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## ssh allowed-signers file used to verify it</span>
   <span class="Identifier">signerIdentity</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>    <span class="Comment">## principal to match within allowed_signers</span>
-  <span class="Identifier">wraps</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span>        <span class="Comment">## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order</span></pre></dt>
+  <span class="Identifier">wraps</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span>        <span class="Comment">## `&lt;glob&gt;:&lt;recipient&gt;[,...]` rules, in file order</span>
+  <span class="Identifier">publicOnly</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">bool</span>          <span class="Comment">## Encrypt to public keys and do not touch a secret key.</span></pre></dt>
   <dd>
     
     
@@ -222,7 +246,8 @@
   </dd>
 </div>
 <div id="NimvaultError">
-  <dt><pre><a href="gpg.html#NimvaultError"><span class="Identifier">NimvaultError</span></a> <span class="Other">=</span> <span class="Keyword">object</span> <span class="Keyword">of</span> <span class="Identifier">CatchableError</span></pre></dt>
+  <dt><pre><a href="gpg.html#NimvaultError"><span class="Identifier">NimvaultError</span></a> <span class="Other">=</span> <span class="Keyword">object</span> <span class="Keyword">of</span> <span class="Identifier">CatchableError</span>
+  <span class="Identifier">code</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">int</span>                 <span class="Comment">## Process exit. 1 operational, 2 tamper or unhealthy, 3 no prompt.</span></pre></dt>
   <dd>
     
     
@@ -245,7 +270,15 @@
 <div class="section" id="8">
   <h1><a class="toc-backref" href="#8">Vars</a></h1>
   <dl class="item">
-    <div id="nvQuiet">
+    <div id="nvNonInteractive">
+  <dt><pre><a href="gpg.html#nvNonInteractive"><span class="Identifier">nvNonInteractive</span></a> {.<span class="Identifier">threadvar</span>.}<span class="Other">:</span> <span class="Identifier">bool</span></pre></dt>
+  <dd>
+    
+    Refuse pinentry. A missing passphrase or secret key is an error, not a prompt.
+    
+  </dd>
+</div>
+<div id="nvQuiet">
   <dt><pre><a href="gpg.html#nvQuiet"><span class="Identifier">nvQuiet</span></a> {.<span class="Identifier">threadvar</span>.}<span class="Other">:</span> <span class="Identifier">bool</span></pre></dt>
   <dd>
     
@@ -281,7 +314,19 @@
 <div class="section" id="12">
   <h1><a class="toc-backref" href="#12">Procs</a></h1>
   <dl class="item">
-    <div id="gpgAgentRefused-procs-all">
+    <div id="explicitPublicOnly-procs-all">
+  <div id="explicitPublicOnly,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#explicitPublicOnly%2CGpgConfig"><span class="Identifier">explicitPublicOnly</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    True only when the caller asked for the public-key lane. A missing age identity or gpg secret key is not this. <tt class="docutils literal"><span class="pre"><span class="Identifier">check</span></span></tt> must not treat that implicit case as a passing keyless audit of a signer-configured vault.
+    
+  </dd>
+</div>
+
+</div>
+<div id="gpgAgentRefused-procs-all">
   <div id="gpgAgentRefused,string,int">
   <dt><pre><span class="Keyword">proc</span> <a href="#gpgAgentRefused%2Cstring%2Cint"><span class="Identifier">gpgAgentRefused</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">code</span><span class="Other">:</span> <span class="Identifier">int</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
@@ -336,6 +381,17 @@
 </div>
 
 </div>
+<div id="gpgFailureCode-procs-all">
+  <div id="gpgFailureCode,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgFailureCode%2Cstring"><span class="Identifier">gpgFailureCode</span></a><span class="Other">(</span><span class="Identifier">output</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">int</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    Non-interactive callers need a distinct code when gpg wanted a human.
+    
+  </dd>
+</div>
+
+</div>
 <div id="gpgNoSecretKey-procs-all">
   <div id="gpgNoSecretKey,string">
   <dt><pre><span class="Keyword">proc</span> <a href="#gpgNoSecretKey%2Cstring"><span class="Identifier">gpgNoSecretKey</span></a><span class="Other">(</span><span class="Identifier">status</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.
@@ -355,6 +411,19 @@
   <dd>
     
     
+    
+  </dd>
+</div>
+
+</div>
+<div id="gpgSecretKeyPresent-procs-all">
+  <div id="gpgSecretKeyPresent">
+  <dt><pre><span class="Keyword">proc</span> <a href="#gpgSecretKeyPresent"><span class="Identifier">gpgSecretKeyPresent</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span>
+    <span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span>
+    <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    True when this GNUPGHOME holds a secret key. Listing does not unlock it. Cached per home: add and seal ask more than once, and a test switches homes.
     
   </dd>
 </div>
@@ -411,11 +480,40 @@
 
 </div>
 <div id="nvRaise-procs-all">
-  <div id="nvRaise,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#nvRaise%2Cstring"><span class="Identifier">nvRaise</span></a><span class="Other">(</span><span class="Identifier">msg</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <div id="nvRaise,string,int">
+  <dt><pre><span class="Keyword">proc</span> <a href="#nvRaise%2Cstring%2Cint"><span class="Identifier">nvRaise</span></a><span class="Other">(</span><span class="Identifier">msg</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">code</span> <span class="Other">=</span> <span class="DecNumber">1</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
+                                      <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Library-safe failure (no process exit). CLI catches and quits.
+    Library-safe failure (no process exit). CLI catches and quits with <tt class="docutils literal"><span class="pre"><span class="Identifier">code</span></span></tt>. A zero code would look like success, so an unset field still exits 1.
+    
+  </dd>
+</div>
+
+</div>
+<div id="pinentryInsert-procs-all">
+  <div id="pinentryInsert,seq[string]">
+  <dt><pre><span class="Keyword">proc</span> <a href="#pinentryInsert%2Cseq%5Bstring%5D"><span class="Identifier">pinentryInsert</span></a><span class="Other">(</span><span class="Identifier">args</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">)</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <tt class="docutils literal"><span class="pre"><span class="Operator">--</span><span class="Identifier">batch</span></span></tt> alone still starts pinentry when a secret key is locked. <tt class="docutils literal"><span class="pre"><span class="Operator">--</span><span class="Identifier">pinentry</span><span class="Operator">-</span><span class="Identifier">mode</span> <span class="Identifier">error</span></span></tt> makes that a fast failure instead of a hang.
+    
+  </dd>
+</div>
+
+</div>
+<div id="publicKeyOnly-procs-all">
+  <div id="publicKeyOnly,GpgConfig">
+  <dt><pre><span class="Keyword">proc</span> <a href="#publicKeyOnly%2CGpgConfig"><span class="Identifier">publicKeyOnly</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadEnvEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span>
+    <span class="Identifier">ReadDirEffect</span><span class="Other">,</span> <span class="Identifier">ExecIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    <p>Encrypt to public keys and do not decrypt or sign.</p>
+<p>gpg signs in the same operation as <tt class="docutils literal"><span class="pre"><span class="Operator">-</span><span class="Identifier">e</span></span></tt>, so a home with no secret key cannot produce a signed record. age does not sign; the ssh key does, and the identity file is what decrypts. No identity file selects this lane for <tt class="docutils literal"><span class="pre"><span class="Identifier">add</span></span></tt> and <tt class="docutils literal"><span class="pre"><span class="Identifier">seal</span></span></tt>, which can still append. <tt class="docutils literal"><span class="pre"><span class="Operator">--</span><span class="Identifier">public</span><span class="Operator">-</span><span class="Identifier">only</span></span></tt> forces it when a decrypt key is present and must not be used.</p>
+<p><tt class="docutils literal"><span class="pre"><span class="Identifier">check</span></span></tt> is not that lane. Only <tt class="docutils literal"><span class="pre"><span class="Identifier">explicitPublicOnly</span></span></tt> may pass a keyless comparison. A signer-configured vault whose decrypt key is simply absent fails closed.</p>
+
     
   </dd>
 </div>
@@ -534,7 +632,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:42:40 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-27 07:33:06 UTC</small>
       </div>
     </div>
   </div>

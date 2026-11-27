@@ -111,6 +111,7 @@ Guides
      howto/private-vault-repo
      howto/service-vault
      howto/headless-gpg
+     howto/machine-writers
 
 Reference
 ---------

@@ -99,6 +99,22 @@ Order in the file is precedence, so the narrow rules go above the general one.
 An entry matching no rule uses ``recipient``, which is why a config with no
 ``wrap`` lines behaves exactly as it did before rules existed.
 
+A path can be sealed to a subset. This keeps one persona's notes to that
+persona and the owner:
+
+.. code:: ini
+
+    recipient = OWNER
+    wrap = personas/mosswell/**:MOSSWELL,OWNER
+    wrap = **:OWNER
+
+A rule that matches and names no recipient is an error. The entry is not
+sealed to ``recipient`` instead, and nothing is written.
+
+``nimvault who PATH`` prints the path, the recipients and the glob that
+matched, without decrypting. With no path it lists the entries this identity
+can open. See `machine writers <../howto/machine-writers.rst>`_.
+
 3.1 How it works
 ~~~~~~~~~~~~~~~~
 
@@ -188,7 +204,21 @@ matches every key in the keyring that carries that exact email. Use a
 fingerprint or long key ID when another key with the same email could be
 imported.
 
-4.2 Finding your key ID
+5 CI switches
+-------------
+
+``NIMVAULT_NONINTERACTIVE=1``
+    same as ``--noninteractive``. gpg is not
+    allowed to prompt. A prompt exits 3.
+
+``NIMVAULT_PUBLIC_ONLY=1``
+    same as ``--public-only`` on the commands that
+    take it. Do not use a secret key, even if this home has one.
+
+A gpg home with no secret key, or an age config whose identity file is not
+on this machine, takes that lane without the switch.
+
+5.1 Finding your key ID
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: bash

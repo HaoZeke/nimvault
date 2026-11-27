@@ -84,6 +84,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/machine-writers.html">Machine writers</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -254,8 +255,8 @@ it was given)</p></li>
 <td><p>Does not give</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">check</span></code></p></td>
-<td><p>blob digests still match the signed records; needs the key that opens the records, not the payloads</p></td>
-<td><p>that the payloads decrypt; that git history is gone</p></td>
+<td><p>with a key, blob digests match the records it can open; without a key, payload ids match <code class="docutils literal notranslate"><span class="pre">.vault/blob-index</span></code>; <code class="docutils literal notranslate"><span class="pre">--digests</span></code> diffs a previous ciphertext snapshot</p></td>
+<td><p>that a new fragment was written by a recipient; that git history is gone</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rotate</span></code></p></td>
 <td><p>a removed recipient can no longer unwrap the data keys</p></td>
@@ -285,6 +286,13 @@ for those is the signed manifest plus the blob digest <code class="docutils lite
 check before decrypting.</p>
 <p>Key files are encrypted and not signed. A tampered key file fails to
 decrypt rather than forging plaintext.</p>
+<p><code class="docutils literal notranslate"><span class="pre">.vault/a/&lt;id&gt;.gpg</span></code> is an unsigned fragment encrypted to the entry’s
+recipients. A writer with only those public keys can append one without
+opening <code class="docutils literal notranslate"><span class="pre">.vault/e/</span></code>. Anyone else with those public keys can plant one too.
+A bad or missing signature on <code class="docutils literal notranslate"><span class="pre">.vault/e/</span></code> is still fatal. <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--digests</span></code>
+against a snapshot from outside the change is the keyless detector. <code class="docutils literal notranslate"><span class="pre">rotate</span></code>
+by a key holder rewrites an openable fragment as a signed record. <code class="docutils literal notranslate"><span class="pre">seal</span></code>
+does that when the fragment no longer matches the entry.</p>
 </section>
 <section id="the-config-is-trusted-as-written">
 <h2><a class="toc-backref" href="#id6" role="doc-backlink">The config is trusted as written</a><a class="headerlink" href="#the-config-is-trusted-as-written" title="Link to this heading">¶</a></h2>
@@ -385,10 +393,11 @@ moving the lock closed standard input.</p></li>
 <li><p>A tab or newline in a path was stored in the record and shifted its columns.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">scan</span></code> skipped every directory named <code class="docutils literal notranslate"><span class="pre">tmp</span></code>. That skip now applies only
 under <code class="docutils literal notranslate"><span class="pre">.claude</span></code> or <code class="docutils literal notranslate"><span class="pre">.codex</span></code>.</p></li>
-<li><p>The docs called <code class="docutils literal notranslate"><span class="pre">check</span></code> keyless. The blob digests are inside the encrypted
-records. With only the public key imported, <code class="docutils literal notranslate"><span class="pre">check</span></code> reports that this
-identity cannot open the records and does not compare the blobs. It does
-not decrypt the payloads.</p></li>
+<li><p>Record digests sit inside the encrypted records, so opening them needs a
+secret key. A public key compares payload ids to <code class="docutils literal notranslate"><span class="pre">.vault/blob-index</span></code> and,
+with <code class="docutils literal notranslate"><span class="pre">--digests</span></code>, to a previous ciphertext snapshot. It does not decrypt
+the records or the payloads. Ciphertext with neither an index nor a digest
+list is itself a failure.</p></li>
 </ul>
 <p>Still accepted:</p>
 <ul class="simple">

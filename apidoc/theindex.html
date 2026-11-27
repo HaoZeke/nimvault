@@ -82,6 +82,26 @@
 <li><a class="reference external"
           data-doc-search-tag="age: proc ageRecipientForIdentity(identity: string): string" href="nimvault/age.html#ageRecipientForIdentity%2Cstring">age: proc ageRecipientForIdentity(identity: string): string</a></li>
           </ul></dd>
+<dt><a name="appendDir" href="#appendDir"><span>appendDir:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc appendDir(repo: string): string" href="nimvault/manifest.html#appendDir%2Cstring">manifest: proc appendDir(repo: string): string</a></li>
+          </ul></dd>
+<dt><a name="AppendDirName" href="#AppendDirName"><span>AppendDirName:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const AppendDirName" href="nimvault/manifest.html#AppendDirName">manifest: const AppendDirName</a></li>
+          </ul></dd>
+<dt><a name="appendFile" href="#appendFile"><span>appendFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc appendFile(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/manifest.html#appendFile%2Cstring%2CGpgConfig%2Cstring">manifest: proc appendFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
+          </ul></dd>
+<dt><a name="appendRecordIds" href="#appendRecordIds"><span>appendRecordIds:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc appendRecordIds(repo: string): HashSet[string]" href="nimvault/manifest.html#appendRecordIds%2Cstring">manifest: proc appendRecordIds(repo: string): HashSet[string]</a></li>
+          </ul></dd>
+<dt><a name="AppendSkip" href="#AppendSkip"><span>AppendSkip:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: tuple AppendSkip" href="nimvault/manifest.html#AppendSkip">manifest: tuple AppendSkip</a></li>
+          </ul></dd>
 <dt><a name="AtSymlinkNoFollow" href="#AtSymlinkNoFollow"><span>AtSymlinkNoFollow:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="fsat: var AtSymlinkNoFollow" href="nimvault/fsat.html#AtSymlinkNoFollow">fsat: var AtSymlinkNoFollow</a></li>
@@ -90,13 +110,31 @@
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc blobExt(cfg: GpgConfig): string" href="nimvault/crypto.html#blobExt%2CGpgConfig">crypto: proc blobExt(cfg: GpgConfig): string</a></li>
           </ul></dd>
+<dt><a name="blobIndexExists" href="#blobIndexExists"><span>blobIndexExists:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc blobIndexExists(repo: string): bool" href="nimvault/manifest.html#blobIndexExists%2Cstring">manifest: proc blobIndexExists(repo: string): bool</a></li>
+          </ul></dd>
+<dt><a name="BlobIndexHeader" href="#BlobIndexHeader"><span>BlobIndexHeader:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const BlobIndexHeader" href="nimvault/manifest.html#BlobIndexHeader">manifest: const BlobIndexHeader</a></li>
+          </ul></dd>
+<dt><a name="BlobIndexName" href="#BlobIndexName"><span>BlobIndexName:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const BlobIndexName" href="nimvault/manifest.html#BlobIndexName">manifest: const BlobIndexName</a></li>
+          </ul></dd>
 <dt><a name="blobPath" href="#blobPath"><span>blobPath:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc blobPath(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/crypto.html#blobPath%2Cstring%2CGpgConfig%2Cstring">crypto: proc blobPath(repo: string; cfg: GpgConfig; id: string): string</a></li>
           </ul></dd>
 <dt><a name="check" href="#check"><span>check:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc check(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#check%2Cstring%2CGpgConfig">commands: proc check(repo: string; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="commands: proc check(repo: string; cfg: GpgConfig; digests = &quot;&quot;; writeDigests = &quot;&quot;;
+      asJson = false): int" href="nimvault/commands.html#check%2Cstring%2CGpgConfig%2Cstring%2Cstring">commands: proc check(repo: string; cfg: GpgConfig; digests = &quot;&quot;; writeDigests = &quot;&quot;;
+      asJson = false): int</a></li>
+          </ul></dd>
+<dt><a name="checkJson" href="#checkJson"><span>checkJson:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc checkJson(r: CheckResult): string" href="nimvault/commands.html#checkJson%2CCheckResult">commands: proc checkJson(r: CheckResult): string</a></li>
           </ul></dd>
 <dt><a name="checkReport" href="#checkReport"><span>checkReport:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -108,7 +146,7 @@
           </ul></dd>
 <dt><a name="checkVault" href="#checkVault"><span>checkVault:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc checkVault(repo: string; cfg: GpgConfig): CheckResult" href="nimvault/commands.html#checkVault%2Cstring%2CGpgConfig">commands: proc checkVault(repo: string; cfg: GpgConfig): CheckResult</a></li>
+          data-doc-search-tag="commands: proc checkVault(repo: string; cfg: GpgConfig; digests = &quot;&quot;): CheckResult" href="nimvault/commands.html#checkVault%2Cstring%2CGpgConfig%2Cstring">commands: proc checkVault(repo: string; cfg: GpgConfig; digests = &quot;&quot;): CheckResult</a></li>
           </ul></dd>
 <dt><a name="Decrypted" href="#Decrypted"><span>Decrypted:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -150,13 +188,29 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: type DekTable" href="nimvault/dek.html#DekTable">dek: type DekTable</a></li>
           </ul></dd>
+<dt><a name="DigestHeader" href="#DigestHeader"><span>DigestHeader:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: const DigestHeader" href="nimvault/manifest.html#DigestHeader">manifest: const DigestHeader</a></li>
+          </ul></dd>
 <dt><a name="discardPrivate" href="#discardPrivate"><span>discardPrivate:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc discardPrivate(dir: string)" href="nimvault/crypto.html#discardPrivate%2Cstring">crypto: proc discardPrivate(dir: string)</a></li>
           </ul></dd>
 <dt><a name="doctor" href="#doctor"><span>doctor:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc doctor(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#doctor%2Cstring%2CGpgConfig">commands: proc doctor(repo: string; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="commands: proc doctor(repo: string; cfg: GpgConfig; asJson = false)" href="nimvault/commands.html#doctor%2Cstring%2CGpgConfig">commands: proc doctor(repo: string; cfg: GpgConfig; asJson = false)</a></li>
+          </ul></dd>
+<dt><a name="DoctorInfo" href="#DoctorInfo"><span>DoctorInfo:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: tuple DoctorInfo" href="nimvault/commands.html#DoctorInfo">commands: tuple DoctorInfo</a></li>
+          </ul></dd>
+<dt><a name="doctorInfo" href="#doctorInfo"><span>doctorInfo:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc doctorInfo(repo: string; cfg: GpgConfig): DoctorInfo" href="nimvault/commands.html#doctorInfo%2Cstring%2CGpgConfig">commands: proc doctorInfo(repo: string; cfg: GpgConfig): DoctorInfo</a></li>
+          </ul></dd>
+<dt><a name="doctorJson" href="#doctorJson"><span>doctorJson:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc doctorJson(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#doctorJson%2Cstring%2CGpgConfig">commands: proc doctorJson(repo: string; cfg: GpgConfig): string</a></li>
           </ul></dd>
 <dt><a name="doctorReport" href="#doctorReport"><span>doctorReport:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -169,6 +223,10 @@
 <dt><a name="drain" href="#drain"><span>drain:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="fsat: proc drain(jobs: var openArray[Drain])" href="nimvault/fsat.html#drain%2CopenArray%5BDrain%5D">fsat: proc drain(jobs: var openArray[Drain])</a></li>
+          </ul></dd>
+<dt><a name="dropAppendRecord" href="#dropAppendRecord"><span>dropAppendRecord:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc dropAppendRecord(repo: string; cfg: GpgConfig; id: string)" href="nimvault/manifest.html#dropAppendRecord%2Cstring%2CGpgConfig%2Cstring">manifest: proc dropAppendRecord(repo: string; cfg: GpgConfig; id: string)</a></li>
           </ul></dd>
 <dt><a name="dropEntryRecord" href="#dropEntryRecord"><span>dropEntryRecord:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -240,6 +298,14 @@
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc expandHome(p: string): string" href="nimvault/manifest.html#expandHome%2Cstring">manifest: proc expandHome(p: string): string</a></li>
           </ul></dd>
+<dt><a name="explicitPublicOnly" href="#explicitPublicOnly"><span>explicitPublicOnly:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc explicitPublicOnly(cfg: GpgConfig): bool" href="nimvault/gpg.html#explicitPublicOnly%2CGpgConfig">gpg: proc explicitPublicOnly(cfg: GpgConfig): bool</a></li>
+          </ul></dd>
+<dt><a name="findAppendFile" href="#findAppendFile"><span>findAppendFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc findAppendFile(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/manifest.html#findAppendFile%2Cstring%2CGpgConfig%2Cstring">manifest: proc findAppendFile(repo: string; cfg: GpgConfig; id: string): string</a></li>
+          </ul></dd>
 <dt><a name="findBlob" href="#findBlob"><span>findBlob:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string" href="nimvault/crypto.html#findBlob%2Cstring%2CGpgConfig%2Cstring">crypto: proc findBlob(repo: string; cfg: GpgConfig; id: string): string</a></li>
@@ -255,6 +321,10 @@
 <dt><a name="findManifest" href="#findManifest"><span>findManifest:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc findManifest(repo: string; cfg: GpgConfig): string" href="nimvault/crypto.html#findManifest%2Cstring%2CGpgConfig">crypto: proc findManifest(repo: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
+<dt><a name="forgetBlob" href="#forgetBlob"><span>forgetBlob:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc forgetBlob(repo, id: string)" href="nimvault/manifest.html#forgetBlob%2Cstring%2Cstring">manifest: proc forgetBlob(repo, id: string)</a></li>
           </ul></dd>
 <dt><a name="fstatAt" href="#fstatAt"><span>fstatAt:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -302,6 +372,10 @@
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)" href="nimvault/gpg.html#gpgEncrypt%2CGpgConfig%2Cstring%2Cstring">gpg: proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)</a></li>
           </ul></dd>
+<dt><a name="gpgFailureCode" href="#gpgFailureCode"><span>gpgFailureCode:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc gpgFailureCode(output: string): int" href="nimvault/gpg.html#gpgFailureCode%2Cstring">gpg: proc gpgFailureCode(output: string): int</a></li>
+          </ul></dd>
 <dt><a name="gpgNoSecretKey" href="#gpgNoSecretKey"><span>gpgNoSecretKey:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc gpgNoSecretKey(status: string): bool" href="nimvault/gpg.html#gpgNoSecretKey%2Cstring">gpg: proc gpgNoSecretKey(status: string): bool</a></li>
@@ -309,6 +383,10 @@
 <dt><a name="gpgParallelism" href="#gpgParallelism"><span>gpgParallelism:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc gpgParallelism(): int" href="nimvault/gpg.html#gpgParallelism">gpg: proc gpgParallelism(): int</a></li>
+          </ul></dd>
+<dt><a name="gpgSecretKeyPresent" href="#gpgSecretKeyPresent"><span>gpgSecretKeyPresent:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc gpgSecretKeyPresent(): bool" href="nimvault/gpg.html#gpgSecretKeyPresent">gpg: proc gpgSecretKeyPresent(): bool</a></li>
           </ul></dd>
 <dt><a name="gpgSignerProblem" href="#gpgSignerProblem"><span>gpgSignerProblem:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -331,6 +409,10 @@
 <dt><a name="groupKeysPath" href="#groupKeysPath"><span>groupKeysPath:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string" href="nimvault/dek.html#groupKeysPath%2Cstring%2CGpgConfig%2Cstring">dek: proc groupKeysPath(repo: string; cfg: GpgConfig; gid: string): string</a></li>
+          </ul></dd>
+<dt><a name="hasAppendEntries" href="#hasAppendEntries"><span>hasAppendEntries:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc hasAppendEntries(repo: string): bool" href="nimvault/manifest.html#hasAppendEntries%2Cstring">manifest: proc hasAppendEntries(repo: string): bool</a></li>
           </ul></dd>
 <dt><a name="hasSplitEntries" href="#hasSplitEntries"><span>hasSplitEntries:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -393,10 +475,12 @@
 <dt><a name="loadManifestMeta" href="#loadManifestMeta"><span>loadManifestMeta:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig();
-                 checkPresent = false): tuple[entries: seq[VaultEntry],
-    sealKey: string, envelope: bool, unopened, unparsed: int, deks: DekTable]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig();
-                 checkPresent = false): tuple[entries: seq[VaultEntry],
-    sealKey: string, envelope: bool, unopened, unparsed: int, deks: DekTable]</a></li>
+                 checkPresent = false; adoptUnsigned = false): tuple[
+    entries: seq[VaultEntry], sealKey: string, envelope: bool,
+    unopened, unparsed: int, deks: DekTable, skippedAppends: seq[AppendSkip]]" href="nimvault/manifest.html#loadManifestMeta%2Cstring">manifest: proc loadManifestMeta(repo: string; verifySig = false; cfg = GpgConfig();
+                 checkPresent = false; adoptUnsigned = false): tuple[
+    entries: seq[VaultEntry], sealKey: string, envelope: bool,
+    unopened, unparsed: int, deks: DekTable, skippedAppends: seq[AppendSkip]]</a></li>
           </ul></dd>
 <dt><a name="loadSplitEntries" href="#loadSplitEntries"><span>loadSplitEntries:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -446,13 +530,21 @@
 <li><a class="reference external"
           data-doc-search-tag="dek: proc normalizedRecipients(recips: seq[string]): seq[string]" href="nimvault/dek.html#normalizedRecipients%2Cseq%5Bstring%5D">dek: proc normalizedRecipients(recips: seq[string]): seq[string]</a></li>
           </ul></dd>
+<dt><a name="noteBlob" href="#noteBlob"><span>noteBlob:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc noteBlob(repo, id, hash: string)" href="nimvault/manifest.html#noteBlob%2Cstring%2Cstring%2Cstring">manifest: proc noteBlob(repo, id, hash: string)</a></li>
+          </ul></dd>
+<dt><a name="nvNonInteractive" href="#nvNonInteractive"><span>nvNonInteractive:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: var nvNonInteractive" href="nimvault/gpg.html#nvNonInteractive">gpg: var nvNonInteractive</a></li>
+          </ul></dd>
 <dt><a name="nvQuiet" href="#nvQuiet"><span>nvQuiet:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: var nvQuiet" href="nimvault/gpg.html#nvQuiet">gpg: var nvQuiet</a></li>
           </ul></dd>
 <dt><a name="nvRaise" href="#nvRaise"><span>nvRaise:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="gpg: proc nvRaise(msg: string)" href="nimvault/gpg.html#nvRaise%2Cstring">gpg: proc nvRaise(msg: string)</a></li>
+          data-doc-search-tag="gpg: proc nvRaise(msg: string; code = 1)" href="nimvault/gpg.html#nvRaise%2Cstring%2Cint">gpg: proc nvRaise(msg: string; code = 1)</a></li>
           </ul></dd>
 <dt><a name="ODirectory" href="#ODirectory"><span>ODirectory:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -474,6 +566,14 @@
 <li><a class="reference external"
           data-doc-search-tag="fsat: proc overwriteFd(fd: cint)" href="nimvault/fsat.html#overwriteFd%2Ccint">fsat: proc overwriteFd(fd: cint)</a></li>
           </ul></dd>
+<dt><a name="payloadBlobHashes" href="#payloadBlobHashes"><span>payloadBlobHashes:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc payloadBlobHashes(repo: string): Table[string, string]" href="nimvault/manifest.html#payloadBlobHashes%2Cstring">manifest: proc payloadBlobHashes(repo: string): Table[string, string]</a></li>
+          </ul></dd>
+<dt><a name="pinentryInsert" href="#pinentryInsert"><span>pinentryInsert:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc pinentryInsert(args: var seq[string])" href="nimvault/gpg.html#pinentryInsert%2Cseq%5Bstring%5D">gpg: proc pinentryInsert(args: var seq[string])</a></li>
+          </ul></dd>
 <dt><a name="PointerFile" href="#PointerFile"><span>PointerFile:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="vaultrepo: const PointerFile" href="nimvault/vaultrepo.html#PointerFile">vaultrepo: const PointerFile</a></li>
@@ -482,6 +582,10 @@
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc privateWorkDir(): string" href="nimvault/crypto.html#privateWorkDir">crypto: proc privateWorkDir(): string</a></li>
           </ul></dd>
+<dt><a name="publicKeyOnly" href="#publicKeyOnly"><span>publicKeyOnly:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="gpg: proc publicKeyOnly(cfg: GpgConfig): bool" href="nimvault/gpg.html#publicKeyOnly%2CGpgConfig">gpg: proc publicKeyOnly(cfg: GpgConfig): bool</a></li>
+          </ul></dd>
 <dt><a name="publishPending" href="#publishPending"><span>publishPending:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc publishPending(src, dest: string)" href="nimvault/crypto.html#publishPending%2Cstring%2Cstring">crypto: proc publishPending(src, dest: string)</a></li>
@@ -489,6 +593,14 @@
 <dt><a name="publishSigned" href="#publishSigned"><span>publishSigned:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="crypto: proc publishSigned(cfg: GpgConfig; tmp, dest: string)" href="nimvault/crypto.html#publishSigned%2CGpgConfig%2Cstring%2Cstring">crypto: proc publishSigned(cfg: GpgConfig; tmp, dest: string)</a></li>
+          </ul></dd>
+<dt><a name="readBlobIndex" href="#readBlobIndex"><span>readBlobIndex:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc readBlobIndex(repo: string): Table[string, string]" href="nimvault/manifest.html#readBlobIndex%2Cstring">manifest: proc readBlobIndex(repo: string): Table[string, string]</a></li>
+          </ul></dd>
+<dt><a name="readDigestFile" href="#readDigestFile"><span>readDigestFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc readDigestFile(path: string): Table[string, string]" href="nimvault/manifest.html#readDigestFile%2Cstring">manifest: proc readDigestFile(path: string): Table[string, string]</a></li>
           </ul></dd>
 <dt><a name="readPointer" href="#readPointer"><span>readPointer:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -540,11 +652,15 @@
           </ul></dd>
 <dt><a name="rotate" href="#rotate"><span>rotate:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false)" href="nimvault/commands.html#rotate%2Cstring%2CGpgConfig">commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false)</a></li>
+          data-doc-search-tag="commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false; adopt = false)" href="nimvault/commands.html#rotate%2Cstring%2CGpgConfig">commands: proc rotate(repo: string; cfg: GpgConfig; rekey = false; adopt = false)</a></li>
           </ul></dd>
 <dt><a name="sameFile" href="#sameFile"><span>sameFile:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="fsat: proc sameFile(a, b: Stat): bool" href="nimvault/fsat.html#sameFile%2CStat%2CStat">fsat: proc sameFile(a, b: Stat): bool</a></li>
+          </ul></dd>
+<dt><a name="saveAppendRecord" href="#saveAppendRecord"><span>saveAppendRecord:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc saveAppendRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)" href="nimvault/manifest.html#saveAppendRecord%2Cstring%2CGpgConfig%2CVaultEntry%2Cstring">manifest: proc saveAppendRecord(repo: string; cfg: GpgConfig; e: VaultEntry; dek: string)</a></li>
           </ul></dd>
 <dt><a name="saveDeksGrouped" href="#saveDeksGrouped"><span>saveDeksGrouped:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -664,6 +780,10 @@
 <li><a class="reference external"
           data-doc-search-tag="commands: proc status(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#status%2Cstring%2CGpgConfig">commands: proc status(repo: string; cfg: GpgConfig)</a></li>
           </ul></dd>
+<dt><a name="statusJson" href="#statusJson"><span>statusJson:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc statusJson(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#statusJson%2Cstring%2CGpgConfig">commands: proc statusJson(repo: string; cfg: GpgConfig): string</a></li>
+          </ul></dd>
 <dt><a name="statusReport" href="#statusReport"><span>statusReport:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="commands: proc statusReport(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#statusReport%2Cstring%2CGpgConfig">commands: proc statusReport(repo: string; cfg: GpgConfig): string</a></li>
@@ -703,6 +823,10 @@
 <dt><a name="validSigners" href="#validSigners"><span>validSigners:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="gpg: proc validSigners(status: string): seq[string]" href="nimvault/gpg.html#validSigners%2Cstring">gpg: proc validSigners(status: string): seq[string]</a></li>
+          </ul></dd>
+<dt><a name="vaultCipherDigests" href="#vaultCipherDigests"><span>vaultCipherDigests:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc vaultCipherDigests(repo: string): seq[(string, string)]" href="nimvault/manifest.html#vaultCipherDigests%2Cstring">manifest: proc vaultCipherDigests(repo: string): seq[(string, string)]</a></li>
           </ul></dd>
 <dt><a name="VaultConfigFile" href="#VaultConfigFile"><span>VaultConfigFile:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -750,11 +874,21 @@
           </ul></dd>
 <dt><a name="who" href="#who"><span>who:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc who(repo: string; cfg: GpgConfig)" href="nimvault/commands.html#who%2Cstring%2CGpgConfig">commands: proc who(repo: string; cfg: GpgConfig)</a></li>
+          data-doc-search-tag="commands: proc who(repo: string; cfg: GpgConfig; only: seq[string] = @[]; asJson = false)" href="nimvault/commands.html#who%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc who(repo: string; cfg: GpgConfig; only: seq[string] = @[]; asJson = false)</a></li>
+          </ul></dd>
+<dt><a name="whoJson" href="#whoJson"><span>whoJson:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc whoJson(repo: string; cfg: GpgConfig; only: seq[string] = @[]): string" href="nimvault/commands.html#whoJson%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc whoJson(repo: string; cfg: GpgConfig; only: seq[string] = @[]): string</a></li>
           </ul></dd>
 <dt><a name="whoReport" href="#whoReport"><span>whoReport:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
-          data-doc-search-tag="commands: proc whoReport(repo: string; cfg: GpgConfig): string" href="nimvault/commands.html#whoReport%2Cstring%2CGpgConfig">commands: proc whoReport(repo: string; cfg: GpgConfig): string</a></li>
+          data-doc-search-tag="commands: proc whoReport(repo: string; cfg: GpgConfig; only: seq[string] = @[]): string" href="nimvault/commands.html#whoReport%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc whoReport(repo: string; cfg: GpgConfig; only: seq[string] = @[]): string</a></li>
+          </ul></dd>
+<dt><a name="whoRows" href="#whoRows"><span>whoRows:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="commands: proc whoRows(repo: string; cfg: GpgConfig; only: seq[string] = @[]): seq[
+    (string, seq[string], string)]" href="nimvault/commands.html#whoRows%2Cstring%2CGpgConfig%2Cseq%5Bstring%5D">commands: proc whoRows(repo: string; cfg: GpgConfig; only: seq[string] = @[]): seq[
+    (string, seq[string], string)]</a></li>
           </ul></dd>
 <dt><a name="withPrivateUmask" href="#withPrivateUmask"><span>withPrivateUmask:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
@@ -764,15 +898,25 @@
 <li><a class="reference external"
           data-doc-search-tag="lock: template withVaultLock(repo: string; body: untyped)" href="nimvault/lock.html#withVaultLock.t%2Cstring%2Cuntyped">lock: template withVaultLock(repo: string; body: untyped)</a></li>
           </ul></dd>
+<dt><a name="wrapMatch" href="#wrapMatch"><span>wrapMatch:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="dek: proc wrapMatch(cfg: GpgConfig; path: string): tuple[recipients: seq[string],
+    rule: string]" href="nimvault/dek.html#wrapMatch%2CGpgConfig%2Cstring">dek: proc wrapMatch(cfg: GpgConfig; path: string): tuple[recipients: seq[string],
+    rule: string]</a></li>
+          </ul></dd>
 <dt><a name="writeAll" href="#writeAll"><span>writeAll:</span></a></dt><dd><ul class="simple">
 <li><a class="reference external"
           data-doc-search-tag="fsat: proc writeAll(fd: cint; data: pointer; len: int): cint" href="nimvault/fsat.html#writeAll%2Ccint%2Cpointer%2Cint">fsat: proc writeAll(fd: cint; data: pointer; len: int): cint</a></li>
+          </ul></dd>
+<dt><a name="writeDigestFile" href="#writeDigestFile"><span>writeDigestFile:</span></a></dt><dd><ul class="simple">
+<li><a class="reference external"
+          data-doc-search-tag="manifest: proc writeDigestFile(path: string; rows: seq[(string, string)])" href="nimvault/manifest.html#writeDigestFile%2Cstring%2Cseq%5B%5D">manifest: proc writeDigestFile(path: string; rows: seq[(string, string)])</a></li>
           </ul></dd>
 </dl>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:42:41 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-27 07:33:07 UTC</small>
       </div>
     </div>
   </div>

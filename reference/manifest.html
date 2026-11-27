@@ -84,6 +84,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/machine-writers.html">Machine writers</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -121,6 +122,9 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><a class="reference internal" href="#integrity-model">4 Integrity model</a></li>
 <li><a class="reference internal" href="#directory-layout">5 Directory layout</a></li>
+<li><a class="reference internal" href="#public-key-fragments">6 Public-key fragments</a></li>
+<li><a class="reference internal" href="#blob-index">7 Blob index</a></li>
+<li><a class="reference internal" href="#digest-list">8 Digest list</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/HaoZeke/nimvault"
   data-type="github" data-user="HaoZeke" data-repo="nimvault">
@@ -232,6 +236,9 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><p><a class="reference internal" href="#integrity-model" id="id10">4 Integrity model</a></p></li>
 <li><p><a class="reference internal" href="#directory-layout" id="id11">5 Directory layout</a></p></li>
+<li><p><a class="reference internal" href="#public-key-fragments" id="id12">6 Public-key fragments</a></p></li>
+<li><p><a class="reference internal" href="#blob-index" id="id13">7 Blob index</a></p></li>
+<li><p><a class="reference internal" href="#digest-list" id="id14">8 Digest list</a></p></li>
 </ul>
 </li>
 </ul>
@@ -395,29 +402,80 @@ the age backend has always used.</p>
 blobs carry one, age blobs and v6 enveloped blobs do not</p></li>
 <li><p>Only after all checks pass are files moved to their final paths</p></li>
 </ol>
-<p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> decrypts the manifest metadata and the per-entry records this
-identity can open, reads their digests, and compares each payload blob to its
-digest. Records this identity cannot open are counted and reported. It does
-not decrypt the payloads. A public key alone cannot open the records.</p>
-<p>This prevents forgery (attacker encrypts a malicious blob to your public key),
-ciphertext swapping (attacker renames blobs), and manifest replacement (attacker
-substitutes a v1 unsigned manifest).</p>
+<p>With a secret key, <code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">check</span></code> decrypts the records this identity can
+open, reads their digests, and compares each payload blob to its digest.
+Records this identity cannot open are counted and reported, not treated as
+added payloads. Without a secret key, <code class="docutils literal notranslate"><span class="pre">check</span></code> fails on a signer-configured
+vault unless <code class="docutils literal notranslate"><span class="pre">--public-only</span></code> is set. That mode compares payload ids to
+<code class="docutils literal notranslate"><span class="pre">.vault/blob-index</span></code> and does not decrypt; the index shows accidental drift
+only. <code class="docutils literal notranslate"><span class="pre">--digests</span></code> diffs a previous snapshot of the ciphertext and is the
+tamper signal. See <a class="reference external" href="../howto/machine-writers.rst">machine writers</a>.</p>
+<p>For the signed records this prevents forgery (attacker encrypts a malicious
+blob to your public key), ciphertext swapping (attacker renames blobs), and
+manifest replacement (attacker substitutes a v1 unsigned manifest). An
+unsigned <code class="docutils literal notranslate"><span class="pre">.vault/a/</span></code> fragment is not that anchor.</p>
 </section>
 <section id="directory-layout">
 <h2><a class="toc-backref" href="#id11" role="doc-backlink">5 Directory layout</a><a class="headerlink" href="#directory-layout" title="Link to this heading">¶</a></h2>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1">.vault/
-</span><span data-line="2">  config            # recipient configuration (plaintext)
-</span><span data-line="3">  e/                # split per-entry records (v7)
-</span><span data-line="4">    a1b2c3d4e5f67890.gpg
-</span><span data-line="5">    fedcba9876543210.gpg
-</span><span data-line="6">  manifest.gpg      # optional combined metadata stub (v5)
-</span><span data-line="7">  keys.gpg          # per-file data keys, encrypted to the recipients (v6)
-</span><span data-line="8">  a1b2c3d4e5f67890.gpg  # encrypted blob payload
-</span><span data-line="9">  fedcba9876543210.gpg  # encrypted blob payload
+</span><span data-line="2">  config                 # recipient, wrap rules (plaintext)
+</span><span data-line="3">  manifest.gpg           # signed stub: seal key and envelope header
+</span><span data-line="4">  blob-index             # plaintext id and ciphertext sha256; no paths
+</span><span data-line="5">  keys.&lt;group&gt;.gpg       # per-file data keys for one recipient set
+</span><span data-line="6">  e/&lt;id&gt;.gpg             # signed record: path, hashes, data key
+</span><span data-line="7">  a/&lt;id&gt;.gpg             # unsigned fragment, same line, public-key append
+</span><span data-line="8">  &lt;id&gt;.gpg               # payload
 </span></pre></div>
 </div>
 <p>Only <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> is committed to git. The plaintext files live at their target
 paths outside the repository.</p>
+</section>
+<section id="public-key-fragments">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">6 Public-key fragments</a><a class="headerlink" href="#public-key-fragments" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">.vault/e/&lt;id&gt;.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) is signed. Appending one needs a signing key.
+gpg signs while it encrypts, so that key is the secret key. age does not
+sign; an ssh key does, and the age identity is only what decrypts. A writer
+with no gpg secret key, or with no age identity file, does not open the
+records already there. It writes <code class="docutils literal notranslate"><span class="pre">.vault/a/&lt;id&gt;.gpg</span></code> (or <code class="docutils literal notranslate"><span class="pre">.age</span></code>) instead: the
+same line, plus a <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vault-append</span></code> comment, encrypted to that entry’s
+recipients and not signed. The path stays inside the ciphertext. Existing
+<code class="docutils literal notranslate"><span class="pre">e/</span></code> records, payloads, <code class="docutils literal notranslate"><span class="pre">keys.*</span></code> and the manifest are not opened and not
+rewritten.</p>
+<p>A signature on <code class="docutils literal notranslate"><span class="pre">e/</span></code> proves the long-term signing key produced that ciphertext.
+An encrypt-only fragment has no signature. A per-run key would prove only that
+the writer could sign what it had just written.</p>
+<p>A signed record wins when both exist for one id or one path. A keyed load
+does not trust an unsigned fragment while signing is required. <code class="docutils literal notranslate"><span class="pre">rotate</span> <span class="pre">--adopt</span></code> rewrites a fragment that does not duplicate a signed entry as a
+signed <code class="docutils literal notranslate"><span class="pre">e/</span></code> record and deletes the fragment. <code class="docutils literal notranslate"><span class="pre">seal</span></code> does not. <code class="docutils literal notranslate"><span class="pre">check</span></code> fails
+while an unadopted fragment or a duplicate remains. <code class="docutils literal notranslate"><span class="pre">get</span></code> and <code class="docutils literal notranslate"><span class="pre">unseal</span></code> skip
+it and warn.</p>
+<p>The fragment is not a signature. The blob-index is not one either: a public
+writer updates it. A plant is visible to <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--digests</span></code> against a
+snapshot the writer did not rewrite, and to git. An older binary ignores
+<code class="docutils literal notranslate"><span class="pre">.vault/a/</span></code>.</p>
+</section>
+<section id="blob-index">
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">7 Blob index</a><a class="headerlink" href="#blob-index" title="Link to this heading">¶</a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># nimvault-blob-index-v1
+</span><span data-line="2">&lt;id&gt; &lt;sha256 of .vault/&lt;id&gt;.gpg&gt;
+</span></pre></div>
+</div>
+<p>No paths. <code class="docutils literal notranslate"><span class="pre">add</span></code> and <code class="docutils literal notranslate"><span class="pre">seal</span></code> upsert the id they wrote and leave every other
+line. <code class="docutils literal notranslate"><span class="pre">rm</span></code> drops its line. A writer who cannot read the other entries must
+not drop them. The file is unsigned. Keyless <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--public-only</span></code> diffs
+top-level 16-hex payloads against it (added, changed, missing) and that
+detects accidental drift only. <code class="docutils literal notranslate"><span class="pre">--digests</span></code> is the tamper signal.</p>
+</section>
+<section id="digest-list">
+<h2><a class="toc-backref" href="#id14" role="doc-backlink">8 Digest list</a><a class="headerlink" href="#digest-list" title="Link to this heading">¶</a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span><span data-line="1"># nimvault-digests-v1
+</span><span data-line="2">&lt;relative path under .vault/&gt; &lt;sha256&gt;
+</span></pre></div>
+</div>
+<p>Every file under <code class="docutils literal notranslate"><span class="pre">.vault/</span></code> except <code class="docutils literal notranslate"><span class="pre">config</span></code> and <code class="docutils literal notranslate"><span class="pre">\*.tmp</span></code>. <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--write-digests</span></code>
+writes the bytes on disk. <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">--digests</span></code> diffs a previous file. A delta
+exits 2, including an intentional add. Write it after a clean seal, and
+compare against that snapshot.</p>
 </section>
 </section>
 

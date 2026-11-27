@@ -84,6 +84,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/private-vault-repo.html">Keep the vault in its own private repository</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/service-vault.html">Service Vaults</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/headless-gpg.html">Headless and CI GPG</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/machine-writers.html">Machine writers</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -121,7 +122,10 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><a class="reference internal" href="#gpg-key-id">4 GPG key ID</a><ul>
 <li><a class="reference internal" href="#who-may-sign">4.1 Who may sign</a></li>
-<li><a class="reference internal" href="#finding-your-key-id">4.2 Finding your key ID</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#ci-switches">5 CI switches</a><ul>
+<li><a class="reference internal" href="#finding-your-key-id">5.1 Finding your key ID</a></li>
 </ul>
 </li>
 </ul>
@@ -236,7 +240,11 @@ data-aria-dark="Switch to auto color mode">
 <li><p><a class="reference internal" href="#gpg-key-id" id="id10">4 GPG key ID</a></p>
 <ul>
 <li><p><a class="reference internal" href="#who-may-sign" id="id11">4.1 Who may sign</a></p></li>
-<li><p><a class="reference internal" href="#finding-your-key-id" id="id12">4.2 Finding your key ID</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#ci-switches" id="id12">5 CI switches</a></p>
+<ul>
+<li><p><a class="reference internal" href="#finding-your-key-id" id="id13">5.1 Finding your key ID</a></p></li>
 </ul>
 </li>
 </ul>
@@ -317,6 +325,18 @@ to the recipients allowed to open those entries:</p>
 <p>Order in the file is precedence, so the narrow rules go above the general one.
 An entry matching no rule uses <code class="docutils literal notranslate"><span class="pre">recipient</span></code>, which is why a config with no
 <code class="docutils literal notranslate"><span class="pre">wrap</span></code> lines behaves exactly as it did before rules existed.</p>
+<p>A path can be sealed to a subset. This keeps one persona’s notes to that
+persona and the owner:</p>
+<div class="highlight-ini notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="na">recipient</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">OWNER</span>
+</span><span data-line="2"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">personas/mosswell/**:MOSSWELL,OWNER</span>
+</span><span data-line="3"><span class="na">wrap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">**:OWNER</span>
+</span></pre></div>
+</div>
+<p>A rule that matches and names no recipient is an error. The entry is not
+sealed to <code class="docutils literal notranslate"><span class="pre">recipient</span></code> instead, and nothing is written.</p>
+<p><code class="docutils literal notranslate"><span class="pre">nimvault</span> <span class="pre">who</span> <span class="pre">PATH</span></code> prints the path, the recipients and the glob that
+matched, without decrypting. With no path it lists the entries this identity
+can open. See <a class="reference external" href="../howto/machine-writers.rst">machine writers</a>.</p>
 <section id="how-it-works">
 <h3><a class="toc-backref" href="#id6" role="doc-backlink">3.1 How it works</a><a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h3>
 <p>Each entry’s payload is encrypted under its own data key (see the manifest
@@ -390,8 +410,21 @@ matches every key in the keyring that carries that exact email. Use a
 fingerprint or long key ID when another key with the same email could be
 imported.</p>
 </section>
+</section>
+<section id="ci-switches">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">5 CI switches</a><a class="headerlink" href="#ci-switches" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">NIMVAULT_NONINTERACTIVE=1</span></code></dt><dd><p>same as <code class="docutils literal notranslate"><span class="pre">--noninteractive</span></code>. gpg is not
+allowed to prompt. A prompt exits 3.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">NIMVAULT_PUBLIC_ONLY=1</span></code></dt><dd><p>same as <code class="docutils literal notranslate"><span class="pre">--public-only</span></code> on the commands that
+take it. Do not use a secret key, even if this home has one.</p>
+</dd>
+</dl>
+<p>A gpg home with no secret key, or an age config whose identity file is not
+on this machine, takes that lane without the switch.</p>
 <section id="finding-your-key-id">
-<h3><a class="toc-backref" href="#id12" role="doc-backlink">4.2 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id13" role="doc-backlink">5.1 Finding your key ID</a><a class="headerlink" href="#finding-your-key-id" title="Link to this heading">¶</a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">gpg<span class="w"> </span>--list-keys<span class="w"> </span>--keyid-format<span class="w"> </span>long
 </span><span data-line="2"><span class="c1"># pub   rsa4096/9CCCE36402CB49A6 2024-01-01 [SC]</span>
 </span><span data-line="3"><span class="c1">#                ^^^^^^^^^^^^^^^^ this is the key ID</span>

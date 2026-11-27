@@ -1,26 +1,32 @@
 nimTitle	gpg	nimvault/gpg.html	module nimvault/gpg		0
 nim	NimvaultError	nimvault/gpg.html#NimvaultError	object NimvaultError		7
-nim	GpgConfig	nimvault/gpg.html#GpgConfig	object GpgConfig		8
-nim	nvRaise	nimvault/gpg.html#nvRaise,string	proc nvRaise(msg: string)		25
-nim	nvQuiet	nimvault/gpg.html#nvQuiet	var nvQuiet		29
-nim	VaultConfigFile	nimvault/gpg.html#VaultConfigFile	tuple VaultConfigFile		31
-nim	resolveRecipient	nimvault/gpg.html#resolveRecipient,string,string,string	proc resolveRecipient(cli, env, configRecipient: string): string		77
-nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		93
-nim	gpgStatusHas	nimvault/gpg.html#gpgStatusHas,string,string	proc gpgStatusHas(status, token: string): bool		139
-nim	vaultSignerSpecs	nimvault/gpg.html#vaultSignerSpecs,GpgConfig	proc vaultSignerSpecs(cfg: GpgConfig): seq[string]		150
-nim	signerFingerprints	nimvault/gpg.html#signerFingerprints,seq[string]	proc signerFingerprints(specs: seq[string]; secretOnly = false): seq[string]		258
-nim	vaultSigners	nimvault/gpg.html#vaultSigners,GpgConfig	proc vaultSigners(cfg: GpgConfig): seq[string]		289
-nim	AgeGpgSigner	nimvault/gpg.html#AgeGpgSigner	const AgeGpgSigner		297
-nim	signingKey	nimvault/gpg.html#signingKey,GpgConfig	proc signingKey(cfg: GpgConfig): string		320
-nim	validSigners	nimvault/gpg.html#validSigners,string	proc validSigners(status: string): seq[string]		330
-nim	gpgSignerProblem	nimvault/gpg.html#gpgSignerProblem,string,string,seq[string]	proc gpgSignerProblem(status, path: string; allowed: seq[string]): string		345
-nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		360
-nim	gpgVerdict	nimvault/gpg.html#gpgVerdict,string,string,int,bool,seq[string]	proc gpgVerdict(status, path: string; code: int; verifySig: bool;\n           allowed: seq[string]; checkPresent = false): string		379
-nim	gpgNoSecretKey	nimvault/gpg.html#gpgNoSecretKey,string	proc gpgNoSecretKey(status: string): bool		436
-nim	gpgAgentRefused	nimvault/gpg.html#gpgAgentRefused,string,int	proc gpgAgentRefused(status: string; code: int): bool		449
-nim	gpgDecryptAttempts	nimvault/gpg.html#gpgDecryptAttempts	const gpgDecryptAttempts		457
-nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,GpgConfig,string,string	proc gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		459
-nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,GpgConfig,string	proc gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                   checkPresent = false): string		480
-nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		499
-nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		510
-nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		531
+nim	GpgConfig	nimvault/gpg.html#GpgConfig	object GpgConfig		9
+nim	nvRaise	nimvault/gpg.html#nvRaise,string,int	proc nvRaise(msg: string; code = 1)		27
+nim	nvQuiet	nimvault/gpg.html#nvQuiet	var nvQuiet		34
+nim	nvNonInteractive	nimvault/gpg.html#nvNonInteractive	var nvNonInteractive		35
+nim	pinentryInsert	nimvault/gpg.html#pinentryInsert,seq[string]	proc pinentryInsert(args: var seq[string])		40
+nim	gpgFailureCode	nimvault/gpg.html#gpgFailureCode,string	proc gpgFailureCode(output: string): int		54
+nim	gpgSecretKeyPresent	nimvault/gpg.html#gpgSecretKeyPresent	proc gpgSecretKeyPresent(): bool		65
+nim	explicitPublicOnly	nimvault/gpg.html#explicitPublicOnly,GpgConfig	proc explicitPublicOnly(cfg: GpgConfig): bool		98
+nim	publicKeyOnly	nimvault/gpg.html#publicKeyOnly,GpgConfig	proc publicKeyOnly(cfg: GpgConfig): bool		105
+nim	VaultConfigFile	nimvault/gpg.html#VaultConfigFile	tuple VaultConfigFile		123
+nim	resolveRecipient	nimvault/gpg.html#resolveRecipient,string,string,string	proc resolveRecipient(cli, env, configRecipient: string): string		169
+nim	initGpgConfig	nimvault/gpg.html#initGpgConfig,string,string	proc initGpgConfig(cliRecipient: string; repo: string): GpgConfig		185
+nim	gpgStatusHas	nimvault/gpg.html#gpgStatusHas,string,string	proc gpgStatusHas(status, token: string): bool		231
+nim	vaultSignerSpecs	nimvault/gpg.html#vaultSignerSpecs,GpgConfig	proc vaultSignerSpecs(cfg: GpgConfig): seq[string]		242
+nim	signerFingerprints	nimvault/gpg.html#signerFingerprints,seq[string]	proc signerFingerprints(specs: seq[string]; secretOnly = false): seq[string]		350
+nim	vaultSigners	nimvault/gpg.html#vaultSigners,GpgConfig	proc vaultSigners(cfg: GpgConfig): seq[string]		381
+nim	AgeGpgSigner	nimvault/gpg.html#AgeGpgSigner	const AgeGpgSigner		389
+nim	signingKey	nimvault/gpg.html#signingKey,GpgConfig	proc signingKey(cfg: GpgConfig): string		412
+nim	validSigners	nimvault/gpg.html#validSigners,string	proc validSigners(status: string): seq[string]		422
+nim	gpgSignerProblem	nimvault/gpg.html#gpgSignerProblem,string,string,seq[string]	proc gpgSignerProblem(status, path: string; allowed: seq[string]): string		437
+nim	gpgEncrypt	nimvault/gpg.html#gpgEncrypt,GpgConfig,string,string	proc gpgEncrypt(cfg: GpgConfig; inPath, outPath: string)		452
+nim	gpgVerdict	nimvault/gpg.html#gpgVerdict,string,string,int,bool,seq[string]	proc gpgVerdict(status, path: string; code: int; verifySig: bool;\n           allowed: seq[string]; checkPresent = false): string		474
+nim	gpgNoSecretKey	nimvault/gpg.html#gpgNoSecretKey,string	proc gpgNoSecretKey(status: string): bool		531
+nim	gpgAgentRefused	nimvault/gpg.html#gpgAgentRefused,string,int	proc gpgAgentRefused(status: string; code: int): bool		544
+nim	gpgDecryptAttempts	nimvault/gpg.html#gpgDecryptAttempts	const gpgDecryptAttempts		552
+nim	gpgDecrypt	nimvault/gpg.html#gpgDecrypt,GpgConfig,string,string	proc gpgDecrypt(cfg: GpgConfig; inPath, outPath: string; verifySig = false)		554
+nim	gpgDecryptToString	nimvault/gpg.html#gpgDecryptToString,GpgConfig,string	proc gpgDecryptToString(cfg: GpgConfig; inPath: string; verifySig = false;\n                   checkPresent = false): string		576
+nim	gpgParallelism	nimvault/gpg.html#gpgParallelism	proc gpgParallelism(): int		596
+nim	sha256sum	nimvault/gpg.html#sha256sum,string	proc sha256sum(path: string): string		607
+nim	sha256sumBytes	nimvault/gpg.html#sha256sumBytes,string	proc sha256sumBytes(data: string): string		628

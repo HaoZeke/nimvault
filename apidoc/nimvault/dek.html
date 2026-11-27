@@ -138,6 +138,12 @@
                 onlyGroups: seq[string] = @[])</a></li>
 
 </ul>
+<ul class="simple nested-toc-section">wrapMatch
+  <li><a class="reference" href="#wrapMatch%2CGpgConfig%2Cstring" title="wrapMatch(cfg: GpgConfig; path: string): tuple[recipients: seq[string],
+    rule: string]">wrapMatch(cfg: GpgConfig; path: string): tuple[recipients: seq[string],
+    rule: string]</a></li>
+
+</ul>
 
     </ul>
   </details>
@@ -329,7 +335,7 @@ no new dependency and no hand-rolled primitive.</pre>
   <dd>
     
     <p>Merge every data-key this machine can actually open.</p>
-<p>Per-entry records under <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span><span class="Identifier">e</span><span class="Operator">/</span></span></tt> are the mergeable source. Grouped <tt class="docutils literal"><span class="pre"><span class="Identifier">keys</span><span class="Operator">.*</span></span></tt> files still fill ids whose record carries no data key, or that have no record yet (a v6 vault mid-migration). A file that will not decrypt is not an error: it belongs to a group this machine is not in.</p>
+<p>Per-entry records under <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span><span class="Identifier">e</span><span class="Operator">/</span></span></tt> are the mergeable source. <tt class="docutils literal"><span class="pre"><span class="Operator">.</span><span class="Identifier">vault</span><span class="Operator">/</span><span class="Identifier">a</span><span class="Operator">/</span></span></tt> holds the same line, written by a public-key writer that could not sign. <tt class="docutils literal"><span class="pre"><span class="Identifier">a</span><span class="Operator">/</span></span></tt> is read first and <tt class="docutils literal"><span class="pre"><span class="Identifier">e</span><span class="Operator">/</span></span></tt> overwrites it, so a signed record wins when both exist. Grouped <tt class="docutils literal"><span class="pre"><span class="Identifier">keys</span><span class="Operator">.*</span></span></tt> files still fill ids whose record carries no data key, or that have no record yet. A file that will not decrypt is not an error: it belongs to a group this machine is not in.</p>
 
     
   </dd>
@@ -377,11 +383,11 @@ no new dependency and no hand-rolled primitive.</pre>
 </div>
 <div id="recipientsFor-procs-all">
   <div id="recipientsFor,GpgConfig,string">
-  <dt><pre><span class="Keyword">proc</span> <a href="#recipientsFor%2CGpgConfig%2Cstring"><span class="Identifier">recipientsFor</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dt><pre><span class="Keyword">proc</span> <a href="#recipientsFor%2CGpgConfig%2Cstring"><span class="Identifier">recipientsFor</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> {.
+    <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    Recipients for one entry: the first matching <tt class="docutils literal"><span class="pre"><span class="Identifier">wrap</span></span></tt> rule wins, and the configured recipient is the fallback. Order in the file is the precedence, so the specific rules go above the general one.
+    Recipients for one entry. Order in the file is the precedence, so the specific rules go above the general one.
     
   </dd>
 </div>
@@ -407,6 +413,18 @@ no new dependency and no hand-rolled primitive.</pre>
 </div>
 
 </div>
+<div id="wrapMatch-procs-all">
+  <div id="wrapMatch,GpgConfig,string">
+  <dt><pre><span class="Keyword">proc</span> <a href="#wrapMatch%2CGpgConfig%2Cstring"><span class="Identifier">wrapMatch</span></a><span class="Other">(</span><span class="Identifier">cfg</span><span class="Other">:</span> <a href="gpg.html#GpgConfig"><span class="Identifier">GpgConfig</span></a><span class="Other">;</span> <span class="Identifier">path</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">recipients</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">rule</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span> {.<span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">NimvaultError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
+  <dd>
+    
+    First matching <tt class="docutils literal"><span class="pre"><span class="Identifier">wrap</span></span></tt> rule wins. <tt class="docutils literal"><span class="pre"><span class="Identifier">rule</span></span></tt> is the glob, empty when the configured recipient is the fallback. A match that names nobody is an error: falling through would seal the entry to the owner, which is a different set from the one the rule wrote down.
+    
+  </dd>
+</div>
+
+</div>
 
   </dl>
 </div>
@@ -417,7 +435,7 @@ no new dependency and no hand-rolled primitive.</pre>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-26 23:42:40 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-11-27 07:33:06 UTC</small>
       </div>
     </div>
   </div>
